@@ -36,6 +36,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 
 # Schemas and middleware
 from api.schemas import (
@@ -280,6 +281,11 @@ app = FastAPI(
 enable_tracing(app)
 enable_prometheus_middleware(app)
 
+# Serve React SPA if present
+if os.path.isdir("ui"):
+    ui_dir = "ui/dist" if os.path.isdir("ui/dist") else "ui"
+    app.mount("/ui", StaticFiles(directory=ui_dir, html=True), name="ui")
+
 
 # ---------------------------------------------
 # CORS Configuration (Secure)
@@ -430,7 +436,7 @@ async def deliberate(
     payload: DeliberationRequest,
     user: Optional[str] = Depends(get_current_user),
     _rate_limit: None = Depends(check_rate_limit),
-    _size_guard: None = Depends(lambda req=request: check_content_length(req)),
+    _size_guard: None = Depends(check_content_length),
 ):
     """
     Run the full ELEANOR V8 deliberation pipeline.
