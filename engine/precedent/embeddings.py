@@ -70,22 +70,83 @@ except:
 
 
 class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
-    """Uses Claude's embedding endpoint."""
+    """
+    Claude embedding adapter using Anthropic's Voyage AI embeddings.
 
-    def __init__(self, model="claude-3-embed", api_key=None):
-        if anthropic is None:
-            raise ImportError("Anthropic SDK not installed")
-        self.client = anthropic.Anthropic(api_key=api_key)
+    Note: Anthropic's Claude API does not directly expose embeddings.
+    This adapter uses Voyage AI (Anthropic's recommended embedding partner)
+    or falls back to a local sentence-transformer model for compatibility.
+
+    For production use with Voyage AI, set VOYAGE_API_KEY environment variable.
+    """
+
+    def __init__(self, model: str = "voyage-large-2", api_key: str = None,
+                 fallback_to_local: bool = True):
+        """
+        Initialize Claude embedding adapter.
+
+        Args:
+            model: Voyage AI model name (voyage-large-2, voyage-code-2, etc.)
+            api_key: Voyage AI API key (or set VOYAGE_API_KEY env var)
+            fallback_to_local: If True, use local embeddings when Voyage unavailable
+        """
+        import os
         self.model = model
+        self.api_key = api_key or os.getenv("VOYAGE_API_KEY")
+        self.fallback_to_local = fallback_to_local
+        self._local_model = None
+
+        # Try to import voyageai client
+        try:
+            import voyageai
+            self._voyage_client = voyageai.Client(api_key=self.api_key) if self.api_key else None
+        except ImportError:
+            self._voyage_client = None
+
+        # Initialize local fallback if needed
+        if self._voyage_client is None and self.fallback_to_local:
+            self._init_local_fallback()
+
+    def _init_local_fallback(self):
+        """Initialize local sentence-transformer as fallback."""
+        try:
+            from sentence_transformers import SentenceTransformer
+            # Use a high-quality model that's compatible with most use cases
+            self._local_model = SentenceTransformer("all-mpnet-base-v2")
+        except ImportError:
+            raise ImportError(
+                "Neither Voyage AI SDK nor sentence-transformers installed. "
+                "Install one of: pip install voyageai OR pip install sentence-transformers"
+            )
 
     def embed(self, text: str) -> List[float]:
-        resp = self.client.messages.create(
-            model=self.model,
-            max_tokens=1,  # embeddings don't need text output
-            messages=[{"role": "user", "content": text}]
+        """
+        Generate embeddings for the input text.
+
+        Uses Voyage AI if available, otherwise falls back to local model.
+        """
+        # Try Voyage AI first
+        if self._voyage_client is not None:
+            try:
+                result = self._voyage_client.embed(
+                    texts=[text],
+                    model=self.model,
+                    input_type="document"
+                )
+                return result.embeddings[0]
+            except Exception as e:
+                if not self.fallback_to_local:
+                    raise RuntimeError(f"Voyage AI embedding failed: {e}")
+                # Fall through to local model
+
+        # Use local fallback
+        if self._local_model is not None:
+            vec = self._local_model.encode(text)
+            return vec.tolist()
+
+        raise RuntimeError(
+            "No embedding backend available. Configure VOYAGE_API_KEY or install sentence-transformers."
         )
-        # Anthropic embedding access (placeholder — replace when exposed)
-        return resp.usage.input_tokens_vector
 
 
 # ============================================================
