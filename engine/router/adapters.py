@@ -15,12 +15,13 @@ Included adapters:
     - GPTAdapter (OpenAI)
     - ClaudeAdapter (Anthropic)
     - GrokAdapter (xAI)
-    - LlamaHFAdapter (HuggingFace Transformers)
-    - OllamaAdapter (local models)
+    - LlamaHFAdapter (HuggingFace Transformers; supports Llama/Mistral/Phi3/etc.)
+    - OllamaAdapter (local models; supports any Ollama model name)
 
 You may add new adapters without modifying the engine.
 """
 
+import os
 import json
 import requests
 
@@ -203,6 +204,42 @@ def bootstrap_default_registry(
 
     reg = AdapterRegistry()
 
+    def _register_ollama_models():
+        models = []
+        env_single = os.getenv("OLLAMA_MODEL")
+        if env_single:
+            models.append(env_single)
+        env_many = os.getenv("OLLAMA_MODELS")
+        if env_many:
+            models.extend([m.strip() for m in env_many.split(",") if m.strip()])
+        if not models:
+            models = ["llama3"]
+        for m in models:
+            name = f"ollama-{m}" if m != "llama3" else "ollama"
+            try:
+                reg.register(name, OllamaAdapter(model=m))
+            except Exception:
+                continue
+
+    def _register_hf_models():
+        if AutoTokenizer is None or AutoModelForCausalLM is None:
+            return
+        models = []
+        env_many = os.getenv("HF_MODELS")
+        if env_many:
+            models.extend([m.strip() for m in env_many.split(",") if m.strip()])
+        if not models:
+            models = ["meta-llama/Llama-3-8b"]
+        device = os.getenv("HF_DEVICE", "cpu")
+        for m in models:
+            # derive a short name
+            short = m.split("/")[-1].lower().replace(" ", "-")
+            name = f"hf-{short}"
+            try:
+                reg.register(name, LlamaHFAdapter(model_path=m, device=device))
+            except Exception:
+                continue
+
     # Cloud Models (guarded)
     if OpenAI is not None and openai_key:
         try:
@@ -221,14 +258,7 @@ def bootstrap_default_registry(
             pass
 
     # Local Models (guarded)
-    if AutoTokenizer is not None and AutoModelForCausalLM is not None:
-        try:
-            reg.register("llama", LlamaHFAdapter())
-        except Exception:
-            pass
-    try:
-        reg.register("ollama", OllamaAdapter())
-    except Exception:
-        pass
+    _register_hf_models()
+    _register_ollama_models()
 
     return reg
