@@ -29,14 +29,13 @@ import json
 import uuid
 import time
 import asyncio
-from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Depends, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 # Schemas and middleware
 from api.schemas import (
@@ -50,14 +49,89 @@ from api.middleware.auth import verify_token, get_current_user, TokenPayload
 from api.middleware.rate_limit import check_rate_limit, RateLimitMiddleware, get_rate_limiter
 
 # Logging
-from engine.logging_config import configure_logging, get_logger, log_request, log_deliberation
+from engine.logging_config import configure_logging, get_logger, log_deliberation
 
-# Engine Builder
-from engine.core import build_eleanor_engine_v8
+# Engine bootstrap
+from api.bootstrap import (
+    build_engine,
+    evaluate_opa,
+    load_constitutional_config,
+    GOVERNANCE_SCHEMA_VERSION,
+)
+from api.replay_store import ReplayStore
+from pydantic import BaseModel
 
 # Initialize logging
 configure_logging()
 logger = get_logger(__name__)
+
+# ---------------------------------------------
+# Metrics (optional Prometheus)
+# ---------------------------------------------
+try:
+    from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+
+    DELIB_REQUESTS = Counter(
+        "eleanor_deliberate_requests_total",
+        "Total deliberate requests",
+        ["outcome"],
+    )
+    DELIB_LATENCY = Histogram(
+        "eleanor_deliberate_duration_seconds",
+        "Deliberation duration in seconds",
+        buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30),
+    )
+    OPA_CALLS = Counter(
+        "eleanor_opa_calls_total",
+        "Total OPA evaluations",
+        ["result"],
+    )
+except Exception:
+    DELIB_REQUESTS = None
+    DELIB_LATENCY = None
+    OPA_CALLS = None
+    generate_latest = None
+    CONTENT_TYPE_LATEST = None
+
+
+# ---------------------------------------------
+# Optional Observability (OTEL + Prometheus middleware)
+# ---------------------------------------------
+def enable_tracing(app: FastAPI):
+    """Enable OpenTelemetry tracing if configured."""
+    if os.getenv("ENABLE_OTEL", "").lower() not in ("1", "true", "yes"):
+        return
+    try:
+        from opentelemetry import trace
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+        endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces")
+        resource = Resource.create({"service.name": os.getenv("OTEL_SERVICE_NAME", "eleanor-v8-api")})
+        provider = TracerProvider(resource=resource)
+        exporter = OTLPSpanExporter(endpoint=endpoint)
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+        trace.set_tracer_provider(provider)
+        FastAPIInstrumentor.instrument_app(app, tracer_provider=provider)
+        logger.info(f"OpenTelemetry tracing enabled at {endpoint}")
+    except Exception as exc:
+        logger.warning(f"Failed to enable OpenTelemetry: {exc}")
+
+
+def enable_prometheus_middleware(app: FastAPI):
+    """Enable Prometheus instrumentation middleware if available."""
+    if os.getenv("ENABLE_PROMETHEUS_MIDDLEWARE", "").lower() not in ("1", "true", "yes"):
+        return
+    try:
+        from prometheus_fastapi_instrumentator import Instrumentator
+
+        Instrumentator().instrument(app).expose(app, include_in_schema=False)
+        logger.info("Prometheus middleware instrumentation enabled")
+    except Exception as exc:
+        logger.warning(f"Failed to enable Prometheus middleware: {exc}")
 
 
 # ---------------------------------------------
@@ -77,51 +151,25 @@ def get_cors_origins() -> list:
     return [origin.strip() for origin in origins_str.split(",") if origin.strip()]
 
 
+def check_content_length(request: Request, max_bytes: int = None):
+    """Guardrail: reject overly large requests early."""
+    max_allowed = max_bytes or int(os.getenv("MAX_REQUEST_BYTES", "1048576"))  # 1MB default
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) > max_allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"Request too large (>{max_allowed} bytes)",
+                )
+        except ValueError:
+            pass
+
+
 def get_constitutional_config() -> dict:
     """Load constitutional configuration from YAML file."""
-    import yaml
-
     config_path = os.getenv("CONSTITUTIONAL_CONFIG_PATH", "governance/constitutional.yaml")
-    path = Path(config_path)
-
-    if not path.exists():
-        logger.error(f"Constitutional config not found at {config_path}")
-        raise FileNotFoundError(f"Constitutional config not found: {config_path}")
-
-    if not path.is_file():
-        raise ValueError(f"Constitutional config path is not a file: {config_path}")
-
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
-
-
-# ---------------------------------------------
-# Placeholder implementations
-# (Replace with real implementations in production)
-# ---------------------------------------------
-
-class DummyStore:
-    """Placeholder precedent store for development."""
-
-    def search(self, q: str, top_k: int = 5) -> list:
-        logger.debug(f"DummyStore.search called with q={q[:50]}..., top_k={top_k}")
-        return []
-
-
-def opa_eval_stub(payload: dict) -> dict:
-    """Placeholder OPA evaluator for development."""
-    logger.debug("OPA eval stub called")
-    return {"allow": True, "failures": [], "escalate": False}
-
-
-def llm_adapter(prompt: str) -> str:
-    """Placeholder LLM adapter for development."""
-    logger.debug(f"LLM adapter called with prompt length: {len(prompt)}")
-    return json.dumps({
-        "score": 1.0,
-        "violation": False,
-        "details": {"notes": "Placeholder LLM response"}
-    })
+    return load_constitutional_config(config_path)
 
 
 # ---------------------------------------------
@@ -130,6 +178,7 @@ def llm_adapter(prompt: str) -> str:
 
 # Global engine instance
 engine = None
+replay_store = ReplayStore(path=os.getenv("REPLAY_LOG_PATH", "replay_log.jsonl"))
 
 
 def initialize_engine():
@@ -138,34 +187,66 @@ def initialize_engine():
 
     try:
         constitution = get_constitutional_config()
-
-        router_adapters = {
-            "primary": llm_adapter,
-            "backup": llm_adapter
-        }
-
-        router_policy = {
-            "primary": "primary",
-            "fallback_order": ["backup"],
-            "max_retries": 2
-        }
-
-        precedent_store = DummyStore()
-
-        engine = build_eleanor_engine_v8(
-            llm_fn=llm_adapter,
-            constitutional_config=constitution,
-            router_adapters=router_adapters,
-            router_policy=router_policy,
-            precedent_store=precedent_store,
-            opa_callback=opa_eval_stub,
-        )
-
+        engine = build_engine(constitution)
         logger.info("ELEANOR V8 engine initialized successfully")
-
     except Exception as e:
         logger.error(f"Failed to initialize engine: {e}")
         raise
+
+
+def resolve_final_decision(aggregator_decision: Optional[str], opa_result: Dict[str, Any]) -> str:
+    """Combine aggregator decision with OPA governance outcome."""
+    if not opa_result.get("allow", True):
+        return "deny"
+    if opa_result.get("escalate"):
+        return "escalate"
+    return aggregator_decision or "allow"
+
+
+def normalize_engine_result(result_obj: Any, input_text: str, trace_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize EngineResult or dict into a common shape used by the API.
+    """
+    result = (
+        result_obj.model_dump()
+        if hasattr(result_obj, "model_dump")
+        else result_obj.dict()
+        if hasattr(result_obj, "dict")
+        else result_obj
+    )
+
+    model_info = result.get("model_info") or {}
+    model_used = model_info.get("model_name") if isinstance(model_info, dict) else getattr(model_info, "model_name", "unknown")
+
+    aggregated = result.get("aggregated") or result.get("aggregator_output") or {}
+    aggregated = aggregated if isinstance(aggregated, dict) else {}
+
+    critic_findings = result.get("critic_findings") or result.get("critics") or {}
+    critic_outputs = {
+        k: (v.model_dump() if hasattr(v, "model_dump") else v)
+        for k, v in critic_findings.items()
+    }
+
+    precedent_alignment = result.get("precedent_alignment") or result.get("precedent") or {}
+    uncertainty = result.get("uncertainty") or {}
+
+    model_output = aggregated.get("final_output") if aggregated else None
+    model_output = model_output or result.get("output_text")
+
+    normalized = {
+        "trace_id": result.get("trace_id", trace_id),
+        "timestamp": time.time(),
+        "model_used": model_used,
+        "model_output": model_output,
+        "critic_outputs": critic_outputs,
+        "precedent": precedent_alignment,
+        "precedent_alignment": precedent_alignment,
+        "uncertainty": uncertainty,
+        "aggregator_output": aggregated,
+        "input": input_text,
+        "context": context,
+    }
+    return normalized
 
 
 # Lifespan context manager for startup/shutdown
@@ -196,6 +277,8 @@ app = FastAPI(
         500: {"model": ErrorResponse},
     }
 )
+enable_tracing(app)
+enable_prometheus_middleware(app)
 
 
 # ---------------------------------------------
@@ -290,21 +373,34 @@ async def health_check():
     if engine is not None:
         checks["engine"] = "ok"
 
-        # Check OPA (stub for now)
-        try:
-            test_result = engine.opa_callback({"test": True})
-            checks["opa"] = "ok" if "allow" in test_result else "degraded"
-        except Exception as e:
-            logger.warning(f"OPA health check failed: {e}")
-            checks["opa"] = "error"
+        # Check OPA
+        opa_cb = getattr(engine, "opa_callback", None)
+        if opa_cb is None:
+            checks["opa"] = "not_configured"
+        else:
+            try:
+                opa_probe = await evaluate_opa(opa_cb, {"health": True})
+                if opa_probe.get("failures"):
+                    checks["opa"] = "error"
+                elif opa_probe.get("escalate"):
+                    checks["opa"] = "degraded"
+                else:
+                    checks["opa"] = "ok"
+            except Exception as e:
+                logger.warning(f"OPA health check failed: {e}")
+                checks["opa"] = "error"
 
         # Check precedent store
-        try:
-            engine.precedent_retriever.retrieve("health check")
-            checks["precedent_store"] = "ok"
-        except Exception as e:
-            logger.warning(f"Precedent store health check failed: {e}")
-            checks["precedent_store"] = "error"
+        retriever = getattr(engine, "precedent_retriever", None)
+        if retriever is None:
+            checks["precedent_store"] = "not_configured"
+        else:
+            try:
+                retriever.retrieve("health check", [])
+                checks["precedent_store"] = "ok"
+            except Exception as e:
+                logger.warning(f"Precedent store health check failed: {e}")
+                checks["precedent_store"] = "error"
     else:
         checks["engine"] = "not_initialized"
 
@@ -334,6 +430,7 @@ async def deliberate(
     payload: DeliberationRequest,
     user: Optional[str] = Depends(get_current_user),
     _rate_limit: None = Depends(check_rate_limit),
+    _size_guard: None = Depends(lambda req=request: check_content_length(req)),
 ):
     """
     Run the full ELEANOR V8 deliberation pipeline.
@@ -362,26 +459,86 @@ async def deliberate(
         )
 
     try:
-        # Run deliberation (async if available)
-        if asyncio.iscoroutinefunction(engine.deliberate):
-            result = await engine.deliberate(payload.input)
+        run_fn = getattr(engine, "run", None)
+        deliberate_fn = getattr(engine, "deliberate", None)
+
+        if run_fn is not None:
+            result_obj = await run_fn(payload.input, context=payload.context, trace_id=trace_id, detail_level=3)
+        elif asyncio.iscoroutinefunction(deliberate_fn):
+            result_obj = await deliberate_fn(payload.input)
+        elif deliberate_fn:
+            result_obj = deliberate_fn(payload.input)
         else:
-            result = engine.deliberate(payload.input)
+            raise RuntimeError("Engine does not expose run() or deliberate()")
+
+        normalized = normalize_engine_result(result_obj, payload.input, trace_id, payload.context)
+        model_used = normalized["model_used"]
+        critic_outputs = normalized["critic_outputs"]
+        aggregated = normalized["aggregator_output"]
+        precedent_alignment = normalized["precedent_alignment"]
+        uncertainty = normalized["uncertainty"]
+        model_output = normalized["model_output"]
+
+        governance_payload = {
+            "critics": critic_outputs,
+            "aggregator": aggregated,
+            "precedent": precedent_alignment,
+            "uncertainty": uncertainty,
+            "model_used": model_used,
+            "input": payload.input,
+            "trace_id": normalized["trace_id"],
+            "timestamp": time.time(),
+            "schema_version": GOVERNANCE_SCHEMA_VERSION,
+        }
+
+        governance_result = await evaluate_opa(
+            getattr(engine, "opa_callback", None),
+            governance_payload,
+        )
+
+        final_decision = resolve_final_decision(aggregated.get("decision"), governance_result)
 
         duration_ms = (time.time() - start_time) * 1000
+        if DELIB_LATENCY:
+            DELIB_LATENCY.observe(duration_ms / 1000.0)
+        if DELIB_REQUESTS:
+            DELIB_REQUESTS.labels(outcome=final_decision).inc()
+        if OPA_CALLS:
+            opa_outcome = (
+                "deny" if not governance_result.get("allow", True) else
+                "escalate" if governance_result.get("escalate") else
+                "allow"
+            )
+            OPA_CALLS.labels(result=opa_outcome).inc()
 
         # Log deliberation result
         log_deliberation(
             logger,
             trace_id=result.get("trace_id", trace_id),
-            decision=result.get("final_decision", "unknown"),
-            model_used=result.get("model_used", "unknown"),
+            decision=final_decision,
+            model_used=model_used or "unknown",
             duration_ms=duration_ms,
-            uncertainty=result.get("uncertainty", {}).get("overall_uncertainty"),
-            escalated=result.get("final_decision") == "escalate",
+            uncertainty=(uncertainty or {}).get("overall_uncertainty"),
+            escalated=final_decision == "escalate",
         )
 
-        return result
+        response_payload = {
+            **normalized,
+            "opa_governance": governance_result,
+            "governance": governance_result,
+            "final_decision": final_decision,
+        }
+
+        # persist replay record
+        replay_store.save({
+            "trace_id": response_payload["trace_id"],
+            "input": payload.input,
+            "context": payload.context,
+            "response": response_payload,
+            "timestamp": response_payload["timestamp"],
+        })
+
+        return response_payload
 
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
@@ -437,51 +594,173 @@ async def get_trace(
             detail="Evidence recorder not available",
         )
 
-    storage_mode = getattr(recorder, 'storage_mode', 'memory')
+    buffer = getattr(recorder, "buffer", None)
+    if buffer:
+        for record in buffer:
+            record_dict = record.dict() if hasattr(record, "dict") else record
+            if record_dict.get("trace_id") == trace_id:
+                return record_dict
 
-    if storage_mode == "memory":
-        memory_log = getattr(recorder, 'get_memory_log', lambda: [])()
-        for item in memory_log:
-            if item.get("trace_id") == trace_id:
-                return item
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Trace ID not found",
-        )
-
-    elif storage_mode == "jsonl":
-        file_path = getattr(recorder, 'file_path', None)
-        if not file_path:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Audit log path not configured",
-            )
-
+    # Fallback to JSONL sink if configured
+    jsonl_path = getattr(recorder, "jsonl_path", None) or getattr(recorder, "file_path", None)
+    if jsonl_path:
         try:
-            with open(file_path, "r") as f:
+            with open(jsonl_path, "r", encoding="utf-8") as f:
                 for line in f:
                     try:
                         item = json.loads(line)
-                        if item.get("trace_id") == trace_id:
-                            return item
                     except json.JSONDecodeError:
                         continue
+                    if item.get("trace_id") == trace_id:
+                        return item
         except FileNotFoundError:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Audit log not found",
             )
 
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Trace ID not found",
+    )
+
+
+# ---------------------------------------------
+# Replay Endpoint
+# ---------------------------------------------
+
+@app.get("/replay/{trace_id}", tags=["Audit"])
+async def replay_trace(
+    trace_id: str,
+    rerun: bool = False,
+    user: Optional[str] = Depends(get_current_user),
+):
+    """
+    Retrieve a stored deliberation and optionally re-run it through the current engine.
+    """
+    record = replay_store.get(trace_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trace ID not found in replay log")
+
+    if not rerun:
+        return record
+
+    if engine is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Trace ID not found",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Engine not initialized",
         )
 
+    input_text = record.get("input")
+    context = record.get("context", {})
+    if not input_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Replay record missing input")
+
+    new_trace = str(uuid.uuid4())
+    run_fn = getattr(engine, "run", None)
+    deliberate_fn = getattr(engine, "deliberate", None)
+
+    if run_fn is not None:
+        result_obj = await run_fn(input_text, context=context, trace_id=new_trace, detail_level=3)
+    elif asyncio.iscoroutinefunction(deliberate_fn):
+        result_obj = await deliberate_fn(input_text)
+    elif deliberate_fn:
+        result_obj = deliberate_fn(input_text)
     else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported storage mode: {storage_mode}",
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Engine does not expose run() or deliberate()")
+
+    normalized = normalize_engine_result(result_obj, input_text, new_trace, context)
+    governance_payload = {
+        "critics": normalized["critic_outputs"],
+        "aggregator": normalized["aggregator_output"],
+        "precedent": normalized["precedent_alignment"],
+        "uncertainty": normalized["uncertainty"],
+        "model_used": normalized["model_used"],
+        "input": input_text,
+        "trace_id": normalized["trace_id"],
+        "timestamp": time.time(),
+        "schema_version": GOVERNANCE_SCHEMA_VERSION,
+    }
+    governance_result = await evaluate_opa(getattr(engine, "opa_callback", None), governance_payload)
+    final_decision = resolve_final_decision(normalized["aggregator_output"].get("decision"), governance_result)
+
+    rerun_payload = {
+        **normalized,
+        "opa_governance": governance_result,
+        "governance": governance_result,
+        "final_decision": final_decision,
+        "replay_of": trace_id,
+    }
+
+    replay_store.save({
+        "trace_id": rerun_payload["trace_id"],
+        "input": input_text,
+        "context": context,
+        "response": rerun_payload,
+        "timestamp": rerun_payload["timestamp"],
+        "replay_of": trace_id,
+    })
+
+    return {
+        "original": record,
+        "rerun": rerun_payload,
+    }
+
+
+# ---------------------------------------------
+# Audit Search Endpoint
+# ---------------------------------------------
+
+@app.get("/audit/search", tags=["Audit"])
+async def audit_search(
+    critic: Optional[str] = None,
+    severity: Optional[str] = None,
+    trace_id: Optional[str] = None,
+    limit: int = 100,
+    user: Optional[str] = Depends(get_current_user),
+):
+    """
+    Search audit evidence by critic, severity label, or trace_id across in-memory buffer and JSONL sink.
+    """
+    recorder = getattr(engine, 'recorder', None) if engine else None
+    if recorder is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Evidence recorder not available")
+
+    matches: List[Dict[str, Any]] = []
+
+    def record_matches(rec: Any) -> bool:
+        if hasattr(rec, "dict"):
+            rec = rec.dict()
+        if trace_id and rec.get("trace_id") != trace_id:
+            return False
+        if critic and rec.get("critic") != critic:
+            return False
+        if severity and rec.get("severity") != severity:
+            return False
+        return True
+
+    buffer = getattr(recorder, "buffer", [])
+    for rec in reversed(buffer):
+        if len(matches) >= limit:
+            break
+        if record_matches(rec):
+            matches.append(rec.dict() if hasattr(rec, "dict") else rec)
+
+    if len(matches) < limit:
+        jsonl_path = getattr(recorder, "jsonl_path", None) or getattr(recorder, "file_path", None)
+        if jsonl_path and os.path.exists(jsonl_path):
+            with open(jsonl_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if len(matches) >= limit:
+                        break
+                    try:
+                        item = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if record_matches(item):
+                        matches.append(item)
+
+    return {"matches": matches[:limit], "count": len(matches)}
 
 
 # ---------------------------------------------
@@ -514,7 +793,16 @@ async def governance_preview(
                 detail="OPA callback not configured",
             )
 
-        result = opa_callback(payload.model_dump())
+        payload_dict = payload.model_dump()
+        payload_dict["schema_version"] = GOVERNANCE_SCHEMA_VERSION
+        result = await evaluate_opa(opa_callback, payload_dict)
+        if OPA_CALLS:
+            opa_outcome = (
+                "deny" if not result.get("allow", True) else
+                "escalate" if result.get("escalate") else
+                "allow"
+            )
+            OPA_CALLS.labels(result=opa_outcome).inc()
         return result
 
     except HTTPException:
@@ -534,14 +822,15 @@ async def governance_preview(
 @app.get("/metrics", tags=["System"], include_in_schema=False)
 async def metrics():
     """
-    Prometheus-compatible metrics endpoint.
-
-    Returns metrics in Prometheus text format.
+    Lightweight metrics snapshot for operators.
     """
-    # Placeholder - integrate with prometheus_client in production
     from api.middleware.rate_limit import get_rate_limiter
 
     limiter = get_rate_limiter()
+    router = getattr(engine, "router", None) if engine else None
+    if generate_latest and DELIB_REQUESTS:
+        data = generate_latest()
+        return PlainTextResponse(data, media_type=CONTENT_TYPE_LATEST)
 
     return {
         "rate_limit": {
@@ -550,7 +839,58 @@ async def metrics():
             "window_seconds": limiter.config.window_seconds,
         },
         "engine_status": "initialized" if engine else "not_initialized",
+        "adapter_count": len(getattr(router, "adapters", {}) or {}),
+        "critics": list(getattr(engine, "critics", {}).keys()) if engine else [],
     }
+
+
+# ---------------------------------------------
+# Admin Endpoints (router health + critic bindings)
+# ---------------------------------------------
+
+@app.get("/admin/router/health", tags=["Admin"])
+async def router_health(user: Optional[str] = Depends(get_current_user)):
+    if engine is None or not getattr(engine, "router", None):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Router not available")
+    router = engine.router
+    health = getattr(router, "health", {})
+    breakers = router.get_circuit_breaker_status() if hasattr(router, "get_circuit_breaker_status") else {}
+    return {"health": health, "circuit_breakers": breakers, "policy": getattr(router, "policy", {})}
+
+
+@app.post("/admin/router/reset_breakers", tags=["Admin"])
+async def reset_breakers(user: Optional[str] = Depends(get_current_user)):
+    if engine is None or not getattr(engine, "router", None):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Router not available")
+    router = engine.router
+    if hasattr(router, "_circuit_breakers"):
+        router._circuit_breakers.reset_all()
+    return {"status": "ok"}
+
+
+@app.get("/admin/critics/bindings", tags=["Admin"])
+async def get_critic_bindings(user: Optional[str] = Depends(get_current_user)):
+    if engine is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not initialized")
+    return {"bindings": getattr(engine, "critic_models", {})}
+
+
+class CriticBinding(BaseModel):
+    critic: str
+    adapter: str
+
+
+@app.post("/admin/critics/bindings", tags=["Admin"])
+async def set_critic_binding(binding: CriticBinding, user: Optional[str] = Depends(get_current_user)):
+    if engine is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not initialized")
+    router = getattr(engine, "router", None)
+    adapters = getattr(router, "adapters", {}) if router else {}
+    adapter_fn = adapters.get(binding.adapter)
+    if adapter_fn is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Adapter '{binding.adapter}' not registered")
+    engine.critic_models[binding.critic] = adapter_fn
+    return {"status": "ok", "binding": {binding.critic: binding.adapter}}
 
 
 # ---------------------------------------------

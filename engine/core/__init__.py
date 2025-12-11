@@ -8,6 +8,7 @@ embeddings, governance, and evidence sinks.
 """
 
 import os
+import json
 import inspect
 from typing import Any, Dict, Optional
 
@@ -53,6 +54,27 @@ def _build_router(
     anthropic_key: Optional[str],
     xai_key: Optional[str],
 ):
+    def _parse_mapping(env_var: str) -> Dict[str, float]:
+        raw = os.getenv(env_var)
+        if not raw:
+            return {}
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                return {str(k): float(v) for k, v in data.items()}
+        except Exception:
+            pass
+        # fall back to comma-separated adapter:value
+        mapping = {}
+        for chunk in raw.split(","):
+            if ":" in chunk:
+                k, v = chunk.split(":", 1)
+                try:
+                    mapping[k.strip()] = float(v)
+                except ValueError:
+                    continue
+        return mapping
+
     if adapters is None:
         registry = bootstrap_default_registry(
             openai_key=openai_key,
@@ -72,6 +94,10 @@ def _build_router(
             "fallback_order": [k for k in adapters.keys() if k != primary],
             "max_retries": 2,
             "circuit_breaker": {"enabled": False},
+            "adapter_costs": _parse_mapping("ROUTER_ADAPTER_COSTS"),
+            "max_cost": float(os.getenv("ROUTER_MAX_COST")) if os.getenv("ROUTER_MAX_COST") else None,
+            "adapter_latency": _parse_mapping("ROUTER_ADAPTER_LATENCIES"),
+            "latency_budget_ms": float(os.getenv("ROUTER_LATENCY_BUDGET_MS")) if os.getenv("ROUTER_LATENCY_BUDGET_MS") else None,
         }
 
     return lambda: RouterV8(adapters=adapters, routing_policy=router_policy)

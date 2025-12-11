@@ -31,6 +31,13 @@ Two options (controlled via PRECEDENT_BACKEND):
 ### 4. Networking
 All services run inside a shared docker network.
 
+### 5. Observability
+- Prometheus scrapes:
+  - `eleanor:8000/metrics` (API + middleware)
+  - `opa:8181/metrics`
+- Grafana pre-provisioned with Prometheus datasource
+- Optional OpenTelemetry export to an OTLP collector
+
 ---
 
 ## Running the Appliance
@@ -38,3 +45,30 @@ All services run inside a shared docker network.
 ```bash
 cd docker
 ./start.sh
+```
+
+or directly:
+
+```bash
+docker compose up --build
+```
+
+## Environment
+
+Copy the sample env and adjust secrets/keys:
+
+```bash
+cp ../.env.sample ../.env
+```
+
+Key env vars:
+- Model adapters: `OPENAI_KEY`, `ANTHROPIC_KEY`, `XAI_KEY`
+- Router policy: `ROUTER_ADAPTER_COSTS`, `ROUTER_MAX_COST`, `ROUTER_ADAPTER_LATENCIES`, `ROUTER_LATENCY_BUDGET_MS`
+- Precedent: `PRECEDENT_BACKEND` (`weaviate|pgvector|memory`), `WEAVIATE_URL`, `PG_CONN_STRING`
+- Governance: `OPA_URL`, `OPA_POLICY_PATH`, `OPA_FAIL_STRATEGY`
+- Metrics/Tracing: `ENABLE_PROMETHEUS_MIDDLEWARE`, `ENABLE_OTEL`, `OTEL_EXPORTER_OTLP_ENDPOINT`
+- Evidence/Replays: `EVIDENCE_PATH`, `REPLAY_LOG_PATH`
+
+Prometheus and Grafana are included in `docker-compose.yaml`:
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3000 (default admin/admin, override via `GRAFANA_ADMIN_USER/PASSWORD`)

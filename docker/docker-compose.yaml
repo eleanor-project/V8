@@ -8,6 +8,8 @@ services:
   eleanor:
     build: .
     container_name: eleanor_v8
+    env_file:
+      - ../.env
     environment:
       PRECEDENT_BACKEND: "${PRECEDENT_BACKEND:-weaviate}"   # weaviate | pgvector
       OPENAI_KEY: "${OPENAI_KEY}"
@@ -16,10 +18,13 @@ services:
       OPA_URL: "http://opa:8181"
       OPA_POLICY_PATH: "v1/data/eleanor/decision"
       PG_CONN_STRING: "postgresql://postgres:postgres@pgvector:5432/eleanor"
+      ENABLE_PROMETHEUS_MIDDLEWARE: "${ENABLE_PROMETHEUS_MIDDLEWARE:-1}"
+      ENABLE_OTEL: "${ENABLE_OTEL:-0}"
     depends_on:
       - opa
       - weaviate
       - pgvector
+      - prometheus
     ports:
       - "8000:8000"
     volumes:
@@ -40,6 +45,11 @@ services:
       - ./governance/policies:/policies
     ports:
       - "8181:8181"
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "/policies"
 
   # ==============================
   # WEAVIATE (Vector database)
@@ -70,6 +80,38 @@ services:
       - "5432:5432"
     volumes:
       - ./pg_data:/var/lib/postgresql/data
+
+  # ==============================
+  # Prometheus
+  # ==============================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    depends_on:
+      - eleanor
+      - opa
+
+  # ==============================
+  # Grafana
+  # ==============================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
 
 networks:
   default:

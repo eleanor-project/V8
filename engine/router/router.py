@@ -69,6 +69,10 @@ class RouterV8:
             "fallback_order": [name for name in self.adapters.keys() if name != primary],
             "max_retries": 1,
             "circuit_breaker": {"enabled": False},
+            "adapter_costs": {},
+            "max_cost": None,
+            "adapter_latency": {},
+            "latency_budget_ms": None,
         }
         self.health = {name: True for name in self.adapters.keys()}
         self.max_retries = self.policy.get("max_retries", 2)
@@ -272,50 +276,57 @@ class RouterV8:
         context = context or {}
         primary = self.policy.get("primary")
         fallbacks = self.policy.get("fallback_order", [])
+        adapter_costs = self.policy.get("adapter_costs", {}) or {}
+        max_cost = self.policy.get("max_cost")
+        adapter_latency = self.policy.get("adapter_latency", {}) or {}
+        latency_budget = self.policy.get("latency_budget_ms")
 
         attempts = []
 
-        # Try primary first
-        if primary:
-            result = await self._call_adapter(primary, text, context)
-            attempts.append(result)
+        def within_cost(name: str) -> bool:
+            if max_cost is None:
+                return True
+            cost = adapter_costs.get(name)
+            return cost is None or cost <= max_cost
 
-            if result["success"]:
-                out = result["output"]
-                return {
-                    "response_text": out["response_text"],
-                    "model_name": out["model_name"] or primary,
-                    "model_version": out["model_version"],
-                    "reason": out.get("reason") or f"policy_primary:{primary}",
-                    "health_score": self.health.get(primary, True),
-                    "cost": out.get("cost"),
-                    "diagnostics": {
-                        "attempts": attempts,
-                        "adapter_used": primary,
-                    },
-                }
+        def within_latency(name: str) -> bool:
+            if latency_budget is None:
+                return True
+            lat = adapter_latency.get(name)
+            return lat is None or lat <= latency_budget
 
-        # Try fallbacks
-        for fb in fallbacks:
-            if not self._check_health(fb):
-                continue  # Skip unhealthy models
+        candidates = []
+        ordered = [primary] + fallbacks if primary else fallbacks
+        for name in ordered:
+            if name and self._check_health(name) and within_cost(name) and within_latency(name):
+                candidates.append(name)
 
+        if adapter_costs or adapter_latency:
+            candidates = sorted(
+                candidates,
+                key=lambda n: (
+                    adapter_costs.get(n, float("inf")),
+                    adapter_latency.get(n, float("inf")),
+                ),
+            )
+
+        for adapter_name in candidates:
             for _ in range(self.max_retries):
-                result = await self._call_adapter(fb, text, context)
+                result = await self._call_adapter(adapter_name, text, context)
                 attempts.append(result)
 
                 if result["success"]:
                     out = result["output"]
                     return {
                         "response_text": out["response_text"],
-                        "model_name": out["model_name"] or fb,
+                        "model_name": out["model_name"] or adapter_name,
                         "model_version": out["model_version"],
-                        "reason": out.get("reason") or f"policy_fallback:{fb}",
-                        "health_score": self.health.get(fb, True),
-                        "cost": out.get("cost"),
+                        "reason": out.get("reason") or f"policy_selected:{adapter_name}",
+                        "health_score": self.health.get(adapter_name, True),
+                        "cost": adapter_costs.get(adapter_name, out.get("cost")),
                         "diagnostics": {
                             "attempts": attempts,
-                            "adapter_used": fb,
+                            "adapter_used": adapter_name,
                         },
                     }
 

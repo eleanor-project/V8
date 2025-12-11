@@ -62,7 +62,7 @@ Input → Router → Orchestrator → Precedent → Alignment → Uncertainty �
 |----|------|------|-------|----------|
 | M1 | `engine/core/engine.py` | 74 | `precedent_retriever.retrieve()` called synchronously in async context | MEDIUM |
 | M2 | `engine/critics/rights.py` | 21-24 | Keyword-based detection is trivially bypassed | MEDIUM |
-| M3 | `api/rest/main.py` | 37-51 | Dummy/stub implementations in production code | MEDIUM |
+| M3 | `api/rest/main.py` | 37-51 | Placeholder engine bootstrap replaced with real builder + OPA client (resolved) | FIXED |
 | M4 | `engine/uncertainty/uncertainty.py` | 163-170 | Model name detection is fragile (substring matching) | MEDIUM |
 | M5 | `pyproject.toml` | 19-24 | Missing critical dependencies (psycopg2, weaviate-client) | MEDIUM |
 
