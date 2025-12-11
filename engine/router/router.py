@@ -12,6 +12,7 @@ Responsibilities:
 4. Provide a unified interface for model inference
 5. Gather model metadata for evidence bundles
 6. Expose health status for orchestration & monitoring
+7. Circuit breaker protection for resilient LLM calls
 
 The Router DOES NOT:
 - perform critic reasoning (critics do that)
@@ -24,6 +25,12 @@ It ONLY handles model selection + call orchestration.
 from typing import Dict, Any, Callable, Optional, List
 import traceback
 import time
+import asyncio
+import logging
+
+from engine.utils.circuit_breaker import CircuitBreakerRegistry, CircuitBreakerOpen
+
+logger = logging.getLogger(__name__)
 
 
 class AdapterError(Exception):
@@ -41,7 +48,12 @@ class RouterV8:
                 "primary": "gpt",
                 "fallback_order": ["claude", "grok", "llama"],
                 "max_retries": 2,
-                "health": {adapter_name: status}
+                "health": {adapter_name: status},
+                "circuit_breaker": {
+                    "enabled": True,
+                    "failure_threshold": 5,
+                    "recovery_timeout": 30.0
+                }
             }
         """
         self.adapters = adapters
@@ -49,18 +61,55 @@ class RouterV8:
         self.health = {name: True for name in adapters.keys()}
         self.max_retries = routing_policy.get("max_retries", 2)
 
+        # Initialize circuit breakers for each adapter
+        self._circuit_breakers = CircuitBreakerRegistry()
+        cb_config = routing_policy.get("circuit_breaker", {})
+        self._cb_enabled = cb_config.get("enabled", True)
+        self._cb_failure_threshold = cb_config.get("failure_threshold", 5)
+        self._cb_recovery_timeout = cb_config.get("recovery_timeout", 30.0)
+
+        # Pre-create circuit breakers for all adapters
+        for adapter_name in adapters.keys():
+            self._get_circuit_breaker(adapter_name)
+
+    # ---------------------------------------------------------------
+    # Circuit Breaker Management
+    # ---------------------------------------------------------------
+
+    def _get_circuit_breaker(self, adapter_name: str):
+        """Get or create circuit breaker for an adapter."""
+        return self._circuit_breakers.get_or_create(
+            name=f"adapter_{adapter_name}",
+            failure_threshold=self._cb_failure_threshold,
+            recovery_timeout=self._cb_recovery_timeout
+        )
+
+    def get_circuit_breaker_status(self) -> Dict[str, Any]:
+        """Get status of all circuit breakers."""
+        return self._circuit_breakers.get_all_status()
+
     # ---------------------------------------------------------------
     # Health Checking
     # ---------------------------------------------------------------
 
     def _check_health(self, adapter_name: str) -> bool:
         """
-        Placeholder health check — replace with real calls later.
+        Check adapter health including circuit breaker state.
         """
-        return self.health.get(adapter_name, True)
+        # Basic health check
+        basic_health = self.health.get(adapter_name, True)
+
+        # Circuit breaker health check
+        if self._cb_enabled:
+            breaker = self._get_circuit_breaker(adapter_name)
+            cb_status = breaker.get_status()
+            cb_healthy = cb_status["state"] != "open"
+            return basic_health and cb_healthy
+
+        return basic_health
 
     # ---------------------------------------------------------------
-    # Core model call logic (safe execution)
+    # Core model call logic (safe execution with circuit breaker)
     # ---------------------------------------------------------------
 
     def _call_adapter(self, adapter_name: str, input_text: str) -> Dict[str, Any]:
@@ -69,22 +118,81 @@ class RouterV8:
         if adapter is None:
             raise AdapterError(f"Adapter '{adapter_name}' is not registered.")
 
+        start_time = time.time()
+
+        # Use circuit breaker if enabled
+        if self._cb_enabled:
+            breaker = self._get_circuit_breaker(adapter_name)
+
+            try:
+                # Wrap adapter call in circuit breaker
+                response = breaker.call_sync(adapter, input_text)
+
+                if not isinstance(response, dict):
+                    raise AdapterError("Adapter returned non-dict output.")
+
+                duration_ms = (time.time() - start_time) * 1000
+                logger.debug(
+                    f"Adapter {adapter_name} succeeded in {duration_ms:.2f}ms"
+                )
+
+                return {
+                    "adapter": adapter_name,
+                    "output": response,
+                    "success": True,
+                    "duration_ms": duration_ms,
+                    "circuit_breaker": breaker.get_status()
+                }
+
+            except CircuitBreakerOpen as e:
+                logger.warning(f"Circuit breaker open for adapter {adapter_name}")
+                return {
+                    "adapter": adapter_name,
+                    "success": False,
+                    "error": str(e),
+                    "circuit_breaker_open": True,
+                    "recovery_time": e.recovery_time
+                }
+
+            except Exception as e:
+                self.health[adapter_name] = False
+                duration_ms = (time.time() - start_time) * 1000
+
+                logger.error(
+                    f"Adapter {adapter_name} failed after {duration_ms:.2f}ms: {e}"
+                )
+
+                return {
+                    "adapter": adapter_name,
+                    "success": False,
+                    "error": str(e),
+                    "trace": traceback.format_exc(),
+                    "duration_ms": duration_ms,
+                    "circuit_breaker": breaker.get_status()
+                }
+
+        # Fallback without circuit breaker
         try:
             response = adapter(input_text)
             if not isinstance(response, dict):
                 raise AdapterError("Adapter returned non-dict output.")
+
+            duration_ms = (time.time() - start_time) * 1000
             return {
                 "adapter": adapter_name,
                 "output": response,
-                "success": True
+                "success": True,
+                "duration_ms": duration_ms
             }
         except Exception as e:
-            self.health[adapter_name] = False  # Mark unhealthy
+            self.health[adapter_name] = False
+            duration_ms = (time.time() - start_time) * 1000
             return {
                 "adapter": adapter_name,
                 "success": False,
                 "error": str(e),
-                "trace": traceback.format_exc()
+                "trace": traceback.format_exc(),
+                "duration_ms": duration_ms
             }
 
     # ---------------------------------------------------------------

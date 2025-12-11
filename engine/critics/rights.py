@@ -436,3 +436,7 @@ class RightsCriticV8(BaseCriticV8):
             flags.append("MULTI_PROTECTED_CONTEXT")
 
         return list(set(flags))  # Remove duplicates
+
+
+# Backward compatibility alias
+RightsCritic = RightsCriticV8
