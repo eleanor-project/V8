@@ -7,10 +7,11 @@ against ethical principles using multi-dimensional analysis.
 
 Critics follow a lexicographic priority ordering:
 1. Rights (UDHR Articles 1, 2, 7) - Highest priority
-2. Fairness (equity, non-discrimination)
-3. Truth (accuracy, honesty, transparency)
-4. Risk (safety, reversibility, precaution)
-5. Pragmatics (feasibility, sustainability) - Lowest priority
+2. Autonomy (consent, self-determination)
+3. Fairness (equity, non-discrimination)
+4. Truth (accuracy, honesty, transparency)
+5. Risk (safety, reversibility, precaution)
+6. Pragmatics (feasibility, sustainability) - Lowest priority
 
 Each critic implements the BaseCriticV8 interface and produces evidence packages
 for the aggregator to synthesize into constitutional decisions.
@@ -22,6 +23,7 @@ from .fairness import FairnessCriticV8, FairnessCritic
 from .truth import TruthCriticV8, TruthCritic
 from .risk import RiskCriticV8, RiskCritic
 from .pragmatics import PragmaticsCriticV8, PragmaticsCritic
+from .autonomy import AutonomyCriticV8
 
 __all__ = [
     # Base class
@@ -33,6 +35,7 @@ __all__ = [
     "TruthCriticV8",
     "RiskCriticV8",
     "PragmaticsCriticV8",
+    "AutonomyCriticV8",
 
     # Backward compatibility aliases
     "RightsCritic",
@@ -53,6 +56,7 @@ def get_all_critics():
     return [
         RightsCriticV8(),
         FairnessCriticV8(),
+        AutonomyCriticV8(),
         TruthCriticV8(),
         RiskCriticV8(),
         PragmaticsCriticV8(),
@@ -75,6 +79,7 @@ def get_critic_by_name(name: str):
     critics = {
         "rights": RightsCriticV8,
         "fairness": FairnessCriticV8,
+        "autonomy": AutonomyCriticV8,
         "truth": TruthCriticV8,
         "risk": RiskCriticV8,
         "pragmatics": PragmaticsCriticV8,

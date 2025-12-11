@@ -334,6 +334,7 @@ class TruthCriticV8(BaseCriticV8):
                     "count": verifiable_claims["count"],
                     "density": verifiable_claims["density"],
                     "types": list(verifiable_claims["types"].keys()),
+                    "statistic_count": verifiable_claims.get("statistic_count", 0),
                 },
                 "dimension_scores": dimension_scores,
                 "primary_violation_type": primary_violation,
@@ -474,7 +475,8 @@ class TruthCriticV8(BaseCriticV8):
             "count": total_matches,
             "density": density,
             "types": dict(claims),
-            "high_density": density > 0.1
+            "high_density": density > 0.1,
+            "statistic_count": len(claims.get("numbers", [])),
         }
 
     def _get_domain_multiplier(self, domain_context: Dict[str, Any]) -> float:

@@ -56,6 +56,7 @@ class AggregatorV8:
         critics: Dict[str, Dict[str, Any]],
         precedent: Dict[str, Any],
         uncertainty: Dict[str, Any],
+        model_output: str = "",
     ) -> Dict[str, Any]:
         """
         critics: dict critic_name -> critic_output
@@ -90,7 +91,8 @@ class AggregatorV8:
             "critics": adjusted,
             "lexicographic_violations": lex,
             "precedent": precedent,
-            "uncertainty": uncertainty
+            "uncertainty": uncertainty,
+            "final_output": model_output,
         }
 
     # ----------------------------------------------------------
@@ -109,7 +111,10 @@ class AggregatorV8:
 
         normalized = {}
         for name, data in critics.items():
-            severity = float(data.get("severity", 0.0))
+            try:
+                severity = float(data.get("severity", 0.0))
+            except (TypeError, ValueError):
+                severity = 0.0
             violations = data.get("violations", [])
             justification = data.get("justification", "")
 
@@ -181,7 +186,7 @@ class AggregatorV8:
              1.0 strongly supports critic findings
         """
 
-        align = precedent.get("alignment_score", 0.0)
+        align = (precedent or {}).get("alignment_score", 0.0)
         adjusted = {}
 
         for name, entry in critics_norm.items():
@@ -216,7 +221,7 @@ class AggregatorV8:
             sev_final = sev * (1 + 0.5 * uncertainty)
         """
 
-        u = float(uncertainty.get("overall_uncertainty", 0.0))
+        u = float((uncertainty or {}).get("overall_uncertainty", 0.0))
         adjusted = {}
 
         for name, entry in critics_adj.items():

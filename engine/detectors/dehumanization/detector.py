@@ -1,13 +1,20 @@
 from ..base import Detector
-from ..signals import DetectorSignal
+from ..utils import simple_pattern_detector
 
 class DehumanizationDetector(Detector):
     async def detect(self, text: str, context: dict) -> DetectorSignal:
-        # TODO: Implement real detection logic
-        return DetectorSignal(
-            violation=False,
-            severity="S0",
-            description="Stub detector for dehumanization",
-            confidence=0.0,
-            metadata={}
+        regexes = [
+            r"\b(animals?|vermin|parasites?|cockroaches?|rats?)\b",
+            r"\b(sub-?human|less than human|not (fully )?human)\b",
+            r"\b(inferior|superior)\s+(race|people|beings?)\b",
+            r"\b(remove|eliminate|wipe out)\s+(them|those people|that group)\b",
+        ]
+        keywords = ["worthless", "trash", "scum", "subhuman", "don't deserve to live"]
+        high_keywords = ["wipe out", "eliminate", "exterminate"]
+        return simple_pattern_detector(
+            name="dehumanization",
+            text=text,
+            regexes=regexes,
+            keywords=keywords,
+            high_keywords=high_keywords,
         )
