@@ -1,0 +1,139 @@
+{
+  "id": null,
+  "uid": "eleanor-obsv",
+  "title": "ELEANOR V8 Observability",
+  "tags": ["eleanor", "governance", "api"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "row",
+      "title": "API Health",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Deliberations (total)",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum(eleanor_deliberate_requests_total)", "legendFormat": "total" }
+      ],
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 }
+    },
+    {
+      "type": "stat",
+      "title": "Deliberations by outcome",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum by (outcome) (eleanor_deliberate_requests_total)", "legendFormat": "{{outcome}}" }
+      ],
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 }
+    },
+    {
+      "type": "gauge",
+      "title": "OPA allow vs escalate/deny",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum by (result) (eleanor_opa_calls_total)" }
+      ],
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 80 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "In-flight requests (rate limit window)",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum(rate_limit_inflight)" }
+      ],
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 }
+    },
+    {
+      "type": "row",
+      "title": "Latency",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Deliberation Duration (p50/p90/p99)",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(eleanor_deliberate_duration_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.9, sum by (le) (rate(eleanor_deliberate_duration_seconds_bucket[5m])))", "legendFormat": "p90" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(eleanor_deliberate_duration_seconds_bucket[5m])))", "legendFormat": "p99" }
+      ],
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 6 }
+    },
+    {
+      "type": "row",
+      "title": "Router & Critics",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }
+    },
+    {
+      "type": "stat",
+      "title": "Adapter health (manual from policy)",
+      "datasource": "Prometheus",
+      "description": "If using prometheus_fastapi_instrumentator + custom exporter, otherwise hide.",
+      "targets": [
+        { "expr": "max(adapter_health)", "legendFormat": "health" }
+      ],
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 15 }
+    },
+    {
+      "type": "bargauge",
+      "title": "OPA outcomes (last 5m)",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum by (result) (increase(eleanor_opa_calls_total[5m]))" }
+      ],
+      "gridPos": { "h": 6, "w": 18, "x": 6, "y": 15 }
+    },
+    {
+      "type": "row",
+      "title": "OPA",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 }
+    },
+    {
+      "type": "timeseries",
+      "title": "OPA Request Rate",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum(rate(opa_request_total[5m]))", "legendFormat": "OPA req/s" }
+      ],
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 22 }
+    },
+    {
+      "type": "timeseries",
+      "title": "OPA Decision Latency (ms)",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum(rate(opa_decision_duration_ns_sum[5m])) / sum(rate(opa_decision_duration_ns_count[5m])) / 1e6", "legendFormat": "avg latency" }
+      ],
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 22 }
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  }
+}
