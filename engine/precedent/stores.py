@@ -23,9 +23,15 @@ Returned objects MUST include:
 """
 
 import json
+import re
 import psycopg2
+from psycopg2 import sql
 import weaviate
 from typing import List, Dict, Any
+
+
+# Valid table name pattern (alphanumeric and underscore only)
+TABLE_NAME_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 
 # ----------------------------------------------------------
@@ -84,7 +90,15 @@ class WeaviatePrecedentStore:
 # ----------------------------------------------------------
 
 class PGVectorPrecedentStore:
-    def __init__(self, conn_string: str, table_name="precedent", embed_fn=None):
+    def __init__(self, conn_string: str, table_name: str = "precedent", embed_fn=None):
+        # Validate table name to prevent SQL injection
+        if not TABLE_NAME_PATTERN.match(table_name):
+            raise ValueError(
+                f"Invalid table name '{table_name}'. "
+                "Table names must start with a letter or underscore and contain only "
+                "alphanumeric characters and underscores."
+            )
+
         self.conn = psycopg2.connect(conn_string)
         self.table = table_name
         self.embedder = Embedder(embed_fn)
@@ -92,16 +106,16 @@ class PGVectorPrecedentStore:
     def search(self, query_text: str, top_k: int = 5) -> List[Dict[str, Any]]:
         embedding = self.embedder.embed(query_text)
 
+        # Use psycopg2.sql module for safe identifier handling
+        query = sql.SQL("""
+            SELECT text, metadata
+            FROM {}
+            ORDER BY embedding <-> %s
+            LIMIT %s;
+        """).format(sql.Identifier(self.table))
+
         with self.conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT text, metadata
-                FROM {self.table}
-                ORDER BY embedding <-> %s
-                LIMIT %s;
-                """,
-                (embedding, top_k)
-            )
+            cur.execute(query, (embedding, top_k))
             rows = cur.fetchall()
 
         output = []
@@ -113,3 +127,14 @@ class PGVectorPrecedentStore:
             })
 
         return output
+
+    def close(self):
+        """Close the database connection."""
+        if self.conn:
+            self.conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
