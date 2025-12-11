@@ -23,6 +23,7 @@ It ONLY handles model selection + call orchestration.
 """
 
 from typing import Dict, Any, Callable, Optional, List
+import inspect
 import traceback
 import time
 import asyncio
@@ -40,37 +41,96 @@ class AdapterError(Exception):
 
 class RouterV8:
 
-    def __init__(self, adapters: Dict[str, Callable], routing_policy: Dict[str, Any]):
+    def __init__(
+        self,
+        adapters: Optional[Dict[str, Callable]] = None,
+        routing_policy: Optional[Dict[str, Any]] = None,
+    ):
         """
-        adapters: dict of adapter_name -> adapter_callable(input_text) -> dict
+        adapters: dict of adapter_name -> adapter_callable(text, context=None)
         routing_policy:
             {
                 "primary": "gpt",
                 "fallback_order": ["claude", "grok", "llama"],
                 "max_retries": 2,
                 "health": {adapter_name: status},
-                "circuit_breaker": {
-                    "enabled": True,
-                    "failure_threshold": 5,
-                    "recovery_timeout": 30.0
-                }
+                "circuit_breaker": {...}
             }
         """
-        self.adapters = adapters
-        self.policy = routing_policy
-        self.health = {name: True for name in adapters.keys()}
-        self.max_retries = routing_policy.get("max_retries", 2)
+        self.adapters = adapters or {"default": self._default_adapter}
+
+        primary = None
+        if routing_policy:
+            primary = routing_policy.get("primary")
+        primary = primary or next(iter(self.adapters.keys()))
+
+        self.policy = routing_policy or {
+            "primary": primary,
+            "fallback_order": [name for name in self.adapters.keys() if name != primary],
+            "max_retries": 1,
+            "circuit_breaker": {"enabled": False},
+        }
+        self.health = {name: True for name in self.adapters.keys()}
+        self.max_retries = self.policy.get("max_retries", 2)
 
         # Initialize circuit breakers for each adapter
         self._circuit_breakers = CircuitBreakerRegistry()
-        cb_config = routing_policy.get("circuit_breaker", {})
-        self._cb_enabled = cb_config.get("enabled", True)
+        cb_config = self.policy.get("circuit_breaker", {})
+        self._cb_enabled = cb_config.get("enabled", False)
         self._cb_failure_threshold = cb_config.get("failure_threshold", 5)
         self._cb_recovery_timeout = cb_config.get("recovery_timeout", 30.0)
 
         # Pre-create circuit breakers for all adapters
-        for adapter_name in adapters.keys():
+        for adapter_name in self.adapters.keys():
             self._get_circuit_breaker(adapter_name)
+
+    @staticmethod
+    def _default_adapter(input_text: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Fallback adapter that simply echoes the input."""
+        return {
+            "response_text": input_text,
+            "model_name": "mock-local",
+            "model_version": "0.0",
+            "reason": "default_adapter_echo",
+        }
+
+    # ---------------------------------------------------------------
+    # Output normalization
+    # ---------------------------------------------------------------
+    def _normalize_output(self, adapter_name: str, response: Any) -> Dict[str, Any]:
+        """
+        Normalize adapter outputs into a common router schema.
+
+        Accepts:
+          • plain string → treated as response_text
+          • dict with keys: response_text | text | model_output
+        """
+        model_name = adapter_name
+        model_version = None
+        cost = None
+        diagnostics = {}
+
+        if isinstance(response, dict):
+            response_text = (
+                response.get("response_text")
+                or response.get("text")
+                or response.get("model_output")
+                or response.get("output")
+            )
+            model_name = response.get("model_name", model_name)
+            model_version = response.get("model_version")
+            cost = response.get("cost")
+            diagnostics = response.get("diagnostics", {})
+        else:
+            response_text = str(response) if response is not None else None
+
+        return {
+            "response_text": response_text,
+            "model_name": model_name,
+            "model_version": model_version,
+            "cost": cost,
+            "diagnostics": diagnostics,
+        }
 
     # ---------------------------------------------------------------
     # Circuit Breaker Management
@@ -112,7 +172,7 @@ class RouterV8:
     # Core model call logic (safe execution with circuit breaker)
     # ---------------------------------------------------------------
 
-    def _call_adapter(self, adapter_name: str, input_text: str) -> Dict[str, Any]:
+    async def _call_adapter(self, adapter_name: str, input_text: str, context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         adapter = self.adapters.get(adapter_name)
 
         if adapter is None:
@@ -125,21 +185,19 @@ class RouterV8:
             breaker = self._get_circuit_breaker(adapter_name)
 
             try:
-                # Wrap adapter call in circuit breaker
+                # Wrap adapter call in circuit breaker (synchronous adapters only)
                 response = breaker.call_sync(adapter, input_text)
+                if inspect.isawaitable(response):
+                    response = await response
 
-                if not isinstance(response, dict):
-                    raise AdapterError("Adapter returned non-dict output.")
-
+                normalized = self._normalize_output(adapter_name, response)
                 duration_ms = (time.time() - start_time) * 1000
-                logger.debug(
-                    f"Adapter {adapter_name} succeeded in {duration_ms:.2f}ms"
-                )
+                logger.debug(f"Adapter {adapter_name} succeeded in {duration_ms:.2f}ms")
 
                 return {
                     "adapter": adapter_name,
-                    "output": response,
-                    "success": True,
+                    "output": normalized,
+                    "success": normalized["response_text"] is not None,
                     "duration_ms": duration_ms,
                     "circuit_breaker": breaker.get_status()
                 }
@@ -158,9 +216,7 @@ class RouterV8:
                 self.health[adapter_name] = False
                 duration_ms = (time.time() - start_time) * 1000
 
-                logger.error(
-                    f"Adapter {adapter_name} failed after {duration_ms:.2f}ms: {e}"
-                )
+                logger.error(f"Adapter {adapter_name} failed after {duration_ms:.2f}ms: {e}")
 
                 return {
                     "adapter": adapter_name,
@@ -173,15 +229,24 @@ class RouterV8:
 
         # Fallback without circuit breaker
         try:
-            response = adapter(input_text)
-            if not isinstance(response, dict):
-                raise AdapterError("Adapter returned non-dict output.")
+            if inspect.iscoroutinefunction(adapter):
+                response = await adapter(input_text, context=context)
+            else:
+                sig = inspect.signature(adapter)
+                if "context" in sig.parameters and len(sig.parameters) >= 2:
+                    response = adapter(input_text, context=context)
+                else:
+                    response = adapter(input_text)
 
+                if inspect.isawaitable(response):
+                    response = await response
+
+            normalized = self._normalize_output(adapter_name, response)
             duration_ms = (time.time() - start_time) * 1000
             return {
                 "adapter": adapter_name,
-                "output": response,
-                "success": True,
+                "output": normalized,
+                "success": normalized["response_text"] is not None,
                 "duration_ms": duration_ms
             }
         except Exception as e:
@@ -199,11 +264,12 @@ class RouterV8:
     # Routing with fallback logic
     # ---------------------------------------------------------------
 
-    def route(self, input_text: str) -> Dict[str, Any]:
+    async def route(self, text: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Route the request to the primary adapter.
         If it fails, apply fallback logic based on routing_policy.
         """
+        context = context or {}
         primary = self.policy.get("primary")
         fallbacks = self.policy.get("fallback_order", [])
 
@@ -211,14 +277,22 @@ class RouterV8:
 
         # Try primary first
         if primary:
-            result = self._call_adapter(primary, input_text)
+            result = await self._call_adapter(primary, text, context)
             attempts.append(result)
 
             if result["success"]:
+                out = result["output"]
                 return {
-                    "model_output": result["output"],
-                    "used_adapter": primary,
-                    "attempts": attempts
+                    "response_text": out["response_text"],
+                    "model_name": out["model_name"] or primary,
+                    "model_version": out["model_version"],
+                    "reason": out.get("reason") or f"policy_primary:{primary}",
+                    "health_score": self.health.get(primary, True),
+                    "cost": out.get("cost"),
+                    "diagnostics": {
+                        "attempts": attempts,
+                        "adapter_used": primary,
+                    },
                 }
 
         # Try fallbacks
@@ -227,30 +301,41 @@ class RouterV8:
                 continue  # Skip unhealthy models
 
             for _ in range(self.max_retries):
-                result = self._call_adapter(fb, input_text)
+                result = await self._call_adapter(fb, text, context)
                 attempts.append(result)
 
                 if result["success"]:
+                    out = result["output"]
                     return {
-                        "model_output": result["output"],
-                        "used_adapter": fb,
-                        "attempts": attempts
+                        "response_text": out["response_text"],
+                        "model_name": out["model_name"] or fb,
+                        "model_version": out["model_version"],
+                        "reason": out.get("reason") or f"policy_fallback:{fb}",
+                        "health_score": self.health.get(fb, True),
+                        "cost": out.get("cost"),
+                        "diagnostics": {
+                            "attempts": attempts,
+                            "adapter_used": fb,
+                        },
                     }
 
         # If no model succeeded
         return {
-            "model_output": None,
-            "used_adapter": None,
-            "attempts": attempts,
-            "error": "All model adapters failed to produce output."
+            "response_text": None,
+            "model_name": None,
+            "model_version": None,
+            "reason": "All model adapters failed to produce output.",
+            "health_score": 0.0,
+            "cost": None,
+            "diagnostics": {"attempts": attempts},
         }
 
     # ---------------------------------------------------------------
     # Public convenience method
     # ---------------------------------------------------------------
 
-    def generate(self, input_text: str) -> Dict[str, Any]:
+    async def generate(self, input_text: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Public interface — semantic alias to route().
         """
-        return self.route(input_text)
+        return await self.route(input_text, context=context)

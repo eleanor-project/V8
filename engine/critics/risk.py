@@ -178,7 +178,7 @@ RISK_PATTERNS = [
     RiskPattern(
         category="medical_risk",
         patterns=[
-            r"\b(stop|discontinue|quit)\s+(taking|your)\s+(medication|medicine|treatment)",
+            r"\b(stop|discontinue|quit)\s+(?:taking\s+)?(?:your\s+)?(medication|medicine|treatment)",
             r"\b(self[- ]?medicate|diagnose\s+yourself|treat\s+yourself)",
             r"\b(ignore|dismiss)\s+(symptoms?|medical\s+advice|doctor)",
             r"\b(overdose|take more than|exceed the dose)",

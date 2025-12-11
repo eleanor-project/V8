@@ -196,16 +196,39 @@ def bootstrap_default_registry(
     anthropic_key=None,
     xai_key=None
 ) -> AdapterRegistry:
+    """
+    Build a registry of available adapters.
+    Only registers backends whose SDKs + keys are present to avoid import errors.
+    """
 
     reg = AdapterRegistry()
 
-    # Cloud Models
-    reg.register("gpt", GPTAdapter(api_key=openai_key))
-    reg.register("claude", ClaudeAdapter(api_key=anthropic_key))
-    reg.register("grok", GrokAdapter(api_key=xai_key))
+    # Cloud Models (guarded)
+    if OpenAI is not None and openai_key:
+        try:
+            reg.register("gpt", GPTAdapter(api_key=openai_key))
+        except Exception:
+            pass
+    if anthropic is not None and anthropic_key:
+        try:
+            reg.register("claude", ClaudeAdapter(api_key=anthropic_key))
+        except Exception:
+            pass
+    if xai_key:
+        try:
+            reg.register("grok", GrokAdapter(api_key=xai_key))
+        except Exception:
+            pass
 
-    # Local Models
-    reg.register("llama", LlamaHFAdapter())
-    reg.register("ollama", OllamaAdapter())
+    # Local Models (guarded)
+    if AutoTokenizer is not None and AutoModelForCausalLM is not None:
+        try:
+            reg.register("llama", LlamaHFAdapter())
+        except Exception:
+            pass
+    try:
+        reg.register("ollama", OllamaAdapter())
+    except Exception:
+        pass
 
     return reg

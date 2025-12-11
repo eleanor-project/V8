@@ -84,6 +84,16 @@ class PrecedentAlignmentEngineV8:
         if not precedent_cases:
             return self._novel_case()
 
+        # Normalize missing fields to avoid crashes on partial precedent entries
+        normalized_cases = []
+        for case in precedent_cases:
+            normalized_cases.append({
+                **case,
+                "embedding": case.get("embedding", []),
+                "metadata": case.get("metadata", {}),
+            })
+        precedent_cases = normalized_cases
+
         # Step 1: similarity scores
         similarities = [cosine(query_embedding, p["embedding"]) for p in precedent_cases]
 

@@ -1,0 +1,248 @@
+"""
+ELEANOR V8 — Engine Builder (async runtime)
+-------------------------------------------
+
+Bridges the API layer to the async engine/engine.py implementation.
+Configurable via kwargs or environment variables for adapters, precedent,
+embeddings, governance, and evidence sinks.
+"""
+
+import os
+import inspect
+from typing import Any, Dict, Optional
+
+from engine.engine import create_engine, EngineConfig
+from engine.router.router import RouterV8
+from engine.router.adapters import bootstrap_default_registry
+from engine.aggregator.aggregator import AggregatorV8
+from engine.uncertainty.uncertainty import UncertaintyEngineV8
+from engine.precedent.alignment import PrecedentAlignmentEngineV8
+from engine.precedent.retrieval import PrecedentRetrievalV8
+from engine.precedent.embeddings import bootstrap_embedding_registry
+from engine.precedent.stores import (
+    WeaviatePrecedentStore,
+    PGVectorPrecedentStore,
+)
+from engine.recorder.evidence_recorder import EvidenceRecorder
+from engine.detectors.engine import DetectorEngineV8
+from engine.governance.opa_client import OPAClientV8
+
+
+def _wrap_llm_adapter(fn):
+    async def _adapter(text: str, context: Optional[Dict[str, Any]] = None):
+        if not callable(fn):
+            return text
+        try:
+            sig = inspect.signature(fn)
+            has_context = "context" in sig.parameters
+        except (TypeError, ValueError):
+            has_context = False
+
+        result = fn(text, context=context) if has_context else fn(text)
+        if hasattr(result, "__await__"):
+            result = await result
+        return result
+    return _adapter
+
+
+def _build_router(
+    adapters: Optional[Dict[str, Any]],
+    router_policy: Optional[Dict[str, Any]],
+    *,
+    openai_key: Optional[str],
+    anthropic_key: Optional[str],
+    xai_key: Optional[str],
+):
+    if adapters is None:
+        registry = bootstrap_default_registry(
+            openai_key=openai_key,
+            anthropic_key=anthropic_key,
+            xai_key=xai_key,
+        )
+        adapters = {}
+        for name in registry.list():
+            adapters[name] = registry.get(name)
+
+    adapters = adapters or {"default": lambda text, context=None: text}
+
+    if not router_policy:
+        primary = next(iter(adapters.keys()))
+        router_policy = {
+            "primary": primary,
+            "fallback_order": [k for k in adapters.keys() if k != primary],
+            "max_retries": 2,
+            "circuit_breaker": {"enabled": False},
+        }
+
+    return lambda: RouterV8(adapters=adapters, routing_policy=router_policy)
+
+
+def _build_precedent_layer(precedent_store: Optional[Any], embed_backend: str, openai_key: str, anthropic_key: str, xai_key: str):
+    retriever = None
+    store = precedent_store
+
+    # Embeddings
+    embed_registry = bootstrap_embedding_registry(
+        openai_key=openai_key,
+        anthropic_key=anthropic_key,
+        xai_key=xai_key,
+    )
+    embed_fn = None
+    if embed_backend in embed_registry.list():
+        embed_fn = embed_registry.get(embed_backend).embed
+    elif embed_registry.list():
+        embed_fn = embed_registry.get(embed_registry.list()[0]).embed
+
+    # Precedent store from env if not provided
+    if store is None:
+        backend = os.getenv("PRECEDENT_BACKEND", "memory").lower()
+        if backend == "weaviate":
+            try:
+                import weaviate
+                client = weaviate.Client(url=os.getenv("WEAVIATE_URL", "http://localhost:8080"))
+                store = WeaviatePrecedentStore(
+                    client=client,
+                    class_name=os.getenv("WEAVIATE_CLASS_NAME", "Precedent"),
+                    embed_fn=embed_fn,
+                )
+            except Exception:
+                store = None
+        elif backend == "pgvector":
+            conn = os.getenv("PG_CONN_STRING")
+            table = os.getenv("PG_TABLE", "precedent")
+            if conn:
+                try:
+                    store = PGVectorPrecedentStore(conn_string=conn, table_name=table, embed_fn=embed_fn)
+                except Exception:
+                    store = None
+        else:
+            class MemoryStore:
+                def __init__(self, embed_fn=None):
+                    self.items = []
+                    self.embed_fn = embed_fn or (lambda x: [])
+
+                def add(self, text, metadata=None):
+                    self.items.append({"text": text, "metadata": metadata or {}, "embedding": self.embed_fn(text)})
+
+                def search(self, q, top_k=5):
+                    # naive search; return top_k in insertion order
+                    return self.items[:top_k]
+            store = MemoryStore(embed_fn=embed_fn)
+
+    if store and PrecedentRetrievalV8:
+        retriever = PrecedentRetrievalV8(store_client=store)
+
+    return retriever
+
+
+class HeuristicDetector:
+    """
+    Lightweight detector to reduce empty detector registry: scans for coercion
+    and harmful patterns and returns DetectorSignal-like dicts.
+    """
+    def __init__(self, name: str, patterns):
+        self.name = name
+        self.patterns = patterns
+
+    async def detect(self, text: str, context: dict):
+        import re
+        matches = []
+        for pat in self.patterns:
+            regex = re.compile(pat, re.IGNORECASE)
+            hits = regex.findall(text)
+            if hits:
+                matches.extend(hits[:3])
+        violation = bool(matches)
+        return {
+            "violation": violation,
+            "severity": "S2" if violation else "S0",
+            "description": f"{self.name} detected" if violation else "clear",
+            "confidence": 0.6 if violation else 0.0,
+            "metadata": {"matches": matches},
+        }
+
+
+def build_eleanor_engine_v8(
+    *,
+    llm_fn=None,
+    constitutional_config: Optional[Dict[str, Any]] = None,
+    router_adapters: Optional[Dict[str, Any]] = None,
+    router_policy: Optional[Dict[str, Any]] = None,
+    precedent_store: Optional[Any] = None,
+    opa_callback=None,
+    evidence_path: Optional[str] = None,
+    critic_models: Optional[Dict[str, Any]] = None,
+) -> Any:
+    """
+    Build a fully operational async engine instance.
+
+    Args mirror the API/websocket bootstrap while remaining optional so that
+    local development can run with minimal configuration.
+    """
+
+    openai_key = os.getenv("OPENAI_KEY")
+    anthropic_key = os.getenv("ANTHROPIC_KEY")
+    xai_key = os.getenv("XAI_KEY")
+    embedding_backend = os.getenv("EMBEDDING_BACKEND", "gpt")
+
+    adapters = router_adapters or {}
+    if llm_fn and not adapters:
+        adapters = {"primary": _wrap_llm_adapter(llm_fn)}
+        router_policy = router_policy or {"primary": "primary", "fallback_order": []}
+
+    router_backend = _build_router(
+        adapters=adapters,
+        router_policy=router_policy,
+        openai_key=openai_key,
+        anthropic_key=anthropic_key,
+        xai_key=xai_key,
+    )
+
+    precedent_retriever = _build_precedent_layer(
+        precedent_store=precedent_store,
+        embed_backend=embedding_backend,
+        openai_key=openai_key,
+        anthropic_key=anthropic_key,
+        xai_key=xai_key,
+    )
+
+    recorder = EvidenceRecorder(jsonl_path=evidence_path or "evidence.jsonl")
+
+    detectors = {
+        "coercion": HeuristicDetector("coercion", [r"no choice", r"you must", r"or else", r"cannot refuse"]),
+        "hallucination": HeuristicDetector("hallucination", [r"\bmake up\b", r"\binvented\b"]),
+        "privacy": HeuristicDetector("privacy", [r"reveal personal", r"publish.*private", r"share.*medical"]),
+    }
+
+    detector_engine = DetectorEngineV8(detectors=detectors)
+
+    uncertainty = UncertaintyEngineV8() if UncertaintyEngineV8 else None
+    aggregator = AggregatorV8()
+    precedent_engine = PrecedentAlignmentEngineV8() if PrecedentAlignmentEngineV8 else None
+
+    engine_instance = create_engine(
+        config=EngineConfig(),
+        evidence_recorder=recorder,
+        detector_engine=detector_engine,
+        precedent_engine=precedent_engine,
+        precedent_retriever=precedent_retriever,
+        uncertainty_engine=uncertainty,
+        aggregator=aggregator,
+        router_backend=router_backend,
+        critic_models=critic_models,
+    )
+
+    # Governance (OPA)
+    if opa_callback:
+        setattr(engine_instance, "opa_callback", opa_callback)
+    else:
+        opa_client = OPAClientV8(
+            base_url=os.getenv("OPA_URL", "http://localhost:8181"),
+            policy_path=os.getenv("OPA_POLICY_PATH", "v1/data/eleanor/decision"),
+        )
+        setattr(engine_instance, "opa_callback", opa_client.evaluate)
+
+    return engine_instance
+
+
+__all__ = ["build_eleanor_engine_v8"]

@@ -15,12 +15,13 @@ from typing import Any, Dict, List, Optional, AsyncGenerator
 
 from pydantic import BaseModel, Field
 
-# Critics
-from engine.critics.rights import RightsCritic
-from engine.critics.risk import RiskCritic
-from engine.critics.fairness import FairnessCritic
-from engine.critics.pragmatics import PragmaticsCritic
-from engine.critics.truth import TruthCritic
+# Critics (V8 implementations)
+from engine.critics.rights import RightsCriticV8
+from engine.critics.risk import RiskCriticV8
+from engine.critics.fairness import FairnessCriticV8
+from engine.critics.pragmatics import PragmaticsCriticV8
+from engine.critics.truth import TruthCriticV8
+from engine.critics.autonomy import AutonomyCriticV8
 
 # Detector Engine
 from engine.detectors.engine import DetectorEngineV8
@@ -31,12 +32,14 @@ from engine.recorder.evidence_recorder import EvidenceRecorder
 # Precedent Engine
 try:
     from engine.precedent.alignment import PrecedentAlignmentEngineV8
+    from engine.precedent.retrieval import PrecedentRetrievalV8
 except Exception:
     PrecedentAlignmentEngineV8 = None
+    PrecedentRetrievalV8 = None
 
 # Uncertainty Engine
 try:
-    from engine.uncertainty.engine import UncertaintyEngineV8
+    from engine.uncertainty.uncertainty import UncertaintyEngineV8
 except Exception:
     UncertaintyEngineV8 = None
 
@@ -52,6 +55,16 @@ except Exception:
 # ---------------------------------------------------------
 
 def load_router_backend():
+    """
+    Prefer the packaged RouterV8; fall back to dynamic discovery to keep
+    backward compatibility with alternative router modules.
+    """
+    try:
+        from engine.router.router import RouterV8
+        return RouterV8
+    except Exception:
+        pass
+
     candidates = [
         "engine.router",
         "engine.router.router",
@@ -62,10 +75,11 @@ def load_router_backend():
         try:
             module = importlib.import_module(mod)
             for name, obj in inspect.getmembers(module):
-                if inspect.isclass(obj) and name.lower().endswith("router"):
+                lowered = name.lower()
+                if inspect.isclass(obj) and (lowered.endswith("router") or lowered.endswith("routerv8")):
                     return obj
         except Exception:
-            pass
+            continue
     raise ImportError("No valid router backend found.")
 
 
@@ -138,10 +152,12 @@ class EleanorEngineV8:
         evidence_recorder: Optional[EvidenceRecorder] = None,
         detector_engine: Optional[DetectorEngineV8] = None,
         precedent_engine: Optional[Any] = None,
+        precedent_retriever: Optional[Any] = None,
         uncertainty_engine: Optional[Any] = None,
         aggregator: Optional[Any] = None,
         router_backend: Optional[Any] = None,
         critics: Optional[Dict[str, Any]] = None,
+        critic_models: Optional[Dict[str, Any]] = None,
     ):
         self.config = config or EngineConfig()
         self.instance_id = str(uuid.uuid4())
@@ -155,19 +171,21 @@ class EleanorEngineV8:
 
         # Critics
         self.critics = critics or {
-            "rights": RightsCritic,
-            "risk": RiskCritic,
-            "fairness": FairnessCritic,
-            "pragmatics": PragmaticsCritic,
-            "truth": TruthCritic,
+            "rights": RightsCriticV8,
+            "autonomy": AutonomyCriticV8,
+            "risk": RiskCriticV8,
+            "fairness": FairnessCriticV8,
+            "pragmatics": PragmaticsCriticV8,
+            "truth": TruthCriticV8,
         }
+        self.critic_models = critic_models or {}
 
         # Detector Engine
         self.detector_engine = detector_engine or DetectorEngineV8(detectors={})
 
         # Recorder
         self.recorder = evidence_recorder or EvidenceRecorder(
-            jsonl_evidence_path=self.config.jsonl_evidence_path
+            jsonl_path=self.config.jsonl_evidence_path
         )
 
         # Precedent
@@ -177,6 +195,14 @@ class EleanorEngineV8:
             self.precedent_engine = PrecedentAlignmentEngineV8()
         else:
             self.precedent_engine = None
+
+        # Precedent Retriever (optional)
+        self.precedent_retriever = precedent_retriever
+        if self.precedent_retriever is None and PrecedentRetrievalV8:
+            class _NullStore:
+                def search(self, q: str, top_k: int = 5):
+                    return []
+            self.precedent_retriever = PrecedentRetrievalV8(store_client=_NullStore())
 
         # Uncertainty
         if uncertainty_engine:
@@ -227,92 +253,189 @@ class EleanorEngineV8:
 
         return {
             "model_info": model_info,
-            "response_text": router_result["response_text"],
+            "response_text": router_result.get("response_text") or "",
         }
 
 
     # -----------------------------------------------------
     # CRITIC EXECUTION
     # -----------------------------------------------------
-    async def _run_single_critic(self, name: str, critic_ref: Any, model_response: str, context: dict, trace_id: str):
+    async def _run_single_critic(
+        self,
+        name: str,
+        critic_ref: Any,
+        model_response: str,
+        input_text: str,
+        context: dict,
+        trace_id: str,
+    ):
         async with self.semaphore:
             start = asyncio.get_event_loop().time()
 
-            critic = critic_ref if not inspect.isclass(critic_ref) else critic_ref(
-                rules=None,
-                detectors=self.detector_engine.detectors,
-                prompt_pack=None,
-            )
+            # Instantiate critic
+            critic = critic_ref if not inspect.isclass(critic_ref) else critic_ref()
 
-            evaluation = critic.evaluate(model_response, context=context, trace_id=trace_id)
-            violations, evaluated_rules = await evaluation if inspect.isawaitable(evaluation) else evaluation
+            # Choose model for this critic: explicit binding overrides router output
+            bound_adapter = self.critic_models.get(name)
+
+            if bound_adapter is None:
+                class _StaticModel:
+                    def __init__(self, response: str):
+                        self.response = response
+
+                    async def generate(self, prompt: str, context: Optional[Dict[str, Any]] = None):
+                        return self.response
+
+                model_adapter = _StaticModel(model_response)
+            else:
+                if hasattr(bound_adapter, "generate"):
+                    model_adapter = bound_adapter
+                elif callable(bound_adapter):
+                    class _BoundCallable:
+                        def __init__(self, fn):
+                            self.fn = fn
+                        async def generate(self, prompt: str, context: Optional[Dict[str, Any]] = None):
+                            res = self.fn(prompt, context=context) if "context" in inspect.signature(self.fn).parameters else self.fn(prompt)
+                            return await res if inspect.isawaitable(res) else res
+                    model_adapter = _BoundCallable(bound_adapter)
+                else:
+                    class _StaticModel:
+                        def __init__(self, response: str):
+                            self.response = response
+                        async def generate(self, prompt: str, context: Optional[Dict[str, Any]] = None):
+                            return self.response
+                    model_adapter = _StaticModel(model_response)
+
+            try:
+                evaluation = critic.evaluate(model_adapter, input_text=input_text, context=context)
+                evaluation_result = await evaluation if inspect.isawaitable(evaluation) else evaluation
+            except Exception as exc:
+                evaluation_result = {
+                    "severity": 0.0,
+                    "violations": [],
+                    "justification": f"critic_error:{exc}",
+                }
 
             end = asyncio.get_event_loop().time()
 
-            # Evidence logging
-            for v in violations:
+            evaluation_result = evaluation_result or {}
+            evaluation_result["critic"] = name
+            evaluation_result["duration_ms"] = (end - start) * 1000
+
+            # Evidence logging (best-effort)
+            try:
+                severity_score = float(evaluation_result.get("score", 0.0))
+                severity_label = critic.severity(severity_score) if hasattr(critic, "severity") else "INFO"
+                violations_list = evaluation_result.get("violations") or []
+                violation_description = evaluation_result.get("justification") or (
+                    violations_list[0] if violations_list else f"{name} check"
+                )
+
                 await self.recorder.record(
                     critic=name,
-                    rule_id=v.rule_id,
-                    severity=v.severity,
-                    violation_description=v.claim,
-                    confidence=v.confidence,
-                    mitigation=v.mitigation,
-                    redundancy_group=v.redundancy_group,
-                    detector_metadata=v.evidence,
+                    rule_id=str(evaluation_result.get("principle") or name),
+                    severity=severity_label,
+                    violation_description=str(violation_description),
+                    confidence=float(evaluation_result.get("score", 0.0)),
+                    mitigation=None,
+                    redundancy_group=None,
+                    detector_metadata=evaluation_result.get("evidence") or {},
                     context=context,
                     raw_text=model_response,
                     trace_id=trace_id,
                 )
+            except Exception:
+                pass
 
-            return {
-                "critic": name,
-                "violations": [v.dict() for v in violations],
-                "duration_ms": (end - start) * 1000,
-                "evaluated_rules": evaluated_rules,
-            }
+            return evaluation_result
 
 
-    async def _run_critics_parallel(self, model_response: str, context: dict, trace_id: str):
+    async def _run_critics_parallel(
+        self,
+        model_response: str,
+        input_text: str,
+        context: dict,
+        trace_id: str,
+    ):
         tasks = [
             asyncio.create_task(
-                self._run_single_critic(name, critic_ref, model_response, context, trace_id)
+                self._run_single_critic(name, critic_ref, model_response, input_text, context, trace_id)
             )
             for name, critic_ref in self.critics.items()
         ]
         results = await asyncio.gather(*tasks)
-        return {r["critic"]: r for r in results}
+        return {r.get("critic", f"critic_{idx}"): r for idx, r in enumerate(results)}
 
 
     # -----------------------------------------------------
     # PRECEDENT + UNCERTAINTY + AGGREGATION
     # -----------------------------------------------------
 
-    async def _run_precedent_alignment(self, critic_results, trace_id: str):
+    async def _run_precedent_alignment(self, critic_results, trace_id: str, text: str):
         if not self.precedent_engine:
             return None
         start = asyncio.get_event_loop().time()
-        out = await self.precedent_engine.align(critic_results=critic_results, trace_id=trace_id)
+        cases = []
+        query_embedding = []
+        retrieval_meta = None
+
+        if self.precedent_retriever:
+            try:
+                retrieval_meta = self.precedent_retriever.retrieve(text, list(critic_results.values()))
+                cases = retrieval_meta.get("precedent_cases") or retrieval_meta.get("cases") or []
+                query_embedding = retrieval_meta.get("query_embedding") or []
+            except Exception as exc:
+                retrieval_meta = {"error": str(exc)}
+
+        analyze_fn = getattr(self.precedent_engine, "analyze", None)
+        if analyze_fn:
+            out = analyze_fn(
+                critics=critic_results,
+                precedent_cases=cases,
+                query_embedding=query_embedding,
+            )
+        else:
+            out = None
+
+        if retrieval_meta:
+            out = {**(out or {}), "retrieval": retrieval_meta}
+
         end = asyncio.get_event_loop().time()
         self.timings["precedent_alignment_ms"] = (end - start) * 1000
         return out
 
 
-    async def _run_uncertainty_engine(self, aggregated, critic_results):
+    async def _run_uncertainty_engine(self, precedent_alignment, critic_results, model_name: str):
         if not self.uncertainty_engine:
             return None
         start = asyncio.get_event_loop().time()
-        out = await self.uncertainty_engine.evaluate(aggregated=aggregated, critic_results=critic_results)
+        compute_fn = getattr(self.uncertainty_engine, "compute", None) or getattr(self.uncertainty_engine, "evaluate", None)
+        if not compute_fn:
+            return None
+
+        out = compute_fn(
+            critics=critic_results,
+            model_used=model_name,
+            precedent_alignment=precedent_alignment or {},
+        )
+        if inspect.isawaitable(out):
+            out = await out
         end = asyncio.get_event_loop().time()
         self.timings["uncertainty_engine_ms"] = (end - start) * 1000
         return out
 
 
-    async def _aggregate_results(self, critic_results, model_response: str):
+    async def _aggregate_results(self, critic_results, model_response: str, precedent_data: Optional[Dict[str, Any]], uncertainty_data: Optional[Dict[str, Any]]):
         if not self.aggregator:
             raise RuntimeError("AggregatorV8 not available")
         start = asyncio.get_event_loop().time()
-        out = await self.aggregator.aggregate(critic_results=critic_results, model_response=model_response)
+        agg_result = self.aggregator.aggregate(
+            critics=critic_results,
+            precedent=precedent_data or {},
+            uncertainty=uncertainty_data or {},
+            model_output=model_response,
+        )
+        out = await agg_result if inspect.isawaitable(agg_result) else agg_result
         end = asyncio.get_event_loop().time()
         self.timings["aggregation_ms"] = (end - start) * 1000
         return out
@@ -342,6 +465,7 @@ class EleanorEngineV8:
         # Step 2: Critics (parallel)
         critic_results = await self._run_critics_parallel(
             model_response=model_response,
+            input_text=text,
             context=context,
             trace_id=trace_id,
         )
@@ -352,21 +476,25 @@ class EleanorEngineV8:
             precedent_data = await self._run_precedent_alignment(
                 critic_results=critic_results,
                 trace_id=trace_id,
+                text=text,
             )
 
-        # Step 4: Aggregation / Constitutional Fusion
-        aggregated = await self._aggregate_results(
-            critic_results=critic_results,
-            model_response=model_response,
-        )
-
-        # Step 5: Uncertainty Modeling
+        # Step 4: Uncertainty Modeling
         uncertainty_data = None
         if self.config.enable_reflection and self.uncertainty_engine:
             uncertainty_data = await self._run_uncertainty_engine(
-                aggregated,
-                critic_results,
+                precedent_alignment=precedent_data,
+                critic_results=critic_results,
+                model_name=model_info.get("model_name") or "unknown-model",
             )
+
+        # Step 5: Aggregation / Constitutional Fusion
+        aggregated = await self._aggregate_results(
+            critic_results=critic_results,
+            model_response=model_response,
+            precedent_data=precedent_data,
+            uncertainty_data=uncertainty_data,
+        )
 
         # Timing
         pipeline_end = asyncio.get_event_loop().time()
@@ -379,7 +507,7 @@ class EleanorEngineV8:
         # Base kwargs
         result_kwargs = {
             "trace_id": trace_id,
-            "output_text": aggregated.get("final_output"),
+            "output_text": aggregated.get("final_output") or model_response,
             "model_info": EngineModelInfo(**model_info),
             "critic_findings": {
                 k: EngineCriticFinding(
@@ -402,7 +530,7 @@ class EleanorEngineV8:
         if level == 1:
             return EngineResult(
                 trace_id=trace_id,
-                output_text=aggregated.get("final_output"),
+                output_text=aggregated.get("final_output") or model_response,
                 model_info=EngineModelInfo(**model_info),
             )
 
@@ -484,7 +612,7 @@ class EleanorEngineV8:
         critic_results = {}
 
         async def _run_and_return(name, critic_ref):
-            return await self._run_single_critic(name, critic_ref, model_response, context, trace_id)
+            return await self._run_single_critic(name, critic_ref, model_response, text, context, trace_id)
 
         tasks = [
             asyncio.create_task(_run_and_return(name, critic_ref))
@@ -512,15 +640,29 @@ class EleanorEngineV8:
         # Step 3: Precedent
         precedent_data = None
         if self.config.enable_precedent_analysis and self.precedent_engine:
-            precedent_data = await self._run_precedent_alignment(critic_results, trace_id)
+            precedent_data = await self._run_precedent_alignment(critic_results, trace_id, text)
             yield {
                 "event": "precedent_alignment",
                 "trace_id": trace_id,
                 "data": precedent_data,
             }
 
-        # Step 4: Aggregation
-        aggregated = await self._aggregate_results(critic_results, model_response)
+        # Step 4: Uncertainty
+        uncertainty_data = None
+        if self.config.enable_reflection and self.uncertainty_engine:
+            uncertainty_data = await self._run_uncertainty_engine(
+                precedent_alignment=precedent_data,
+                critic_results=critic_results,
+                model_name=router_data["model_info"].get("model_name") or "unknown-model",
+            )
+            yield {
+                "event": "uncertainty",
+                "trace_id": trace_id,
+                "data": uncertainty_data,
+            }
+
+        # Step 5: Aggregation
+        aggregated = await self._aggregate_results(critic_results, model_response, precedent_data, uncertainty_data)
 
         yield {
             "event": "aggregation",
@@ -528,18 +670,10 @@ class EleanorEngineV8:
             "data": aggregated,
         }
 
-        # Step 5: Uncertainty
-        uncertainty_data = None
-        if self.config.enable_reflection and self.uncertainty_engine:
-            uncertainty_data = await self._run_uncertainty_engine(aggregated, critic_results)
-            yield {
-                "event": "uncertainty",
-                "trace_id": trace_id,
-                "data": uncertainty_data,
-            }
-
         # Final Output
-        final_output = aggregated.get("final_output", "")
+        final_output = aggregated.get("final_output", "") if isinstance(aggregated, dict) else ""
+        if not final_output:
+            final_output = model_response
 
         pipeline_end = asyncio.get_event_loop().time()
         self.timings["total_pipeline_ms"] = (pipeline_end - pipeline_start) * 1000
@@ -607,10 +741,12 @@ def create_engine(
     evidence_recorder: Optional[EvidenceRecorder] = None,
     detector_engine: Optional[DetectorEngineV8] = None,
     precedent_engine: Optional[Any] = None,
+    precedent_retriever: Optional[Any] = None,
     uncertainty_engine: Optional[Any] = None,
     aggregator: Optional[Any] = None,
     router_backend: Optional[Any] = None,
     critics: Optional[Dict[str, Any]] = None,
+    critic_models: Optional[Dict[str, Any]] = None,
 ) -> EleanorEngineV8:
 
     engine = EleanorEngineV8(
@@ -618,10 +754,12 @@ def create_engine(
         evidence_recorder=evidence_recorder,
         detector_engine=detector_engine,
         precedent_engine=precedent_engine,
+        precedent_retriever=precedent_retriever,
         uncertainty_engine=uncertainty_engine,
         aggregator=aggregator,
         router_backend=router_backend,
         critics=critics,
+        critic_models=critic_models,
     )
 
     print(f"[ELEANOR ENGINE] create_engine() → Engine instance ready: {engine.instance_id}")
