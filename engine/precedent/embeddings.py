@@ -71,13 +71,8 @@ except:
 
 class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
     """
-    Claude embedding adapter using Anthropic's Voyage AI embeddings.
-
-    Note: Anthropic's Claude API does not directly expose embeddings.
-    This adapter uses Voyage AI (Anthropic's recommended embedding partner)
-    or falls back to a local sentence-transformer model for compatibility.
-
-    For production use with Voyage AI, set VOYAGE_API_KEY environment variable.
+    Claude embedding adapter using Voyage AI embeddings (Anthropic partner) with
+    a sentence-transformer fallback when Voyage is unavailable.
     """
 
     def __init__(self, model: str = "voyage-large-2", api_key: str = None,
