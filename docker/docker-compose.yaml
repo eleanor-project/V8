@@ -1,0 +1,76 @@
+version: "3.9"
+
+services:
+
+  # ==============================
+  # ELEANOR V8 ENGINE
+  # ==============================
+  eleanor:
+    build: .
+    container_name: eleanor_v8
+    environment:
+      PRECEDENT_BACKEND: "${PRECEDENT_BACKEND:-weaviate}"   # weaviate | pgvector
+      OPENAI_KEY: "${OPENAI_KEY}"
+      ANTHROPIC_KEY: "${ANTHROPIC_KEY}"
+      XAI_KEY: "${XAI_KEY}"
+      OPA_URL: "http://opa:8181"
+      OPA_POLICY_PATH: "v1/data/eleanor/decision"
+      PG_CONN_STRING: "postgresql://postgres:postgres@pgvector:5432/eleanor"
+    depends_on:
+      - opa
+      - weaviate
+      - pgvector
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./audit:/app/audit
+
+  # ==============================
+  # OPA (Open Policy Agent)
+  # ==============================
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: opa
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "/policies"
+    volumes:
+      - ./governance/policies:/policies
+    ports:
+      - "8181:8181"
+
+  # ==============================
+  # WEAVIATE (Vector database)
+  # ==============================
+  weaviate:
+    image: semitechnologies/weaviate:latest
+    container_name: weaviate
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "./data"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./weaviate_data:/data
+
+  # ==============================
+  # PGVECTOR (Postgres + pgvector)
+  # ==============================
+  pgvector:
+    image: ankane/pgvector
+    container_name: pgvector
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: eleanor
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pg_data:/var/lib/postgresql/data
+
+networks:
+  default:
+    driver: bridge

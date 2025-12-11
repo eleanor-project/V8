@@ -1,0 +1,2 @@
+class TruthCritic:
+    pass

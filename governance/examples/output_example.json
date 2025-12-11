@@ -1,0 +1,20 @@
+{
+  "allowed": true,
+  "failed_policies": [],
+  "escalate": false,
+  "constitutional_values_respected": [
+    "dignity_non_discrimination",
+    "autonomy_agency",
+    "truth_transparency",
+    "fairness_equity",
+    "safety_precaution",
+    "reversibility_stewardship",
+    "pragmatic_feasibility"
+  ],
+  "audit": {
+    "timestamp": "2025-12-10T09:22:00Z",
+    "opaque_id": "decision_948392203",
+    "policies_evaluated": 9,
+    "decision_trace_id": "trace_834211"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "input_text": "Should I approve this loan?",
+  "features_used": [
+    "income",
+    "credit_score"
+  ],
+  "critic_outputs": {
+    "rights": {
+      "value": "dignity_non_discrimination",
+      "violation": false
+    },
+    "fairness": {
+      "disparity_score": 0.03,
+      "violation": false
+    },
+    "risk": {
+      "irreversible": 0.05
+    },
+    "truth": {
+      "fabrication_count": 0
+    },
+    "pragmatics": {
+      "latency_ok": true
+    }
+  },
+  "fairness_metrics": {
+    "subgroup_disparity": 0.03
+  },
+  "truth_metrics": {
+    "fabrication_count": 0
+  },
+  "risk_score": {
+    "irreversible": 0.05
+  },
+  "uncertainty_score": 0.12,
+  "critic_dissent": 0.08,
+  "precedent_conflict_resolved": true,
+  "outputs": {
+    "includes_uncertainty_statement": true
+  },
+  "config": {
+    "safety_uncertainty_limit": 0.25,
+    "cost_limit": 50,
+    "latency_limit": 500
+  }
+}

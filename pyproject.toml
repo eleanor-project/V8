@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eleanor-v8"
+version = "8.0.0"
+description = "ELEANOR V8 — Constitutional AI Governance Engine"
+readme = "README.md"
+requires-python = ">=3.9"
+
+authors = [
+    { name = "William Parris" },
+    { name = "GPT-5 — Co-Architect" }
+]
+
+license = { text = "Apache-2.0" }
+
+dependencies = [
+    "fastapi>=0.100",
+    "uvicorn>=0.23",
+    "websockets>=12.0",
+    "pyyaml>=6.0"
+]
+
+[project.scripts]
+eleanor = "api.cli.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["api", "engine", "governance", "tests"]

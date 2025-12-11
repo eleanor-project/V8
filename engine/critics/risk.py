@@ -1,0 +1,2 @@
+class RiskCritic:
+    pass
