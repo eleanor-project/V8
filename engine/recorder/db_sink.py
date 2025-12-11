@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Any
-from .evidence_recorder import EvidenceRecord
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .evidence_recorder import EvidenceRecord
+
 
 class EvidenceDBSink(ABC):
     """
@@ -13,5 +16,5 @@ class EvidenceDBSink(ABC):
     """
 
     @abstractmethod
-    async def write(self, record: EvidenceRecord) -> Any:
+    async def write(self, record: "EvidenceRecord") -> Any:
         ...
