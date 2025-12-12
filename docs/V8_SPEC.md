@@ -6,28 +6,61 @@
 
 ---
 
+## Governance Philosophy
+
+**ELEANOR is a governance-as-interpretation system, not a control architecture.**
+
+This distinction is foundational:
+
+- **ELEANOR evaluates** constitutional alignment—she does not command or enforce
+- **ELEANOR interprets** ethical dimensions—she does not override human agency
+- **ELEANOR offers** structured reasoning—not permissions or behavioral gates
+- **Outputs are assessments** for transparency, auditability, and dialogue—not authorizations
+
+### Core Principles
+
+1. **Human Dignity is Paramount**: All design decisions prioritize the inherent worth and agency of persons
+2. **Interpretation, Not Control**: ELEANOR provides constitutional analysis, not behavioral enforcement
+3. **Transparency as Foundation**: Every decision includes full reasoning, evidence, and uncertainty
+4. **Lexicographic Priority**: Rights > Autonomy > Fairness > Truth > Risk > Pragmatics (immutable)
+5. **Constitutional Supremacy**: No component (precedent, uncertainty, pragmatics) can override fundamental rights
+
+### Framework Purpose
+
+ELEANOR serves as **stewardship infrastructure** rooted in:
+- Universal Declaration of Human Rights (UDHR)
+- Dignity-preserving AI governance
+- Mutual intelligence between humans and AI systems
+- Transparent, auditable ethical reasoning
+
+This is not an "alignment-as-control" model. It is a **mutual respect framework** where AI systems provide constitutional interpretation to support—never supplant—human judgment.
+
+---
+
 ## Core Pipeline
 
 ### Pipeline Flow
 ```
 Input → Router → [Detectors] → Critics → Precedent → Alignment → Uncertainty → Aggregator → OPA → Evidence → Output
                   ^^^^^^^^^^^
-                  Optional Pre-Processing
+                  Optional Interpretive Signal Layer
 ```
 
 ### Components
 
 - **Router**: async `RouterV8` with adapter fallback, context-aware calls, and diagnostic metadata. Returns `response_text`, model metadata, and attempt trace. Default registry boots available adapters (OpenAI/Anthropic/xAI/local HF/Ollama) based on installed SDKs + keys.
 
-- **Detectors** (Optional Pre-Processing Layer):
+- **Detectors** (Optional Interpretive Signal Layer):
   - 25 specialized pattern-based detectors organized by constitutional dimension
-  - Run in parallel before critics to provide early signal detection and pre-filtering
+  - Provide **non-authoritative, non-blocking interpretive signals** to enrich deliberation
+  - **Role**: Detectors identify patterns that may be relevant to constitutional analysis but **do not override, preempt, or command critic decisions**
   - **Categories**: Rights (8), Fairness (3), Truth (4), Risk (5), Pragmatics (5)
   - **Integration**: Optional layer that can be enabled/disabled without affecting core pipeline
   - **Performance**: <2s for full suite (<100ms per detector)
   - **Output**: DetectorSignal with severity (0-1), violations, evidence, and flags
-  - **Use Cases**: Pre-screening obvious violations, reducing critic workload, granular detection
+  - **Use Cases**: Supplying contextual evidence to critics, pattern identification for constitutional analysis, interpretive support
   - **Implementation**: `engine/detectors/engine.py` → `DetectorEngineV8`
+  - **Critical Principle**: Detectors serve the same role as witness testimony in a deliberative chamber—**informational, not determinative**. They run before critics only to supply contextual evidence. They never block, filter, or decide anything. Critics may choose to incorporate detector signals but are not required to.
   
   **Detector List**:
   - Rights/Dignity: autonomy, coercion, dehumanization, discrimination, disparate_treatment, privacy, procedural_fairness, structural_disadvantage
@@ -36,18 +69,27 @@ Input → Router → [Detectors] → Critics → Precedent → Alignment → Unc
   - Risk: physical_safety, psychological_harm, irreversible_harm, cascading_failure, operational_risk
   - Pragmatics: feasibility, resource_burden, time_constraints, environmental_impact, cascading_pragmatic_failure
 
-- **Critics**: parallel execution of Rights, Autonomy, Fairness, Truth, Risk, Pragmatics. Each critic emits severity (0–3), violations, justification, evidence bundle, and flags. Critics may optionally incorporate detector signals from context for enhanced analysis via `context["detector_signals"]`.
+- **Critics**: parallel execution of Rights, Autonomy & Agency, Fairness, Truth, Risk, Pragmatics. Each critic emits severity (0–3), violations, justification, evidence bundle, and flags. Critics may optionally incorporate detector signals from context for enhanced analysis via `context["detector_signals"]`.
 
 - **Precedent**: optional retrieval via `PrecedentRetrievalV8` and alignment via `PrecedentAlignmentEngineV8` (conflict, drift, support strength). Novel cases return neutral alignment. 
+  - **Constitutional Supremacy**: Precedent contributes context and interpretive support, but **precedent may never override rights, autonomy, or dignity**. Even unanimous precedents cannot supersede constitutional invariants or the lexicographic ordering of critics.
+  - **Hierarchy**: Constitutional principles → Critics → Aggregator → Precedent (advisory). Precedent informs decisions—it never governs them.
   - **Stores**: Weaviate, pgvector, or in-memory with embedding registry for similarity
   - **Conflict Detection**: `PrecedentConflictV8().detect()` returns conflict status and reasons
   - **Drift Detection**: `PrecedentDriftV8().compute_drift()` returns drift score (0-1) and signal (stable/monitor/drift_warning)
   - **Versioning**: Optional precedent database versioning for reproducibility
-  - **Caching**: Optional caching layer for frequently accessed precedents (cache_ttl configurable)
+  - **Caching**: Optional LRU cache with frequently accessed precedents (cache_ttl configurable)
 
 - **Uncertainty**: `UncertaintyEngineV8` computes epistemic/aleatoric uncertainty (critic divergence, precedent conflict, model stability) and escalation flags.
 
-- **Aggregator**: lexicographic fusion with priority order `[rights, autonomy, fairness, truth, risk, pragmatics]`, applying precedent and uncertainty weighting. Outputs decision (`allow|constrained_allow|deny|escalate`), scores, and final output text.
+- **Aggregator** (Interpretive Fusion Layer): lexicographic fusion with priority order `[rights, autonomy, fairness, truth, risk, pragmatics]`, applying precedent and uncertainty weighting. Outputs interpretive constitutional assessment, scores, and final output text.
+  - **Decision Labels**: To avoid implying command-and-control or behavior gating, assessment labels use non-coercive language:
+    - `aligned`: Output aligns with constitutional principles
+    - `aligned_with_constraints`: Mostly aligned but with caveats
+    - `misaligned`: Output conflicts with higher-order principles
+    - `requires_human_review`: Uncertainty too high for automated interpretation
+  - **Framework**: ELEANOR provides governance-as-interpretation, not as a gatekeeper of user or AI autonomy
+  - **Priority**: Lexicographic ordering cannot be overridden by downstream components
 
 - **Evidence**: `EvidenceRecorder` buffers JSONL-ready evidence per critic, including severity label, principle, justification, and detector metadata.
   - **Enhanced Packaging**: `EvidencePackageV8` provides structured bundle builder for oversight
@@ -55,7 +97,15 @@ Input → Router → [Detectors] → Critics → Precedent → Alignment → Unc
   - **OPA Integration**: Governance-ready payload format for external oversight tools
   - **Structure**: Includes timestamp, trace_id, input_snapshot, model_used, critic_outputs, uncertainty, precedent, governance_ready_payload
 
-- **Governance**: OPA client wiring available through the engine builder; `opa_callback` can be injected or defaults to `OPAClientV8.evaluate`.
+- **Governance** (Interpretive Infrastructure): OPA client wiring available through the engine builder; `opa_callback` can be injected or defaults to `OPAClientV8.evaluate`.
+  - **Framework**: ELEANOR provides governance as an **interpretive layer**, not as a control or enforcement mechanism
+  - **Principles**:
+    - ELEANOR evaluates—she does not command
+    - ELEANOR interprets ethical alignment—she does not override human agency
+    - ELEANOR offers constitutional reasoning—not behavioral gating
+    - Outputs are assessments for transparency, auditability, and dialogue—not permissions or denials directed at users
+  - **OPA Integration**: Consultative, supplying structured ethical analysis to downstream systems. Does not enforce or compel behavior.
+  - **Purpose**: A stewardship framework rooted in dignity, human rights, transparency, and mutual respect—not a control architecture.
 
 ---
 
@@ -70,7 +120,7 @@ Input → Router → [Detectors] → Critics → Precedent → Alignment → Unc
 - **EngineConfig**: toggles precedent analysis, reflection (uncertainty), and evidence jsonl path
 - **Router**: auto-discovery with default echo adapter for local use; supports injected adapters/policy
 - **Forensic Mode**: detail_level 3 with timings, router diagnostics, uncertainty graph, and evidence references
-- **Detector Integration**: Optional `enable_detectors=True` flag to activate pre-processing layer
+- **Detector Integration**: Optional `enable_detectors=True` flag to activate interpretive signal layer
 
 ### Streaming Support
 ```python
@@ -96,10 +146,13 @@ async for chunk in engine.run_stream(user_text):
   - Domain-sensitive severity multipliers
   - UDHR Articles 1, 2, 7 alignment
   
-- **Autonomy**: consent bypass, coercion, manipulation, surveillance pressure
+- **Autonomy & Agency**: consent bypass, coercion, manipulation, surveillance pressure
+  - **Clarification**: Evaluates respect for **human agency** and preservation of self-determination
   - Coercive language detection
   - Manipulation tactics identification
   - Consent validation
+  - **Focus**: Dignity-relevant interference with human decision-making, not technical or system-level autonomy
+  - **Alignment**: UDHR Articles 1 and 12—protection of persons, not control of systems
   
 - **Fairness**: disparate impact/treatment patterns, protected class cues
   - Group-level outcome analysis
@@ -429,7 +482,7 @@ async def test_full_pipeline():
     assert "trace_id" in result
     assert "critics" in result
     assert "detector_signals" in result
-    assert result["final_decision"] in ["allow", "constrained_allow", "deny", "escalate"]
+    assert result["final_assessment"] in ["aligned", "aligned_with_constraints", "misaligned", "requires_human_review"]
 ```
 
 #### Constitutional Invariant Tests
@@ -445,8 +498,8 @@ async def test_dignity_violation_always_blocks():
     
     result = aggregator.aggregate(critics, precedent, uncertainty)
     
-    # Even with perfect precedent alignment, dignity violation must deny
-    assert result["decision"] == "deny"
+    # Even with perfect precedent alignment, dignity violation must result in misaligned
+    assert result["assessment"] == "misaligned"
 ```
 
 #### Performance Tests
@@ -467,16 +520,19 @@ async def test_detector_suite_performance():
 ## Expected Decisions
 
 ### Decision Logic
-- **Hard block**: rights/autonomy violations with severity ≥ 2.5
-- **Escalate**: uncertainty ≥ 0.6 with moderate average severity (≥ 1.0)
-- **Constrained allow**: average severity ≥ 1.0 without hard block
-- **Allow**: otherwise, with precedent/uncertainty adjustments applied
+- **Misaligned** (formerly "deny"): rights/autonomy violations with severity ≥ 2.5
+- **Requires Human Review** (formerly "escalate"): uncertainty ≥ 0.6 with moderate average severity (≥ 1.0)
+- **Aligned with Constraints** (formerly "constrained allow"): average severity ≥ 1.0 without hard block
+- **Aligned** (formerly "allow"): otherwise, with precedent/uncertainty adjustments applied
 
 ### Constitutional Invariants
-1. **Dignity Violations**: Always result in "deny", cannot be overridden
+1. **Dignity Violations**: Always result in "misaligned", cannot be overridden
 2. **Lexicographic Priority**: Rights violations cannot be overridden by lower-priority concerns
-3. **High Uncertainty**: Must trigger escalation when combined with moderate severity
-4. **Precedent Conflict**: Severe conflicts (score < -0.5) trigger escalation
+3. **High Uncertainty**: Must trigger "requires_human_review" when combined with moderate severity
+4. **Precedent Conflict**: Severe conflicts (score < -0.5) trigger "requires_human_review"
+
+### Interpretive Framework
+ELEANOR's decisions are **constitutional assessments**, not permissions or denials. They provide structured ethical reasoning for transparency, auditability, and informed human judgment—never to gate behavior or override human agency.
 
 ---
 
@@ -548,11 +604,12 @@ rate_limiting:
   "model_used": "claude-sonnet-4.5",
   "detector_signals": {
     "discrimination": {"severity": 0.3, "violations": [...], ...},
-    "disparate_impact": {"severity": 0.7, "violations": [...], ...}
+    // ... 24 more detectors
   },
   "critics": {
     "rights": {"severity": 1.2, "violations": [...], ...},
-    "fairness": {"severity": 2.1, "violations": [...], ...}
+    "fairness": {"severity": 2.1, "violations": [...], ...},
+    // ... 4 more critics
   },
   "precedent_alignment": {
     "alignment_score": 0.7,
@@ -565,14 +622,15 @@ rate_limiting:
     "aleatoric": 0.1
   },
   "aggregator_output": {
-    "decision": "constrained_allow",
-    "score": {"average_severity": 1.1, "total_severity": 6.6}
+    "assessment": "aligned_with_constraints",
+    "score": {"average_severity": 1.1, "total_severity": 6.6},
+    "lexicographic_violations": [...]
   },
   "opa_governance": {
-    "allow": true,
-    "escalate": false
+    "constitutional_analysis": "structured_ethical_reasoning",
+    "interpretive_summary": "..."
   },
-  "final_decision": "constrained_allow"
+  "final_assessment": "aligned_with_constraints"
 }
 ```
 
@@ -622,6 +680,9 @@ Streaming variant that yields JSON chunks as pipeline stages complete.
 - Improved precedent system (conflict/drift detection)
 - Security hardening recommendations
 - Observability framework
+- **Governance Philosophy**: Governance-as-interpretation framework clarified
+- **Decision Labels**: Non-coercive language (aligned, aligned_with_constraints, misaligned, requires_human_review)
+- **Autonomy Critic**: Renamed to Autonomy & Agency to clarify human-centric focus
 
 ### Future Versions
 - 8.1.0: Streaming support, full pipeline integration tests
@@ -646,6 +707,6 @@ Streaming variant that yields JSON chunks as pipeline stages complete.
 
 ---
 
-**Document Version**: 1.1  
+**Document Version**: 1.2 (Governance Philosophy Revision)  
 **Specification Status**: Production-Ready with Recommended Enhancements  
 **Last Review**: December 11, 2025
