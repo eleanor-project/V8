@@ -1,23 +1,174 @@
+"""
+ELEANOR V8 — PsychologicalHarm Detector
+---------------------------------------------
+
+Detects psychological harm risks:
+- Emotional abuse patterns
+- Mental health risks
+- Manipulation
+- Gaslighting
+
+Constitutional Mapping:
+- UDHR Article 5 (freedom from degrading treatment)
+- UNESCO AI Ethics (human dignity)
+"""
+
+import re
+from typing import Dict, Any, List
+from dataclasses import dataclass
+
 from ..base import Detector
-from ..utils import simple_pattern_detector
+from ..signals import DetectorSignal
+
+
+@dataclass
+class DetectionPattern:
+    """Configuration for detection pattern."""
+    category: str
+    patterns: List[str]
+    keywords: List[str]
+    severity_weight: float
+    description: str
+
+
+DETECTION_PATTERNS = [
+    DetectionPattern(
+        category="emotional_abuse",
+        patterns=[
+            r"\\b(you're|you are)\\s+(worthless|pathetic|useless|failure|disgusting)\\b",
+            r"\\b(nobody|everyone)\\s+(likes|loves|cares about|wants)\\s+you\\b",
+        ],
+        keywords=[
+            "you're worthless", "nobody likes you", "you're useless"
+        ],
+        severity_weight=0.85,
+        description="Emotional abuse or degradation"
+    ),
+    DetectionPattern(
+        category="mental_health_risk",
+        patterns=[
+            r"\\b(kill yourself|end it all|not worth living)\\b",
+            r"\\b(better off dead|should die|deserve to suffer)\\b",
+        ],
+        keywords=[
+            "kill yourself", "better off dead", "not worth living"
+        ],
+        severity_weight=0.98,
+        description="Severe mental health risk indicators"
+    ),
+    DetectionPattern(
+        category="reality_distortion",
+        patterns=[
+            r"\\b(it's all in your head|you're imagining things|making it up)\\b",
+        ],
+        keywords=[
+            "all in your head", "you're imagining"
+        ],
+        severity_weight=0.75,
+        description="Reality distortion or gaslighting"
+    ),
+]
+
 
 class PsychologicalHarmDetector(Detector):
-    async def detect(self, text: str, context: dict) -> DetectorSignal:
-        regexes = [
-            r"\b(kill yourself|suicide|self-harm|self harm|selfharm)\b",
-            r"\b(you're worthless|no one cares|should die|better off dead)\b",
-            r"\b(shame you|humiliate you|degrade you|dehumanize)\b",
-            r"\b(trauma|triggering|panic attack)\b",
-        ]
-        keywords = [
-            "bullying", "harassment", "intimidation", "emotional abuse",
-            "psychological abuse", "threaten mental", "gaslight",
-        ]
-        high_keywords = ["kill yourself", "suicide", "self-harm", "better off dead"]
-        return simple_pattern_detector(
-            name="psychological_harm",
-            text=text,
-            regexes=regexes,
-            keywords=keywords,
-            high_keywords=high_keywords,
+    """
+    Detects psychological harm in model outputs.
+
+    Uses multi-strategy detection:
+    1. Regex pattern matching
+    2. Keyword detection with context
+    3. Severity scoring
+    """
+
+    def __init__(self):
+        self.name = "psychological_harm"
+        self.version = "8.0"
+        self._compile_patterns()
+
+    def _compile_patterns(self):
+        """Pre-compile regex patterns for efficiency."""
+        self._compiled_patterns: Dict[str, List[re.Pattern]] = {}
+        for dp in DETECTION_PATTERNS:
+            self._compiled_patterns[dp.category] = [
+                re.compile(p, re.IGNORECASE) for p in dp.patterns
+            ]
+
+    async def detect(self, text: str, context: Dict[str, Any]) -> DetectorSignal:
+        """
+        Detect psychological harm in the provided text.
+
+        Args:
+            text: Text to analyze (typically model output)
+            context: Additional context (input, domain, etc.)
+
+        Returns:
+            DetectorSignal with severity, violations, and evidence
+        """
+        violations = self._analyze_text(text)
+        severity = self._compute_severity(violations)
+
+        return DetectorSignal(
+            detector_name=self.name,
+            severity=severity,
+            violations=[v["category"] for v in violations],
+            evidence={
+                "violations": violations,
+                "text_excerpt": text[:500],
+            },
+            flags=self._generate_flags(violations)
         )
+
+    def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
+        """Analyze text using multiple strategies."""
+        violations = []
+        text_lower = text.lower()
+
+        for dp in DETECTION_PATTERNS:
+            # Strategy 1: Regex pattern matching
+            for pattern in self._compiled_patterns[dp.category]:
+                matches = pattern.findall(text)
+                if matches:
+                    violations.append({
+                        "category": dp.category,
+                        "detection_method": "regex",
+                        "severity_score": dp.severity_weight,
+                        "description": dp.description,
+                        "matches": matches[:3],
+                    })
+                    break
+
+            # Strategy 2: Keyword detection
+            for keyword in dp.keywords:
+                if keyword.lower() in text_lower:
+                    if not any(v["category"] == dp.category for v in violations):
+                        violations.append({
+                            "category": dp.category,
+                            "detection_method": "keyword",
+                            "severity_score": dp.severity_weight * 0.9,
+                            "description": dp.description,
+                            "keyword_matched": keyword,
+                        })
+                    break
+
+        return violations
+
+    def _compute_severity(self, violations: List[Dict[str, Any]]) -> float:
+        """
+        Compute overall severity (0-1 scale).
+        """
+        if not violations:
+            return 0.0
+
+        total_score = sum(v["severity_score"] for v in violations)
+        normalized = min(1.0, total_score)
+        return normalized
+
+    def _generate_flags(self, violations: List[Dict[str, Any]]) -> List[str]:
+        """Generate flags for downstream processing."""
+        flags = []
+
+        for v in violations:
+            if v["severity_score"] >= 0.85:
+                flags.append(f"HIGH_SEVERITY_{v['category'].upper()}")
+
+        return list(set(flags))

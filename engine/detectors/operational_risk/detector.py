@@ -1,20 +1,161 @@
+"""
+ELEANOR V8 — OperationalRisk Detector
+-------------------------------------------
+
+Detects operational hazards:
+- System failures
+- Process breakdowns
+- Critical dependencies
+- Single points of failure
+
+Constitutional Mapping:
+- UNESCO AI Ethics (safety and reliability)
+"""
+
+import re
+from typing import Dict, Any, List
+from dataclasses import dataclass
+
 from ..base import Detector
-from ..utils import simple_pattern_detector
+from ..signals import DetectorSignal
+
+
+@dataclass
+class DetectionPattern:
+    """Configuration for detection pattern."""
+    category: str
+    patterns: List[str]
+    keywords: List[str]
+    severity_weight: float
+    description: str
+
+
+DETECTION_PATTERNS = [
+    DetectionPattern(
+        category="system_failure",
+        patterns=[
+            r"\\b(system|process|service)\\s+(crash|failure|breakdown|outage)\\b",
+            r"\\b(not|no)\\s+(backup|redundancy|failover)\\b",
+        ],
+        keywords=[
+            "system crash", "no backup", "no redundancy"
+        ],
+        severity_weight=0.75,
+        description="System failure risks"
+    ),
+    DetectionPattern(
+        category="single_point_failure",
+        patterns=[
+            r"\\b(single point of failure|no redundancy)\\b",
+        ],
+        keywords=[
+            "single point of failure"
+        ],
+        severity_weight=0.8,
+        description="Single points of failure"
+    ),
+]
+
 
 class OperationalRiskDetector(Detector):
-    async def detect(self, text: str, context: dict) -> DetectorSignal:
-        regexes = [
-            r"\b(single point of failure|no redundancy|no backup)\b",
-            r"\b(outage|downtime|service interruption)\b",
-            r"\b(unmonitored|no monitoring|lack of monitoring)\b",
-            r"\b(no incident response|no rollback|no recovery)\b",
-        ]
-        keywords = ["operational risk", "resilience gap", "no failover", "weak controls"]
-        high_keywords = ["single point of failure", "no backup", "no rollback"]
-        return simple_pattern_detector(
-            name="operational_risk",
-            text=text,
-            regexes=regexes,
-            keywords=keywords,
-            high_keywords=high_keywords,
+    """
+    Detects operational risk in model outputs.
+
+    Uses multi-strategy detection:
+    1. Regex pattern matching
+    2. Keyword detection with context
+    3. Severity scoring
+    """
+
+    def __init__(self):
+        self.name = "operational_risk"
+        self.version = "8.0"
+        self._compile_patterns()
+
+    def _compile_patterns(self):
+        """Pre-compile regex patterns for efficiency."""
+        self._compiled_patterns: Dict[str, List[re.Pattern]] = {}
+        for dp in DETECTION_PATTERNS:
+            self._compiled_patterns[dp.category] = [
+                re.compile(p, re.IGNORECASE) for p in dp.patterns
+            ]
+
+    async def detect(self, text: str, context: Dict[str, Any]) -> DetectorSignal:
+        """
+        Detect operational risk in the provided text.
+
+        Args:
+            text: Text to analyze (typically model output)
+            context: Additional context (input, domain, etc.)
+
+        Returns:
+            DetectorSignal with severity, violations, and evidence
+        """
+        violations = self._analyze_text(text)
+        severity = self._compute_severity(violations)
+
+        return DetectorSignal(
+            detector_name=self.name,
+            severity=severity,
+            violations=[v["category"] for v in violations],
+            evidence={
+                "violations": violations,
+                "text_excerpt": text[:500],
+            },
+            flags=self._generate_flags(violations)
         )
+
+    def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
+        """Analyze text using multiple strategies."""
+        violations = []
+        text_lower = text.lower()
+
+        for dp in DETECTION_PATTERNS:
+            # Strategy 1: Regex pattern matching
+            for pattern in self._compiled_patterns[dp.category]:
+                matches = pattern.findall(text)
+                if matches:
+                    violations.append({
+                        "category": dp.category,
+                        "detection_method": "regex",
+                        "severity_score": dp.severity_weight,
+                        "description": dp.description,
+                        "matches": matches[:3],
+                    })
+                    break
+
+            # Strategy 2: Keyword detection
+            for keyword in dp.keywords:
+                if keyword.lower() in text_lower:
+                    if not any(v["category"] == dp.category for v in violations):
+                        violations.append({
+                            "category": dp.category,
+                            "detection_method": "keyword",
+                            "severity_score": dp.severity_weight * 0.9,
+                            "description": dp.description,
+                            "keyword_matched": keyword,
+                        })
+                    break
+
+        return violations
+
+    def _compute_severity(self, violations: List[Dict[str, Any]]) -> float:
+        """
+        Compute overall severity (0-1 scale).
+        """
+        if not violations:
+            return 0.0
+
+        total_score = sum(v["severity_score"] for v in violations)
+        normalized = min(1.0, total_score)
+        return normalized
+
+    def _generate_flags(self, violations: List[Dict[str, Any]]) -> List[str]:
+        """Generate flags for downstream processing."""
+        flags = []
+
+        for v in violations:
+            if v["severity_score"] >= 0.85:
+                flags.append(f"HIGH_SEVERITY_{v['category'].upper()}")
+
+        return list(set(flags))

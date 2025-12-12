@@ -1,26 +1,108 @@
 import uuid
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 class BaseCriticV8:
     """
     Base class for all ELEANOR V8 critics.
+
     Provides:
       - severity framework
       - redundancy filter
       - evidence package builder
       - uncertainty propagation hooks
       - delta scoring for drift detection
+      - hybrid model configuration (preferred model + registry)
+
+    Model Configuration (Hybrid Approach):
+    ---------------------------------------
+    Critics can be configured with models in three ways:
+
+    1. Preferred Model (Explicit):
+       critic = RightsCriticV8(model=OpusModel())
+
+    2. Registry (Centralized):
+       registry = ModelRegistry()
+       registry.assign_model("rights", "claude-opus-4.5")
+       critic = RightsCriticV8(registry=registry)
+
+    3. Runtime Override:
+       result = await critic.evaluate(model=specific_model, ...)
+
+    Priority: runtime_model > preferred_model > registry > fallback
     """
 
     SEVERITY_LEVELS = ["INFO", "WARNING", "VIOLATION", "CRITICAL"]
 
-    def __init__(self, name: str, version: str = "8.0"):
+    def __init__(
+        self,
+        name: str,
+        version: str = "8.0",
+        model=None,
+        registry=None
+    ):
+        """
+        Initialize critic with optional model configuration.
+
+        Args:
+            name: Critic name (e.g., "rights", "fairness")
+            version: Critic version
+            model: Preferred model instance (Option 1 - explicit)
+            registry: ModelRegistry for centralized config (Option 3)
+        """
         self.name = name
         self.version = version
+        self._preferred_model = model
+        self._registry = registry
+
+    def get_model(self, runtime_model=None, context: Optional[Dict[str, Any]] = None):
+        """
+        Get the appropriate model for this critic.
+
+        Priority:
+        1. runtime_model (passed to evaluate())
+        2. preferred_model (set in __init__)
+        3. registry lookup (if registry provided)
+        4. None (caller must provide fallback)
+
+        Args:
+            runtime_model: Model passed at evaluation time
+            context: Optional context for registry routing
+
+        Returns:
+            Model instance or None
+        """
+        # Priority 1: Runtime override
+        if runtime_model is not None:
+            return runtime_model
+
+        # Priority 2: Preferred model
+        if self._preferred_model is not None:
+            return self._preferred_model
+
+        # Priority 3: Registry lookup
+        if self._registry is not None:
+            model_id = self._registry.get_model_for_critic(self.name, context)
+            # Note: Registry returns model_id string, not instance
+            # Caller needs to resolve this to actual model instance
+            # This is intentional to keep registry lightweight
+            return model_id
+
+        # Priority 4: No model configured
+        return None
 
     async def evaluate(self, model, input_text: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Every critic must implement this."""
+        """
+        Every critic must implement this.
+
+        Args:
+            model: Model instance or None (will use configured model if None)
+            input_text: User input text
+            context: Evaluation context
+
+        Returns:
+            Evidence package
+        """
         raise NotImplementedError
 
     def severity(self, score: float) -> str:

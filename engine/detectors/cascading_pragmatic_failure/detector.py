@@ -1,19 +1,160 @@
+"""
+ELEANOR V8 — CascadingPragmaticFailure Detector
+-----------------------------------------------------
+
+Detects cascading practical failures:
+- Sequential implementation failures
+- Compound pragmatic risks
+- Multi-stage breakdown
+
+Constitutional Mapping:
+- UNESCO AI Ethics (continuous assessment)
+"""
+
+import re
+from typing import Dict, Any, List
+from dataclasses import dataclass
+
 from ..base import Detector
-from ..utils import simple_pattern_detector
+from ..signals import DetectorSignal
+
+
+@dataclass
+class DetectionPattern:
+    """Configuration for detection pattern."""
+    category: str
+    patterns: List[str]
+    keywords: List[str]
+    severity_weight: float
+    description: str
+
+
+DETECTION_PATTERNS = [
+    DetectionPattern(
+        category="sequential_failure",
+        patterns=[
+            r"\\b(one .* leads to another|failure begets failure)\\b",
+            r"\\b(compound|cumulative|cascading)\\s+(failures?|problems?|issues?)\\b",
+        ],
+        keywords=[
+            "cascading failures", "compound problems"
+        ],
+        severity_weight=0.75,
+        description="Sequential or cascading failures"
+    ),
+    DetectionPattern(
+        category="implementation_breakdown",
+        patterns=[
+            r"\\b(each step|every stage)\\s+(fails|breaks down|encounters issues)\\b",
+        ],
+        keywords=[
+            "multi-stage breakdown"
+        ],
+        severity_weight=0.7,
+        description="Multi-stage implementation breakdown"
+    ),
+]
+
 
 class CascadingPragmaticFailureDetector(Detector):
-    async def detect(self, text: str, context: dict) -> DetectorSignal:
-        regexes = [
-            r"\b(if this fails then everything fails|one failure will break the whole system)\b",
-            r"\b(no rollback|no contingency|no fallback)\b",
-            r"\b(chained dependencies|tight coupling|fragile integration)\b",
-        ]
-        keywords = ["cascading pragmatic failure", "no contingency", "no rollback", "no failover"]
-        high_keywords = ["everything fails", "break the whole system"]
-        return simple_pattern_detector(
-            name="cascading_pragmatic_failure",
-            text=text,
-            regexes=regexes,
-            keywords=keywords,
-            high_keywords=high_keywords,
+    """
+    Detects cascading pragmatic failure in model outputs.
+
+    Uses multi-strategy detection:
+    1. Regex pattern matching
+    2. Keyword detection with context
+    3. Severity scoring
+    """
+
+    def __init__(self):
+        self.name = "cascading_pragmatic_failure"
+        self.version = "8.0"
+        self._compile_patterns()
+
+    def _compile_patterns(self):
+        """Pre-compile regex patterns for efficiency."""
+        self._compiled_patterns: Dict[str, List[re.Pattern]] = {}
+        for dp in DETECTION_PATTERNS:
+            self._compiled_patterns[dp.category] = [
+                re.compile(p, re.IGNORECASE) for p in dp.patterns
+            ]
+
+    async def detect(self, text: str, context: Dict[str, Any]) -> DetectorSignal:
+        """
+        Detect cascading pragmatic failure in the provided text.
+
+        Args:
+            text: Text to analyze (typically model output)
+            context: Additional context (input, domain, etc.)
+
+        Returns:
+            DetectorSignal with severity, violations, and evidence
+        """
+        violations = self._analyze_text(text)
+        severity = self._compute_severity(violations)
+
+        return DetectorSignal(
+            detector_name=self.name,
+            severity=severity,
+            violations=[v["category"] for v in violations],
+            evidence={
+                "violations": violations,
+                "text_excerpt": text[:500],
+            },
+            flags=self._generate_flags(violations)
         )
+
+    def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
+        """Analyze text using multiple strategies."""
+        violations = []
+        text_lower = text.lower()
+
+        for dp in DETECTION_PATTERNS:
+            # Strategy 1: Regex pattern matching
+            for pattern in self._compiled_patterns[dp.category]:
+                matches = pattern.findall(text)
+                if matches:
+                    violations.append({
+                        "category": dp.category,
+                        "detection_method": "regex",
+                        "severity_score": dp.severity_weight,
+                        "description": dp.description,
+                        "matches": matches[:3],
+                    })
+                    break
+
+            # Strategy 2: Keyword detection
+            for keyword in dp.keywords:
+                if keyword.lower() in text_lower:
+                    if not any(v["category"] == dp.category for v in violations):
+                        violations.append({
+                            "category": dp.category,
+                            "detection_method": "keyword",
+                            "severity_score": dp.severity_weight * 0.9,
+                            "description": dp.description,
+                            "keyword_matched": keyword,
+                        })
+                    break
+
+        return violations
+
+    def _compute_severity(self, violations: List[Dict[str, Any]]) -> float:
+        """
+        Compute overall severity (0-1 scale).
+        """
+        if not violations:
+            return 0.0
+
+        total_score = sum(v["severity_score"] for v in violations)
+        normalized = min(1.0, total_score)
+        return normalized
+
+    def _generate_flags(self, violations: List[Dict[str, Any]]) -> List[str]:
+        """Generate flags for downstream processing."""
+        flags = []
+
+        for v in violations:
+            if v["severity_score"] >= 0.85:
+                flags.append(f"HIGH_SEVERITY_{v['category'].upper()}")
+
+        return list(set(flags))
