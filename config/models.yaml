@@ -1,0 +1,44 @@
+# ELEANOR V8 — Model Configuration
+# ----------------------------------
+#
+# Configure which models are used for each critic.
+#
+# Three configuration methods:
+# 1. Explicit model assignment: Assign specific model to critic
+# 2. Tier assignment: Assign performance tier (premium/standard/economy)
+# 3. Default: Falls back to default_model if not specified
+
+# Default model used when no specific assignment exists
+default_model: claude-sonnet-4.5
+
+# Tier definitions: Map performance tiers to specific models
+tiers:
+  premium: claude-opus-4.5      # Highest accuracy, highest cost
+  standard: claude-sonnet-4.5    # Balanced performance/cost
+  economy: claude-haiku-4.0      # Fast, low cost
+
+# Critic-specific configurations
+critics:
+  # High-accuracy critics use premium models
+  rights:
+    model: claude-opus-4.5       # Explicit model assignment
+
+  fairness:
+    tier: premium                # Tier-based assignment
+
+  truth:
+    model: claude-opus-4.5
+
+  # Balanced critics use standard models
+  risk:
+    tier: standard
+
+  pragmatics:
+    tier: standard
+
+  # Fast critics can use economy models
+  autonomy:
+    tier: economy
+
+  # No configuration = uses default_model
+  # (e.g., any critic not listed here)
