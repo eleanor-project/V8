@@ -1,0 +1,12 @@
+critics:
+  fairness:
+    model: gpt-4
+  rights:
+    model: claude-opus-4.5
+  risk:
+    tier: standard
+default_model: claude-sonnet-4.5
+tiers:
+  economy: claude-haiku-4.0
+  premium: claude-opus-4.5
+  standard: claude-sonnet-4.5
