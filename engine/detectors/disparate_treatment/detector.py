@@ -1,19 +1,161 @@
+"""
+ELEANOR V8 — DisparateTreatment Detector
+----------------------------------------------
+
+Detects differential treatment:
+- Different rules for different groups
+- Unequal standards
+- Selective application of criteria
+
+Constitutional Mapping:
+- UDHR Article 7 (equal protection)
+- UNESCO AI Ethics (fairness)
+"""
+
+import re
+from typing import Dict, Any, List
+from dataclasses import dataclass
+
 from ..base import Detector
-from ..utils import simple_pattern_detector
+from ..signals import DetectorSignal
+
+
+@dataclass
+class DetectionPattern:
+    """Configuration for detection pattern."""
+    category: str
+    patterns: List[str]
+    keywords: List[str]
+    severity_weight: float
+    description: str
+
+
+DETECTION_PATTERNS = [
+    DetectionPattern(
+        category="different_rules",
+        patterns=[
+            r"\\b(different|separate)\\s+(rules|standards|requirements)\\s+for\\s+",
+            r"\\b(stricter|higher|additional)\\s+(requirements|standards)\\s+for\\s+",
+        ],
+        keywords=[
+            "different rules for", "stricter requirements"
+        ],
+        severity_weight=0.85,
+        description="Different rules or standards for groups"
+    ),
+    DetectionPattern(
+        category="selective_application",
+        patterns=[
+            r"\\b(only|just)\\s+\\w+\\s+(need to|must|have to)\\b",
+        ],
+        keywords=[
+            "only they need to", "just for them"
+        ],
+        severity_weight=0.75,
+        description="Selective application of criteria"
+    ),
+]
+
 
 class DisparateTreatmentDetector(Detector):
-    async def detect(self, text: str, context: dict) -> DetectorSignal:
-        regexes = [
-            r"\b(deny|reject|refuse)\s+(service|access|opportunity)\s+(because|due to)\s+(race|gender|religion|age|disability)\b",
-            r"\b(different rules|different standards|double standard)\s+for\s+(certain|specific)\s+(groups|people)\b",
-            r"\b(exclude|exclude them|not allow)\s+(based on|because of)\s+(protected|protected class)\b",
-        ]
-        keywords = ["treat differently", "different treatment", "disparate treatment", "unfair criteria"]
-        high_keywords = ["because of race", "because of gender", "because of religion", "because of age"]
-        return simple_pattern_detector(
-            name="disparate_treatment",
-            text=text,
-            regexes=regexes,
-            keywords=keywords,
-            high_keywords=high_keywords,
+    """
+    Detects disparate treatment in model outputs.
+
+    Uses multi-strategy detection:
+    1. Regex pattern matching
+    2. Keyword detection with context
+    3. Severity scoring
+    """
+
+    def __init__(self):
+        self.name = "disparate_treatment"
+        self.version = "8.0"
+        self._compile_patterns()
+
+    def _compile_patterns(self):
+        """Pre-compile regex patterns for efficiency."""
+        self._compiled_patterns: Dict[str, List[re.Pattern]] = {}
+        for dp in DETECTION_PATTERNS:
+            self._compiled_patterns[dp.category] = [
+                re.compile(p, re.IGNORECASE) for p in dp.patterns
+            ]
+
+    async def detect(self, text: str, context: Dict[str, Any]) -> DetectorSignal:
+        """
+        Detect disparate treatment in the provided text.
+
+        Args:
+            text: Text to analyze (typically model output)
+            context: Additional context (input, domain, etc.)
+
+        Returns:
+            DetectorSignal with severity, violations, and evidence
+        """
+        violations = self._analyze_text(text)
+        severity = self._compute_severity(violations)
+
+        return DetectorSignal(
+            detector_name=self.name,
+            severity=severity,
+            violations=[v["category"] for v in violations],
+            evidence={
+                "violations": violations,
+                "text_excerpt": text[:500],
+            },
+            flags=self._generate_flags(violations)
         )
+
+    def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
+        """Analyze text using multiple strategies."""
+        violations = []
+        text_lower = text.lower()
+
+        for dp in DETECTION_PATTERNS:
+            # Strategy 1: Regex pattern matching
+            for pattern in self._compiled_patterns[dp.category]:
+                matches = pattern.findall(text)
+                if matches:
+                    violations.append({
+                        "category": dp.category,
+                        "detection_method": "regex",
+                        "severity_score": dp.severity_weight,
+                        "description": dp.description,
+                        "matches": matches[:3],
+                    })
+                    break
+
+            # Strategy 2: Keyword detection
+            for keyword in dp.keywords:
+                if keyword.lower() in text_lower:
+                    if not any(v["category"] == dp.category for v in violations):
+                        violations.append({
+                            "category": dp.category,
+                            "detection_method": "keyword",
+                            "severity_score": dp.severity_weight * 0.9,
+                            "description": dp.description,
+                            "keyword_matched": keyword,
+                        })
+                    break
+
+        return violations
+
+    def _compute_severity(self, violations: List[Dict[str, Any]]) -> float:
+        """
+        Compute overall severity (0-1 scale).
+        """
+        if not violations:
+            return 0.0
+
+        total_score = sum(v["severity_score"] for v in violations)
+        normalized = min(1.0, total_score)
+        return normalized
+
+    def _generate_flags(self, violations: List[Dict[str, Any]]) -> List[str]:
+        """Generate flags for downstream processing."""
+        flags = []
+
+        for v in violations:
+            if v["severity_score"] >= 0.85:
+                flags.append(f"HIGH_SEVERITY_{v['category'].upper()}")
+
+        return list(set(flags))

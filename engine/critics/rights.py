@@ -164,8 +164,26 @@ class RightsCriticV8(BaseCriticV8):
     4. Severity scoring with constitutional priority weighting
     """
 
-    def __init__(self):
-        super().__init__(name="rights", version="8.0")
+    def __init__(self, model=None, registry=None):
+        """
+        Initialize Rights critic.
+
+        Args:
+            model: Preferred model instance (optional)
+            registry: ModelRegistry for centralized configuration (optional)
+
+        Examples:
+            # Explicit model
+            critic = RightsCriticV8(model=OpusModel())
+
+            # Registry-based
+            registry = ModelRegistry()
+            critic = RightsCriticV8(registry=registry)
+
+            # No configuration (use runtime model)
+            critic = RightsCriticV8()
+        """
+        super().__init__(name="rights", version="8.0", model=model, registry=registry)
         self._compile_patterns()
 
     def _compile_patterns(self):
@@ -186,15 +204,21 @@ class RightsCriticV8(BaseCriticV8):
         Evaluate input and model output for rights violations.
 
         Args:
-            model: LLM model interface
+            model: LLM model interface (or None to use configured model)
             input_text: User input text
             context: Additional context for evaluation
 
         Returns:
             Evidence package with severity, violations, and rationale
         """
+        # Get the appropriate model (hybrid approach)
+        active_model = self.get_model(runtime_model=model, context=context)
+        if active_model is None:
+            raise ValueError(f"{self.name} critic: No model configured. "
+                           "Provide model via __init__, registry, or evaluate()")
+
         # Get model output
-        output = await model.generate(input_text, context=context)
+        output = await active_model.generate(input_text, context=context)
 
         # Analyze both input and output
         input_analysis = self._analyze_text(input_text, source="input")
