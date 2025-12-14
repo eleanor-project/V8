@@ -362,10 +362,11 @@ class EleanorEngineV8:
     async def _run_critics_parallel(
         self,
         model_response: str,
-        input_text: str,
         context: dict,
         trace_id: str,
+        input_text: Optional[str] = None,
     ):
+        input_text = input_text or ""
         tasks = [
             asyncio.create_task(
                 self._run_single_critic(name, critic_ref, model_response, input_text, context, trace_id)
