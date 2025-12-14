@@ -20,6 +20,13 @@ REVIEW_STORE_PATH = Path("governance/human_review/reviews")
 REVIEW_STORE_PATH.mkdir(parents=True, exist_ok=True)
 
 
+def _atomic_write(path: Path, data: dict):
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp_path, "w") as f:
+        json.dump(data, f, indent=2, default=str)
+    tmp_path.replace(path)
+
+
 def submit_review(review: HumanReviewRecord) -> Dict[str, Any]:
     """
     Submit a human review record.
@@ -116,5 +123,4 @@ def store_review(review: HumanReviewRecord) -> None:
 
     # Persist a local copy for legacy retrieval APIs
     review_file = REVIEW_STORE_PATH / f"{review.review_id}.json"
-    with open(review_file, "w") as f:
-        json.dump(record, f, indent=2, default=str)
+    _atomic_write(review_file, record)

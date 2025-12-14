@@ -44,8 +44,14 @@ class ReviewTriggerEvaluator:
         if "dignity" in rights or "autonomy" in rights:
             triggers.append("fundamental_rights_implicated")
 
+        # Accept both nested uncertainty.flags and direct uncertainty_flags
         uncertainty = getattr(case, "uncertainty", None)
+        uncertainty_flags = []
         if uncertainty and getattr(uncertainty, "flags", []):
+            uncertainty_flags = list(getattr(uncertainty, "flags"))
+        if hasattr(case, "uncertainty_flags") and getattr(case, "uncertainty_flags"):
+            uncertainty_flags.extend(getattr(case, "uncertainty_flags"))
+        if uncertainty_flags:
             triggers.append("uncertainty_present")
 
         return {

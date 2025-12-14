@@ -113,18 +113,29 @@ def create_and_emit_review_packet(
     Returns:
         dict with emission status
     """
+    case = Case(
+        severity=severity,
+        critic_disagreement=_calculate_critic_disagreement(critic_outputs),
+        novel_precedent=False,
+        rights_impacted=[],
+        uncertainty_flags=uncertainty_flags,
+        uncertainty=SimpleNamespace(flags=uncertainty_flags),
+    )
+
+    # Attach additional fields used by packet builder
+    for key, value in {
+        "id": case_id,
+        "domain": domain,
+        "critic_outputs": critic_outputs,
+        "aggregator_summary": aggregator_summary,
+        "dissent": dissent,
+        "citations": citations,
+    }.items():
+        setattr(case, key, value)
+
     # build_review_packet expects a case-like object and review_decision dict
     packet = build_review_packet(
-        SimpleNamespace(
-            id=case_id,
-            domain=domain,
-            severity=severity,
-            uncertainty=SimpleNamespace(flags=uncertainty_flags),
-            critic_outputs=critic_outputs,
-            aggregator_summary=aggregator_summary,
-            dissent=dissent,
-            citations=citations,
-        ),
+        case,
         {"triggers": triggers, "review_required": True},
     )
 
