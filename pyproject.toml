@@ -40,6 +40,7 @@ dependencies = [
 
     # HTTP Client (for OPA and external services)
     "httpx>=0.24",
+    "requests>=2.31",
 ]
 
 [project.optional-dependencies]
