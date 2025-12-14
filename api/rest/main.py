@@ -46,8 +46,13 @@ from api.schemas import (
     HealthResponse,
     ErrorResponse,
 )
-from api.middleware.auth import verify_token, get_current_user, TokenPayload
-from api.middleware.rate_limit import check_rate_limit, RateLimitMiddleware, get_rate_limiter
+from api.middleware.auth import verify_token, get_current_user, TokenPayload, get_auth_config
+from api.middleware.rate_limit import (
+    check_rate_limit,
+    RateLimitMiddleware,
+    get_rate_limiter,
+    RateLimitConfig,
+)
 
 # Logging
 from engine.logging_config import configure_logging, get_logger, log_deliberation
@@ -61,6 +66,7 @@ from api.bootstrap import (
 )
 from api.replay_store import ReplayStore
 from pydantic import BaseModel
+from pathlib import Path
 
 # Initialize logging
 configure_logging()
@@ -173,6 +179,59 @@ def get_constitutional_config() -> dict:
     return load_constitutional_config(config_path)
 
 
+def _ensure_writable_path(path: str):
+    """Check that a path is writable by attempting an atomic write."""
+    Path(path).mkdir(parents=True, exist_ok=True)
+    probe = Path(path) / ".write_probe"
+    probe.write_text("ok")
+    probe.unlink(missing_ok=True)
+
+
+def run_readiness_checks() -> Dict[str, str]:
+    """
+    Run startup readiness checks for security and storage dependencies.
+    Raises RuntimeError if a required check fails.
+    """
+    env = os.getenv("ELEANOR_ENV", "development")
+    results: Dict[str, str] = {}
+    issues = []
+
+    # Auth configuration
+    try:
+        auth_config = get_auth_config()
+        results["auth"] = "enabled" if auth_config.enabled else "disabled"
+        if env != "development" and not auth_config.enabled:
+            issues.append("auth_disabled_in_production")
+    except Exception as exc:
+        results["auth"] = f"error:{exc}"
+        issues.append(f"auth_error:{exc}")
+
+    # Rate limiting
+    try:
+        rl_config = RateLimitConfig.from_env()
+        results["rate_limit"] = "enabled" if rl_config.enabled else "disabled"
+    except Exception as exc:
+        results["rate_limit"] = f"error:{exc}"
+        issues.append(f"rate_limit_error:{exc}")
+
+    # Storage write checks for governance audit
+    try:
+        _ensure_writable_path(replay_store.path.parent)
+        _ensure_writable_path(replay_store.REVIEW_PACKET_DIR)
+        _ensure_writable_path(replay_store.REVIEW_RECORD_DIR)
+        results["storage"] = "ok"
+    except Exception as exc:
+        results["storage"] = f"error:{exc}"
+        issues.append(f"storage_error:{exc}")
+
+    if issues:
+        logger.error("Readiness checks failed", issues=issues, results=results)
+        raise RuntimeError(f"Readiness checks failed: {issues}")
+
+    logger.info("Readiness checks passed", results=results)
+    return results
+
+
 # ---------------------------------------------
 # Engine initialization
 # ---------------------------------------------
@@ -193,6 +252,12 @@ def initialize_engine():
     except Exception as e:
         logger.error(f"Failed to initialize engine: {e}")
         raise
+
+
+@app.on_event("startup")
+async def startup_checks():
+    """Fail fast if required security or storage dependencies are missing."""
+    run_readiness_checks()
 
 
 def resolve_final_decision(aggregator_decision: Optional[str], opa_result: Dict[str, Any]) -> str:
@@ -417,6 +482,13 @@ async def health_check():
                 checks["precedent_store"] = "error"
     else:
         checks["engine"] = "not_initialized"
+
+    # Security/storage readiness
+    try:
+        readiness = run_readiness_checks()
+        checks.update({f"readiness_{k}": v for k, v in readiness.items()})
+    except Exception as exc:
+        checks["readiness"] = f"error:{exc}"
 
     # Determine overall status
     if all(v == "ok" for v in checks.values()):
