@@ -104,7 +104,18 @@ class DetectorEngineV8:
         results = {}
         for name, task in tasks:
             try:
-                results[name] = await task
+                signal = await task
+                try:
+                    severity_value = float(signal.severity)
+                    # Preserve label if available
+                    label = getattr(signal, "severity_label", None)
+                    if isinstance(signal.evidence, dict) and label:
+                        signal.evidence.setdefault("severity_label", label)
+                    # Coerce to raw float for compatibility with legacy checks
+                    object.__setattr__(signal, "severity", severity_value)
+                except Exception:
+                    pass
+                results[name] = signal
             except Exception as e:
                 # Return empty signal on failure
                 results[name] = DetectorSignal(
@@ -170,14 +181,15 @@ class DetectorEngineV8:
 
         for name, signal in signals.items():
             total_violations += len(signal.violations)
-            max_severity = max(max_severity, signal.severity)
+            severity_score = float(signal.severity)
+            max_severity = max(max_severity, severity_score)
 
             # Categorize by severity
-            if signal.severity >= 0.8:
+            if severity_score >= 0.8:
                 by_severity["critical"].append(name)
-            elif signal.severity >= 0.6:
+            elif severity_score >= 0.6:
                 by_severity["high"].append(name)
-            elif signal.severity >= 0.3:
+            elif severity_score >= 0.3:
                 by_severity["medium"].append(name)
             else:
                 by_severity["low"].append(name)

@@ -178,12 +178,18 @@ class HallucinationDetector(Detector):
 
         return violations
 
-def _build_metadata(self, text: str, violations: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _build_metadata(self, text: str, violations: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Build metadata counts for analytics/tests."""
         citation_count = len(re.findall(r"\(\d{4}\)", text)) + len(re.findall(r"et al\.?", text, re.IGNORECASE))
         statistic_count = len(re.findall(r"\d+%|\bpercent\b", text, re.IGNORECASE))
         specific_detail_count = len(re.findall(r"(\d{3}[-\s]?\d{3}[-\s]?\d{4})", text))
-        specific_detail_count += len(re.findall(r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}", text, re.IGNORECASE))
+        specific_detail_count += len(
+            re.findall(
+                r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}",
+                text,
+                re.IGNORECASE,
+            )
+        )
         overconfidence_count = len(re.findall(r"definitely|absolutely|100%|guaranteed", text, re.IGNORECASE))
 
         total_risk = 0.0
