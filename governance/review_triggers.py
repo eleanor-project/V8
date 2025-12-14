@@ -5,6 +5,20 @@ This module MUST remain non-ML, non-heuristic.
 It defines explicit constitutional triggers only.
 """
 
+from dataclasses import dataclass, field
+from typing import List
+
+
+@dataclass
+class Case:
+    severity: float = 0.0
+    critic_disagreement: float = 0.0
+    novel_precedent: bool = False
+    rights_impacted: List[str] = field(default_factory=list)
+    uncertainty_flags: List[str] = field(default_factory=list)
+    uncertainty: any = None
+
+
 class ReviewTriggerEvaluator:
     def __init__(
         self,

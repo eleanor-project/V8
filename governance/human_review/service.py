@@ -41,13 +41,8 @@ def submit_review(review: HumanReviewRecord) -> Dict[str, Any]:
     if not audit_result["valid"]:
         raise ValueError(f"Review failed audit: {audit_result['issues']}")
 
-    # Store via replay store for governance auditability
+    # Store review (single source of truth handles both audit and local copy)
     store_review(review)
-
-    # Store review
-    review_file = REVIEW_STORE_PATH / f"{review.review_id}.json"
-    with open(review_file, "w") as f:
-        json.dump(review.dict(), f, indent=2, default=str)
 
     return {
         "status": "accepted",
@@ -115,4 +110,11 @@ def store_review(review: HumanReviewRecord) -> None:
     Args:
         review: HumanReviewRecord to store
     """
+    record = review.dict()
+    # Persist to replay/audit store
     store_human_review(review)
+
+    # Persist a local copy for legacy retrieval APIs
+    review_file = REVIEW_STORE_PATH / f"{review.review_id}.json"
+    with open(review_file, "w") as f:
+        json.dump(record, f, indent=2, default=str)

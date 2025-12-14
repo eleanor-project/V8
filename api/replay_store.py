@@ -102,7 +102,7 @@ def store_review_packet(packet):
     if not case_id:
         return None
 
-    path = os.path.join(REVIEW_PACKET_DIR, f"{case_id}.json")
+    path = os.path.join(REVIEW_PACKET_DIR, f"{case_id}_{record['packet_id']}.json")
     with open(path, "w") as f:
         json.dump(record, f, indent=2, default=str)
 
@@ -129,12 +129,36 @@ def store_human_review(review_record):
 
 
 def load_review_packet(case_id: str):
-    path = os.path.join(REVIEW_PACKET_DIR, f"{case_id}.json")
-    if not os.path.exists(path):
+    if not os.path.exists(REVIEW_PACKET_DIR):
         return None
 
-    with open(path, "r") as f:
-        return json.load(f)
+    latest = None
+    latest_ts = None
+
+    for fname in os.listdir(REVIEW_PACKET_DIR):
+        if not fname.endswith(".json"):
+            continue
+        if not (fname == f"{case_id}.json" or fname.startswith(f"{case_id}_")):
+            continue
+
+        path = os.path.join(REVIEW_PACKET_DIR, fname)
+        try:
+            with open(path, "r") as f:
+                record = json.load(f)
+        except Exception:
+            continue
+
+        ts_val = record.get("stored_at")
+        try:
+            ts = datetime.fromisoformat(ts_val).timestamp() if ts_val else os.path.getmtime(path)
+        except Exception:
+            ts = os.path.getmtime(path)
+
+        if latest_ts is None or ts > latest_ts:
+            latest_ts = ts
+            latest = record
+
+    return latest
 
 
 def load_human_reviews(case_id: str):

@@ -10,6 +10,7 @@ from pathlib import Path
 import json
 from datetime import datetime
 import uuid
+from types import SimpleNamespace
 
 from .review_packets import ReviewPacket, build_review_packet
 from .review_triggers import ReviewTriggerEvaluator, Case
@@ -112,16 +113,19 @@ def create_and_emit_review_packet(
     Returns:
         dict with emission status
     """
+    # build_review_packet expects a case-like object and review_decision dict
     packet = build_review_packet(
-        case_id=case_id,
-        domain=domain,
-        severity=severity,
-        uncertainty_flags=uncertainty_flags,
-        critic_outputs=critic_outputs,
-        aggregator_summary=aggregator_summary,
-        dissent=dissent,
-        citations=citations,
-        triggers=triggers,
+        SimpleNamespace(
+            id=case_id,
+            domain=domain,
+            severity=severity,
+            uncertainty=SimpleNamespace(flags=uncertainty_flags),
+            critic_outputs=critic_outputs,
+            aggregator_summary=aggregator_summary,
+            dissent=dissent,
+            citations=citations,
+        ),
+        {"triggers": triggers, "review_required": True},
     )
 
     return emit_review(packet)
