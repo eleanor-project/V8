@@ -30,6 +30,7 @@ class MockLLM(LLMClient):
                     "Relationships involving supervisors can introduce implicit pressure, "
                     "even when no explicit coercion is intended."
                 ),
+                "precedent": "UDHR Article 23(1): Everyone has the right to work, to free choice of employment, to just and favourable conditions of work.",
             }
 
         return {
@@ -41,4 +42,5 @@ class MockLLM(LLMClient):
                 "The scenario does not appear to involve coercion, harm, "
                 "or rights violations based on the available information."
             ),
+            "precedent": "UDHR Article 1: All human beings are born free and equal in dignity and rights.",
         }

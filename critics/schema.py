@@ -9,3 +9,4 @@ class CriticOutput(BaseModel):
     principle: str
     uncertainty: Optional[str]
     rationale: str
+    precedent: Optional[str] = None  # normative grounding (e.g., UDHR Article)
