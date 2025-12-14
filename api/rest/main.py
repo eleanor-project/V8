@@ -958,7 +958,13 @@ async def reset_breakers(user: Optional[str] = Depends(get_current_user)):
 async def get_critic_bindings(user: Optional[str] = Depends(get_current_user)):
     if engine is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not initialized")
-    return {"bindings": getattr(engine, "critic_models", {})}
+    router = getattr(engine, "router", None)
+    adapters = getattr(router, "adapters", {}) if router else {}
+    return {
+        "bindings": getattr(engine, "critic_models", {}),
+        "critics": list(getattr(engine, "critics", {}).keys()),
+        "available_adapters": list(adapters.keys()),
+    }
 
 
 class CriticBinding(BaseModel):

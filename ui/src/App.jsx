@@ -197,12 +197,20 @@ const TracePanel = () => {
 const AdminPanel = () => {
   const [bindings, setBindings] = useState({});
   const [routerHealth, setRouterHealth] = useState(null);
-  const [newBinding, setNewBinding] = useState({ critic: "rights", adapter: "" });
+  const [critics, setCritics] = useState([]);
+  const [adapters, setAdapters] = useState([]);
+  const [newBinding, setNewBinding] = useState({ critic: "", adapter: "" });
 
   const loadBindings = async () => {
     try {
       const data = await fetchJson("/admin/critics/bindings");
       setBindings(data.bindings || {});
+      setCritics(data.critics || []);
+      setAdapters(data.available_adapters || []);
+      setNewBinding((prev) => ({
+        critic: data.critics?.[0] || prev.critic || "",
+        adapter: data.available_adapters?.[0] || prev.adapter || "",
+      }));
     } catch (err) {
       setBindings({ error: err.message });
     }
@@ -239,18 +247,34 @@ const AdminPanel = () => {
       <div className="panel">
         <h3>Critic Bindings</h3>
         <div className="row">
-          <input
-            placeholder="critic"
+          <select
             value={newBinding.critic}
             onChange={(e) => setNewBinding({ ...newBinding, critic: e.target.value })}
-          />
-          <input
-            placeholder="adapter (e.g. gpt, claude, ollama-phi3)"
+          >
+            {critics.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <select
             value={newBinding.adapter}
             onChange={(e) => setNewBinding({ ...newBinding, adapter: e.target.value })}
-          />
-          <button onClick={saveBinding}>Save</button>
+          >
+            {adapters.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+          <button onClick={saveBinding} disabled={!newBinding.critic || !newBinding.adapter}>
+            Save
+          </button>
         </div>
+        <p className="small" style={{ marginTop: 4 }}>
+          Select a critic and bind it to a registered adapter (LLM backend). Current adapters are
+          discovered from the router.
+        </p>
         <h4>Current</h4>
         <pre>{bindings ? pretty(bindings) : "—"}</pre>
       </div>
