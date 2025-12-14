@@ -10,6 +10,7 @@ from pathlib import Path
 import json
 from datetime import datetime
 
+from replay_store import store_human_review
 from .schemas import HumanReviewRecord
 from .audit import audit_review
 
@@ -39,6 +40,9 @@ def submit_review(review: HumanReviewRecord) -> Dict[str, Any]:
     audit_result = audit_review(review)
     if not audit_result["valid"]:
         raise ValueError(f"Review failed audit: {audit_result['issues']}")
+
+    # Store via replay store for governance auditability
+    store_review(review)
 
     # Store review
     review_file = REVIEW_STORE_PATH / f"{review.review_id}.json"
@@ -111,6 +115,4 @@ def store_review(review: HumanReviewRecord) -> None:
     Args:
         review: HumanReviewRecord to store
     """
-    review_file = REVIEW_STORE_PATH / f"{review.review_id}.json"
-    with open(review_file, "w") as f:
-        json.dump(review.dict(), f, indent=2, default=str)
+    store_human_review(review)

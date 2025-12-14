@@ -10,9 +10,19 @@ Provides:
 from __future__ import annotations
 
 import json
+import os
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
+from uuid import uuid4
+
+
+REVIEW_PACKET_DIR = "logs/review_packets"
+REVIEW_RECORD_DIR = "logs/reviews"
+
+os.makedirs(REVIEW_PACKET_DIR, exist_ok=True)
+os.makedirs(REVIEW_RECORD_DIR, exist_ok=True)
 
 
 class ReplayStore:
@@ -79,4 +89,74 @@ class ReplayStore:
         return None
 
 
-__all__ = ["ReplayStore"]
+def store_review_packet(packet):
+    """
+    Stores immutable review packets for human adjudication.
+    These are NEVER modified once written.
+    """
+    record = packet.dict() if hasattr(packet, "dict") else dict(packet)
+    record["stored_at"] = datetime.utcnow().isoformat()
+    record["packet_id"] = str(uuid4())
+
+    case_id = record.get("case_id")
+    if not case_id:
+        return None
+
+    path = os.path.join(REVIEW_PACKET_DIR, f"{case_id}.json")
+    with open(path, "w") as f:
+        json.dump(record, f, indent=2, default=str)
+
+    return path
+
+
+def store_human_review(review_record):
+    """
+    Stores completed human reviews.
+    These are append-only governance artifacts.
+    """
+    record = review_record.dict() if hasattr(review_record, "dict") else dict(review_record)
+    record["stored_at"] = datetime.utcnow().isoformat()
+
+    review_id = record.get("review_id")
+    if not review_id:
+        return None
+
+    path = os.path.join(REVIEW_RECORD_DIR, f"{review_id}.json")
+    with open(path, "w") as f:
+        json.dump(record, f, indent=2, default=str)
+
+    return path
+
+
+def load_review_packet(case_id: str):
+    path = os.path.join(REVIEW_PACKET_DIR, f"{case_id}.json")
+    if not os.path.exists(path):
+        return None
+
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+def load_human_reviews(case_id: str):
+    reviews = []
+
+    if not os.path.exists(REVIEW_RECORD_DIR):
+        return reviews
+
+    for fname in os.listdir(REVIEW_RECORD_DIR):
+        path = os.path.join(REVIEW_RECORD_DIR, fname)
+        with open(path, "r") as f:
+            review = json.load(f)
+            if review.get("case_id") == case_id:
+                reviews.append(review)
+
+    return reviews
+
+
+__all__ = [
+    "ReplayStore",
+    "store_review_packet",
+    "store_human_review",
+    "load_review_packet",
+    "load_human_reviews",
+]

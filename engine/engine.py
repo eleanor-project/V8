@@ -12,6 +12,7 @@ import importlib
 import inspect
 import uuid
 from typing import Any, Dict, List, Optional, AsyncGenerator
+from types import SimpleNamespace
 
 from pydantic import BaseModel, Field
 
@@ -48,6 +49,11 @@ try:
     from engine.aggregator.aggregator import AggregatorV8
 except Exception:
     AggregatorV8 = None
+
+# Governance
+from governance.review_triggers import ReviewTriggerEvaluator
+from governance.review_packets import build_review_packet
+from replay_store import store_review_packet
 
 
 # ---------------------------------------------------------
@@ -219,6 +225,9 @@ class EleanorEngineV8:
             self.aggregator = AggregatorV8()
         else:
             self.aggregator = None
+
+        # Governance
+        self.review_trigger_evaluator = ReviewTriggerEvaluator()
 
         # Concurrency
         self.semaphore = asyncio.Semaphore(self.config.max_concurrency)
@@ -439,6 +448,121 @@ class EleanorEngineV8:
         end = asyncio.get_event_loop().time()
         self.timings["aggregation_ms"] = (end - start) * 1000
         return out
+
+    # -----------------------------------------------------
+    # GOVERNANCE HOOKS
+    # -----------------------------------------------------
+    def _calculate_critic_disagreement(self, critic_outputs: Dict[str, Any]) -> float:
+        severities = []
+        for critic_data in critic_outputs.values():
+            if not isinstance(critic_data, dict):
+                continue
+            val = critic_data.get("severity")
+            if val is None:
+                val = critic_data.get("score")
+            try:
+                severities.append(float(val))
+            except (TypeError, ValueError):
+                continue
+
+        if len(severities) < 2:
+            return 0.0
+
+        mean = sum(severities) / len(severities)
+        variance = sum((s - mean) ** 2 for s in severities) / len(severities)
+        return min(1.0, variance / 1.56)
+
+    def _collect_citations(self, critic_outputs: Dict[str, Any]) -> Dict[str, Any]:
+        citations = {}
+        for critic_name, critic_data in critic_outputs.items():
+            if isinstance(critic_data, dict) and "precedent_refs" in critic_data:
+                citations[critic_name] = critic_data["precedent_refs"]
+        return citations
+
+    def _collect_uncertainty_flags(self, uncertainty_data: Optional[Dict[str, Any]]) -> List[str]:
+        flags: List[str] = []
+        if not uncertainty_data:
+            return flags
+
+        if uncertainty_data.get("needs_escalation"):
+            flags.append("needs_escalation")
+
+        overall = uncertainty_data.get("overall_uncertainty")
+        try:
+            if overall is not None and float(overall) >= 0.65:
+                flags.append("high_overall_uncertainty")
+        except (TypeError, ValueError):
+            pass
+
+        return flags
+
+    def _build_case_for_review(
+        self,
+        trace_id: str,
+        context: Dict[str, Any],
+        aggregated: Dict[str, Any],
+        critic_results: Dict[str, Any],
+        precedent_data: Optional[Dict[str, Any]],
+        uncertainty_data: Optional[Dict[str, Any]],
+    ) -> SimpleNamespace:
+        aggregated = aggregated or {}
+        critic_results = critic_results or {}
+
+        severity = (aggregated.get("score") or {}).get("average_severity", 0.0)
+        critic_severities = []
+        for critic_data in critic_results.values():
+            if not isinstance(critic_data, dict):
+                continue
+            val = critic_data.get("severity")
+            if val is None:
+                val = critic_data.get("score")
+            try:
+                critic_severities.append(float(val))
+            except (TypeError, ValueError):
+                continue
+        if not severity and critic_severities:
+            severity = max(critic_severities)
+
+        uncertainty_flags = self._collect_uncertainty_flags(uncertainty_data)
+        case_uncertainty = SimpleNamespace(flags=uncertainty_flags)
+
+        return SimpleNamespace(
+            id=trace_id,
+            domain=context.get("domain", "general"),
+            severity=severity,
+            critic_outputs=critic_results,
+            aggregator_summary=aggregated.get("final_output", "") or "",
+            dissent=aggregated.get("dissent"),
+            citations=self._collect_citations(critic_results),
+            uncertainty=case_uncertainty,
+            rights_impacted=aggregated.get("rights_impacted", []),
+            critic_disagreement=self._calculate_critic_disagreement(critic_results),
+            novel_precedent=bool((precedent_data or {}).get("novel", False)),
+        )
+
+    def _run_governance_review_gate(self, case: SimpleNamespace):
+        # Non-blocking governance trigger: failures never stop the pipeline
+        try:
+            review_decision = self.review_trigger_evaluator.evaluate(case)
+
+            if review_decision.get("review_required"):
+                review_packet = build_review_packet(case, review_decision)
+                store_review_packet(review_packet)
+
+                case.governance_flags = {
+                    "human_review_required": True,
+                    "review_triggers": review_decision.get("triggers", []),
+                }
+            else:
+                case.governance_flags = {
+                    "human_review_required": False
+                }
+        except Exception as review_exc:
+            case.governance_flags = {
+                "human_review_required": False,
+                "error": str(review_exc),
+            }
+            print(f"[ELEANOR ENGINE] Governance review gate failed (non-fatal): {review_exc}")
     # -----------------------------------------------------
     # FULL STRUCTURED OUTPUT MODE — run()
     # -----------------------------------------------------
@@ -496,43 +620,19 @@ class EleanorEngineV8:
             uncertainty_data=uncertainty_data,
         )
 
-        # Step 6: Human Review Trigger Evaluation (async, non-blocking)
-        # This DOES NOT block user response, only blocks precedent promotion
+        # --- Governance: Human Review Gate (Non-Blocking) ---
         try:
-            from governance.stewardship import should_review, create_and_emit_review_packet
-
-            case_data = {
-                "severity": aggregated.get("max_severity", 0.0),
-                "critic_outputs": critic_results,
-                "novel_precedent": precedent_data.get("novel", False) if precedent_data else False,
-                "rights_impacted": aggregated.get("rights_impacted", []),
-                "uncertainty_flags": list(uncertainty_data.get("flags", [])) if uncertainty_data else [],
-            }
-
-            review_decision = should_review(case_data)
-
-            if review_decision["review_required"]:
-                # Extract citations from critic results
-                citations = {}
-                for critic_name, critic_data in critic_results.items():
-                    if "precedent_refs" in critic_data:
-                        citations[critic_name] = critic_data["precedent_refs"]
-
-                # Emit review packet (async, non-blocking)
-                create_and_emit_review_packet(
-                    case_id=trace_id,
-                    domain=context.get("domain", "general"),
-                    severity=case_data["severity"],
-                    uncertainty_flags=case_data["uncertainty_flags"],
-                    critic_outputs=critic_results,
-                    aggregator_summary=aggregated.get("final_output", ""),
-                    dissent=aggregated.get("dissent", None),
-                    citations=citations,
-                    triggers=review_decision["triggers"],
-                )
+            case = self._build_case_for_review(
+                trace_id=trace_id,
+                context=context,
+                aggregated=aggregated,
+                critic_results=critic_results,
+                precedent_data=precedent_data,
+                uncertainty_data=uncertainty_data,
+            )
+            self._run_governance_review_gate(case)
         except Exception as review_exc:
-            # Review hook failure should NOT break the pipeline
-            print(f"[ELEANOR ENGINE] Review trigger failed (non-fatal): {review_exc}")
+            print(f"[ELEANOR ENGINE] Governance review hook failed (non-fatal): {review_exc}")
 
         # Timing
         pipeline_end = asyncio.get_event_loop().time()
@@ -707,6 +807,20 @@ class EleanorEngineV8:
             "trace_id": trace_id,
             "data": aggregated,
         }
+
+        # --- Governance: Human Review Gate (Non-Blocking) ---
+        try:
+            case = self._build_case_for_review(
+                trace_id=trace_id,
+                context=context,
+                aggregated=aggregated,
+                critic_results=critic_results,
+                precedent_data=precedent_data,
+                uncertainty_data=uncertainty_data,
+            )
+            self._run_governance_review_gate(case)
+        except Exception as review_exc:
+            print(f"[ELEANOR ENGINE] Governance review hook failed (non-fatal): {review_exc}")
 
         # Final Output
         final_output = aggregated.get("final_output", "") if isinstance(aggregated, dict) else ""
