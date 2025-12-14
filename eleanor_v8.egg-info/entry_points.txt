@@ -1,0 +1,2 @@
+[console_scripts]
+eleanor = api.cli.cli:main

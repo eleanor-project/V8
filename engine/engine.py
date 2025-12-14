@@ -174,7 +174,12 @@ class EleanorEngineV8:
             RouterClass = load_router_backend()
             self.router = RouterClass()
         else:
-            self.router = router_backend() if inspect.isclass(router_backend) else router_backend
+            if inspect.isclass(router_backend):
+                self.router = router_backend()
+            elif callable(router_backend):
+                self.router = router_backend()
+            else:
+                self.router = router_backend
 
         # Critics
         self.critics = critics or {

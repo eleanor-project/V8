@@ -104,6 +104,77 @@ const DeliberatePanel = () => {
   );
 };
 
+const SimpleConsole = () => {
+  const [prompt, setPrompt] = useState("Ask Eleanor something ethically complicated...");
+  const [events, setEvents] = useState([]);
+  const [status, setStatus] = useState("idle");
+
+  const run = () => {
+    setEvents([]);
+    setStatus("connecting");
+
+    try {
+      const ws = new WebSocket(wsUrl());
+      ws.onopen = () => {
+        setStatus("streaming");
+        ws.send(JSON.stringify({ input: prompt, context: {} }));
+      };
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        setEvents((prev) => [...prev, msg]);
+        if (msg.event === "final") {
+          setStatus("done");
+          ws.close();
+        }
+      };
+      ws.onerror = (e) => {
+        setEvents((prev) => [...prev, { event: "error", data: e.message || "ws error" }]);
+        setStatus("error");
+      };
+      ws.onclose = () => {
+        setStatus((prev) => (prev === "streaming" ? "closed" : prev));
+      };
+    } catch (err) {
+      setEvents((prev) => [...prev, { event: "error", data: err.message }]);
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div className="grid two">
+      <div className="panel">
+        <h3>One-Click Stream</h3>
+        <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+        <div className="row" style={{ marginTop: 8 }}>
+          <button onClick={run} disabled={status === "streaming" || status === "connecting"}>
+            Stream
+          </button>
+          <span className="small">
+            {status === "idle" && "Idle"}
+            {status === "connecting" && "Connecting…"}
+            {status === "streaming" && "Streaming…"}
+            {status === "done" && "Done"}
+            {status === "closed" && "Closed"}
+            {status === "error" && "Error"}
+          </span>
+        </div>
+        <p className="small" style={{ marginTop: 6 }}>
+          Uses the same `/ws/deliberate` endpoint as the console above, with an empty context payload.
+        </p>
+      </div>
+      <div className="panel">
+        <h3>Events</h3>
+        <div className="scroll">
+          {events.map((evt, idx) => (
+            <pre key={idx}>{pretty(evt)}</pre>
+          ))}
+          {!events.length && <div className="small">No events yet.</div>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const TracePanel = () => {
   const [traceId, setTraceId] = useState("");
   const [trace, setTrace] = useState(null);
@@ -308,6 +379,7 @@ const App = () => {
   const [tab, setTab] = useState("deliberate");
   const tabs = [
     { id: "deliberate", label: "Deliberate" },
+    { id: "simple", label: "Simple Stream" },
     { id: "traces", label: "Traces & Audit" },
     { id: "admin", label: "Admin" },
     { id: "metrics", label: "Metrics" },
@@ -332,6 +404,7 @@ const App = () => {
           ))}
         </div>
         {tab === "deliberate" && <DeliberatePanel />}
+        {tab === "simple" && <SimpleConsole />}
         {tab === "traces" && <TracePanel />}
         {tab === "admin" && <AdminPanel />}
         {tab === "metrics" && <MetricsPanel />}

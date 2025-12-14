@@ -1,0 +1,46 @@
+Metadata-Version: 2.4
+Name: eleanor-v8
+Version: 8.0.0
+Summary: ELEANOR V8 — Constitutional AI Governance Engine
+Author: William Parris, GPT-5 — Co-Architect
+License: Apache-2.0
+Project-URL: Homepage, https://github.com/eleanor-project/eleanor-v8
+Project-URL: Documentation, https://github.com/eleanor-project/eleanor-v8#readme
+Project-URL: Repository, https://github.com/eleanor-project/eleanor-v8
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: fastapi>=0.100
+Requires-Dist: uvicorn>=0.23
+Requires-Dist: websockets>=12.0
+Requires-Dist: pydantic>=2.0
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: psycopg2-binary>=2.9
+Requires-Dist: weaviate-client>=3.20
+Requires-Dist: PyJWT>=2.8
+Requires-Dist: structlog>=23.0
+Requires-Dist: httpx>=0.24
+Requires-Dist: requests>=2.31
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+Requires-Dist: hypothesis>=6.0; extra == "dev"
+Requires-Dist: mypy>=1.0; extra == "dev"
+Requires-Dist: types-PyYAML; extra == "dev"
+Requires-Dist: types-requests; extra == "dev"
+Requires-Dist: ruff>=0.1; extra == "dev"
+Requires-Dist: bandit>=1.7; extra == "dev"
+Requires-Dist: safety>=2.3; extra == "dev"
+Provides-Extra: production
+Requires-Dist: prometheus-client>=0.17; extra == "production"
+Requires-Dist: opentelemetry-api>=1.20; extra == "production"
+Requires-Dist: opentelemetry-sdk>=1.20; extra == "production"
+Requires-Dist: opentelemetry-instrumentation-fastapi>=0.41b0; extra == "production"
+Requires-Dist: gunicorn>=21.0; extra == "production"
+Provides-Extra: all
+Requires-Dist: eleanor-v8[dev]; extra == "all"
+Requires-Dist: eleanor-v8[production]; extra == "all"
+Dynamic: license-file
+
+# ELEANOR V8 Engine Repository
