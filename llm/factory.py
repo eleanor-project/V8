@@ -2,6 +2,10 @@ import os
 from llm.base import LLMClient
 from llm.mock import MockLLM
 from llm.openai_client import OpenAIClient
+from llm.anthropic_client import AnthropicClient
+from llm.gemini_client import GeminiClient
+from llm.xai_client import XAIClient
+from llm.llama_client import LlamaClient
 
 
 def get_llm() -> LLMClient:
@@ -13,10 +17,16 @@ def get_llm() -> LLMClient:
 
     backend = os.getenv("ELEANOR_LLM_BACKEND", "mock").lower()
 
-    if backend == "openai":
-        return OpenAIClient()
+    adapters = {
+        "openai": OpenAIClient,
+        "mock": MockLLM,
+        "anthropic": AnthropicClient,
+        "gemini": GeminiClient,
+        "xai": XAIClient,
+        "llama": LlamaClient,
+    }
 
-    if backend == "mock":
-        return MockLLM()
+    if backend not in adapters:
+        raise ValueError(f"Unknown LLM backend: {backend}")
 
-    raise ValueError(f"Unknown LLM backend: {backend}")
+    return adapters[backend]()
