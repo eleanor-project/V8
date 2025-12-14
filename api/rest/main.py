@@ -286,6 +286,14 @@ if os.path.isdir("ui"):
     ui_dir = "ui/dist" if os.path.isdir("ui/dist") else "ui"
     app.mount("/ui", StaticFiles(directory=ui_dir, html=True), name="ui")
 
+# Register human review router
+try:
+    from api.rest.review import router as review_router
+    app.include_router(review_router)
+    logger.info("Human review API endpoints registered")
+except Exception as e:
+    logger.warning(f"Failed to register review router: {e}")
+
 
 # ---------------------------------------------
 # CORS Configuration (Secure)

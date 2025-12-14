@@ -21,19 +21,31 @@ def aggregate(critic_outputs: List[CriticOutput]) -> dict:
     # Build deliberation lines for UI
     deliberation = []
     for c in ordered:
-        line = f"{c.critic}: {c.concern}"
-        if c.severity >= 1.5:
-            line += f" (severity {c.severity})"
+        line = (
+            f"{c.critic}: {c.concern} "
+            f"[severity {c.severity}] — {c.principle}"
+        )
+        if c.precedent:
+            line += f"\n  ⚖️  {c.precedent}"
         deliberation.append(line)
 
     # Use highest-severity concerns to shape explanation
     dominant = ordered[0]
 
     explanation = (
-        f"{dominant.critic} considerations carried the greatest moral weight. "
+        f"{dominant.critic} considerations carried the greatest moral weight "
+        f"(severity {dominant.severity}, principle: {dominant.principle}). "
         f"{dominant.rationale} "
-        "Other perspectives were considered, but did not outweigh the primary concern. "
-        "Uncertainty was acknowledged where context was incomplete."
+    )
+
+    if dominant.precedent:
+        explanation += f"Grounded in: {dominant.precedent} "
+
+    if dominant.uncertainty:
+        explanation += f"Uncertainty noted: {dominant.uncertainty} "
+
+    explanation += (
+        "Other perspectives were considered, but did not outweigh the primary concern."
     )
 
     return {

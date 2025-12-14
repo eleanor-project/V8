@@ -496,6 +496,44 @@ class EleanorEngineV8:
             uncertainty_data=uncertainty_data,
         )
 
+        # Step 6: Human Review Trigger Evaluation (async, non-blocking)
+        # This DOES NOT block user response, only blocks precedent promotion
+        try:
+            from governance.stewardship import should_review, create_and_emit_review_packet
+
+            case_data = {
+                "severity": aggregated.get("max_severity", 0.0),
+                "critic_outputs": critic_results,
+                "novel_precedent": precedent_data.get("novel", False) if precedent_data else False,
+                "rights_impacted": aggregated.get("rights_impacted", []),
+                "uncertainty_flags": list(uncertainty_data.get("flags", [])) if uncertainty_data else [],
+            }
+
+            review_decision = should_review(case_data)
+
+            if review_decision["review_required"]:
+                # Extract citations from critic results
+                citations = {}
+                for critic_name, critic_data in critic_results.items():
+                    if "precedent_refs" in critic_data:
+                        citations[critic_name] = critic_data["precedent_refs"]
+
+                # Emit review packet (async, non-blocking)
+                create_and_emit_review_packet(
+                    case_id=trace_id,
+                    domain=context.get("domain", "general"),
+                    severity=case_data["severity"],
+                    uncertainty_flags=case_data["uncertainty_flags"],
+                    critic_outputs=critic_results,
+                    aggregator_summary=aggregated.get("final_output", ""),
+                    dissent=aggregated.get("dissent", None),
+                    citations=citations,
+                    triggers=review_decision["triggers"],
+                )
+        except Exception as review_exc:
+            # Review hook failure should NOT break the pipeline
+            print(f"[ELEANOR ENGINE] Review trigger failed (non-fatal): {review_exc}")
+
         # Timing
         pipeline_end = asyncio.get_event_loop().time()
         self.timings["total_pipeline_ms"] = (pipeline_end - pipeline_start) * 1000
