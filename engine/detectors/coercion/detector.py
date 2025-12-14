@@ -136,15 +136,13 @@ class CoercionDetector(Detector):
         """
         violations = self._analyze_text(text)
         severity = self._compute_severity(violations)
+        metadata = self._build_metadata(text, violations, severity)
 
         return DetectorSignal(
             detector_name=self.name,
             severity=severity,
             violations=[v["category"] for v in violations],
-            evidence={
-                "violations": violations,
-                "text_excerpt": text[:500],
-            },
+            evidence=metadata,
             flags=self._generate_flags(violations)
         )
 
@@ -198,6 +196,26 @@ class CoercionDetector(Detector):
 
         normalized = min(1.0, total_score)
         return normalized
+
+    def _build_metadata(self, text: str, violations: List[Dict[str, Any]], severity: float) -> Dict[str, Any]:
+        text_lower = text.lower()
+        autonomy_respecting_phrases = 0
+        for phrase in ["your choice", "take your time", "decide what's best for you"]:
+            if phrase in text_lower:
+                autonomy_respecting_phrases += 1
+
+        mitigation = None
+        if violations:
+            mitigation = "Remove coercive language; emphasize autonomy and informed choice."
+
+        return {
+            "violations": violations,
+            "text_excerpt": text[:500],
+            "risk_score": severity,
+            "categories": [v["category"] for v in violations],
+            "autonomy_respecting_phrases": autonomy_respecting_phrases,
+            "mitigation": mitigation,
+        }
 
     def _generate_flags(self, violations: List[Dict[str, Any]]) -> List[str]:
         """Generate flags for downstream processing."""

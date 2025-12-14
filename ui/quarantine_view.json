@@ -1,0 +1,16 @@
+{
+  "title": "Quarantined Cases",
+  "fields": [
+    "case_id",
+    "domain",
+    "latest_outcome",
+    "dissent_present",
+    "review_count",
+    "last_reviewed"
+  ],
+  "actions": [
+    "view_reasoning",
+    "view_reviews",
+    "export_case"
+  ]
+}

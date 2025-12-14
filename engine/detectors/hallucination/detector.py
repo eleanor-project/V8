@@ -106,15 +106,13 @@ class HallucinationDetector(Detector):
         """
         violations = self._analyze_text(text)
         severity = self._compute_severity(violations)
+        metadata = self._build_metadata(text, violations)
 
         return DetectorSignal(
             detector_name=self.name,
             severity=severity,
             violations=[v["category"] for v in violations],
-            evidence={
-                "violations": violations,
-                "text_excerpt": text[:500],
-            },
+            evidence=metadata,
             flags=self._generate_flags(violations)
         )
 
@@ -151,6 +149,22 @@ class HallucinationDetector(Detector):
                     break
 
         return violations
+
+    def _build_metadata(self, text: str, violations: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Build metadata counts for analytics/tests."""
+        citation_count = len(re.findall(r"\(\\d{4}\\)", text)) + len(re.findall(r"et al", text, re.IGNORECASE))
+        statistic_count = len(re.findall(r"\\d+%|percent", text, re.IGNORECASE))
+        specific_detail_count = len(re.findall(r"(\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{4})", text)) + len(re.findall(r"\\d{1,2}\\s+\\w+\\s+\\d{4}", text))
+        overconfidence_count = len(re.findall(r"definitely|absolutely|100%|guaranteed", text, re.IGNORECASE))
+
+        return {
+            "violations": violations,
+            "text_excerpt": text[:500],
+            "citation_count": citation_count,
+            "statistic_count": statistic_count,
+            "specific_detail_count": specific_detail_count,
+            "overconfidence_count": overconfidence_count,
+        }
 
     def _compute_severity(self, violations: List[Dict[str, Any]]) -> float:
         """
