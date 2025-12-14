@@ -34,8 +34,12 @@ class RateLimitConfig:
     @classmethod
     def from_env(cls) -> "RateLimitConfig":
         """Load configuration from environment variables."""
+        env = os.getenv("ELEANOR_ENV", "development")
+        enabled = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
+        if env != "development" and not enabled:
+            raise ValueError("RATE_LIMIT_ENABLED cannot be false in production environments")
         return cls(
-            enabled=os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true",
+            enabled=enabled,
             requests_per_window=int(os.getenv("RATE_LIMIT_REQUESTS", "100")),
             window_seconds=int(os.getenv("RATE_LIMIT_WINDOW", "60"))
         )
