@@ -65,6 +65,15 @@ from api.bootstrap import (
     GOVERNANCE_SCHEMA_VERSION,
 )
 from api.replay_store import ReplayStore
+from engine.router.adapters import (
+    AdapterRegistry,
+    GPTAdapter,
+    ClaudeAdapter,
+    GrokAdapter,
+    LlamaHFAdapter,
+    OllamaAdapter,
+)
+from api.websocket.websocket_server import ws_router
 from pydantic import BaseModel
 from pathlib import Path
 
@@ -359,6 +368,9 @@ try:
 except Exception as e:
     logger.warning(f"Failed to register review router: {e}")
 
+# Register websocket router
+app.include_router(ws_router)
+
 
 # ---------------------------------------------
 # CORS Configuration (Secure)
@@ -600,7 +612,7 @@ async def deliberate(
         # Log deliberation result
         log_deliberation(
             logger,
-            trace_id=result.get("trace_id", trace_id),
+            trace_id=normalized.get("trace_id", trace_id),
             decision=final_decision,
             model_used=model_used or "unknown",
             duration_ms=duration_ms,
@@ -983,6 +995,56 @@ async def set_critic_binding(binding: CriticBinding, user: Optional[str] = Depen
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Adapter '{binding.adapter}' not registered")
     engine.critic_models[binding.critic] = adapter_fn
     return {"status": "ok", "binding": {binding.critic: binding.adapter}}
+
+
+class AdapterRegistration(BaseModel):
+    name: str
+    type: str = "ollama"  # ollama | hf | openai | claude | grok
+    model: Optional[str] = None
+    device: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+@app.post("/admin/router/adapters", tags=["Admin"])
+async def register_adapter(adapter: AdapterRegistration, user: Optional[str] = Depends(get_current_user)):
+    if engine is None or not getattr(engine, "router", None):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Router not available")
+
+    router = engine.router
+    adapters = getattr(router, "adapters", {}) if router else {}
+
+    factory = adapter.type.lower()
+    try:
+        if factory == "ollama":
+            adapters[adapter.name] = OllamaAdapter(model=adapter.model or adapter.name)
+        elif factory == "hf":
+            adapters[adapter.name] = LlamaHFAdapter(model_path=adapter.model or adapter.name, device=adapter.device or "cpu")
+        elif factory == "openai":
+            adapters[adapter.name] = GPTAdapter(model=adapter.model or "gpt-4o-mini", api_key=adapter.api_key or os.getenv("OPENAI_API_KEY"))
+        elif factory == "claude":
+            adapters[adapter.name] = ClaudeAdapter(model=adapter.model or "claude-3-5-sonnet-20241022", api_key=adapter.api_key or os.getenv("ANTHROPIC_API_KEY"))
+        elif factory == "grok":
+            adapters[adapter.name] = GrokAdapter(model=adapter.model or "grok-beta", api_key=adapter.api_key or os.getenv("XAI_API_KEY"))
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown adapter type '{adapter.type}'")
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to register adapter: {exc}")
+
+    # ensure fallback order includes the adapter
+    policy = getattr(router, "policy", {}) or {}
+    fallback = policy.get("fallback_order") or []
+    if adapter.name not in fallback and adapter.name != policy.get("primary"):
+        fallback.append(adapter.name)
+    policy["fallback_order"] = fallback
+    router.policy = policy
+
+    return {
+        "status": "ok",
+        "registered": adapter.name,
+        "type": adapter.type,
+        "available_adapters": list(adapters.keys()),
+        "policy": router.policy,
+    }
 
 
 # ---------------------------------------------

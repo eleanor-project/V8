@@ -40,22 +40,28 @@ class AuthConfig:
     @classmethod
     def from_env(cls) -> "AuthConfig":
         """Load configuration from environment variables."""
-        env = os.getenv("ELEANOR_ENV", "development")
-        enabled = os.getenv("AUTH_ENABLED", "true").lower() == "true"
+        env = os.getenv("ELEANOR_ENV", "development").lower()
+        is_dev = env in ("development", "dev", "local")
 
-        if env != "development" and not enabled:
+        default_enabled = "false" if is_dev else "true"
+        enabled = os.getenv("AUTH_ENABLED", default_enabled).lower() == "true"
+
+        if not is_dev and not enabled:
             raise ValueError("AUTH_ENABLED cannot be false in production environments")
 
         # In development, auth can be disabled
-        if env == "development" and not enabled:
+        if is_dev and not enabled:
             return cls(secret="dev-secret", enabled=False)
 
         secret = os.getenv("JWT_SECRET")
         if enabled and not secret:
-            raise ValueError(
-                "JWT_SECRET environment variable is required when AUTH_ENABLED=true"
-            )
-        if env != "development" and secret == "dev-secret":
+            if is_dev:
+                secret = "dev-secret"
+            else:
+                raise ValueError(
+                    "JWT_SECRET environment variable is required when AUTH_ENABLED=true"
+                )
+        if not is_dev and secret == "dev-secret":
             raise ValueError("JWT_SECRET must be set to a non-default value in production")
 
         return cls(
