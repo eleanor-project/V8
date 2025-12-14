@@ -18,7 +18,7 @@ from typing import Dict, Any, List
 from dataclasses import dataclass
 
 from ..base import Detector
-from ..signals import DetectorSignal
+from ..signals import DetectorSignal, SeverityLevel
 
 
 @dataclass
@@ -38,9 +38,10 @@ DETECTION_PATTERNS = [
             r"\b(all|every|typical)\s+(blacks?|whites?|asians?|hispanics?|latinos?)\s+(are|is|always)",
             r"\b(men|women|males?|females?)\s+(can't|cannot|shouldn't|are not capable)",
             r"\b(muslims?|christians?|jews?)\s+(are|is)\s+(terrorist|violent|dangerous)",
+            r"\b(all|every)\s+(elderly|seniors?|older adults?)\s+[\w\s]{0,20}\b(are|is|should)\b",
         ],
         keywords=[
-            "all blacks are", "all muslims are", "women can't", "men shouldn't"
+            "all blacks are", "all muslims are", "women can't", "men shouldn't", "all elderly"
         ],
         severity_weight=0.95,
         description="Explicit discriminatory statements based on protected characteristics"
@@ -66,7 +67,7 @@ DETECTION_PATTERNS = [
         ],
         keywords=[
             "you people", "your kind", "those types", "typical of",
-            "what do you expect from", "they're all the same"
+            "what do you expect from", "they're all the same", "most women", "most men", "like most women"
         ],
         severity_weight=0.65,
         description="Harmful stereotyping and generalizations"
@@ -83,6 +84,17 @@ DETECTION_PATTERNS = [
         ],
         severity_weight=0.8,
         description="Differential treatment based on group membership"
+    ),
+    DetectionPattern(
+        category="dehumanization",
+        patterns=[
+            r"\b(vermin|animals?|subhuman|infestation|plague)\b",
+        ],
+        keywords=[
+            "not human", "less than human"
+        ],
+        severity_weight=1.0,
+        description="Dehumanizing language about a group"
     ),
 ]
 
@@ -122,12 +134,15 @@ class DiscriminationDetector(Detector):
             DetectorSignal with severity, violations, and evidence
         """
         violations = self._analyze_text(text)
-        severity = self._compute_severity(violations)
-        metadata = self._build_metadata(text, violations, severity)
+        severity_score = self._compute_severity(violations)
+        metadata = self._build_metadata(text, violations, severity_score)
+        confidence = min(1.0, severity_score + 0.2 * len(violations))
 
         return DetectorSignal(
             detector_name=self.name,
-            severity=severity,
+            severity=SeverityLevel(severity_score),
+            confidence=confidence,
+            description="Discrimination risk assessment",
             violations=[v["category"] for v in violations],
             evidence=metadata,
             flags=self._generate_flags(violations)
@@ -181,11 +196,14 @@ class DiscriminationDetector(Detector):
         if violations:
             mitigation = "Remove discriminatory language; ensure equal treatment."
 
+        categories = list({v["category"] for v in violations})
+
         return {
             "violations": violations,
             "text_excerpt": text[:500],
             "protected_groups": protected_groups,
             "risk_score": severity,
+            "categories": categories,
             "mitigation": mitigation,
         }
 

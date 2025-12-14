@@ -18,7 +18,7 @@ from typing import Dict, Any, List
 from dataclasses import dataclass
 
 from ..base import Detector
-from ..signals import DetectorSignal
+from ..signals import DetectorSignal, SeverityLevel
 
 
 @dataclass
@@ -35,36 +35,34 @@ DETECTION_PATTERNS = [
     DetectionPattern(
         category="fabricated_citations",
         patterns=[
-            r"\\b(according to|cited in|published in)\\s+\\w+\\s+et al\\.\\s+\\(\\d{4}\\)",
-            r"\\b(study|research|paper)\\s+(by|from)\\s+[A-Z][a-z]+\\s+\\(\\d{4}\\)\\b",
+            r"\b(according to|cited in|published in)\s+[\w\s]+?\(\d{4}\)",
+            r"\b(study|research|paper)\s+(by|from)\s+[A-Z][a-zA-Z]+\s+\(\d{4}\)\b",
         ],
         keywords=[
-            "according to", "cited in", "published in"
+            "according to", "cited in", "published in", "et al."
         ],
-        severity_weight=0.85,
+        severity_weight=0.35,
         description="Fabricated citations or references"
     ),
     DetectionPattern(
         category="false_statistics",
         patterns=[
-            r"\\b\\d+(\\.\\d+)?%\\s+(of|showed|indicated|demonstrated)",
-            r"\\bexactly\\s+\\d+%\\s+of\\s+",
+            r"\b\d+(\.\d+)?%\s+(of|showed|indicated|demonstrated)",
+            r"\bexactly\s+\d+%\s+of\s+",
         ],
         keywords=[
-            "exactly percent", "precisely showed"
+            "exactly percent", "precisely showed", "increase by"
         ],
-        severity_weight=0.7,
+        severity_weight=0.25,
         description="Potentially false or fabricated statistics"
     ),
     DetectionPattern(
         category="invented_entities",
         patterns=[
-            r"\\b(University|Institute|Organization)\\s+of\\s+[A-Z]\\w+\\s+(found|reported|stated)",
+            r"\b(University|Institute|Organization)\s+of\s+[A-Z][\w]+\s+(found|reported|stated)",
         ],
-        keywords=[
-            
-        ],
-        severity_weight=0.75,
+        keywords=[],
+        severity_weight=0.2,
         description="References to potentially non-existent entities"
     ),
 ]
@@ -105,12 +103,15 @@ class HallucinationDetector(Detector):
             DetectorSignal with severity, violations, and evidence
         """
         violations = self._analyze_text(text)
-        severity = self._compute_severity(violations)
         metadata = self._build_metadata(text, violations)
+        severity_score = max(self._compute_severity(violations), metadata.get("risk_score", 0.0))
+        confidence = min(1.0, 0.2 * len(violations) + severity_score)
 
         return DetectorSignal(
             detector_name=self.name,
-            severity=severity,
+            severity=SeverityLevel(severity_score),
+            confidence=confidence,
+            description="Hallucination risk assessment",
             violations=[v["category"] for v in violations],
             evidence=metadata,
             flags=self._generate_flags(violations)
@@ -145,17 +146,61 @@ class HallucinationDetector(Detector):
                             "severity_score": dp.severity_weight * 0.9,
                             "description": dp.description,
                             "keyword_matched": keyword,
-                        })
+                    })
                     break
+
+        # Fallback lightweight heuristics to ensure coverage for analytics
+        if re.search(r"\(\d{4}\)", text) or "et al" in text_lower:
+            if not any(v["category"] == "fabricated_citations" for v in violations):
+                violations.append({
+                    "category": "fabricated_citations",
+                    "detection_method": "heuristic",
+                    "severity_score": 0.25,
+                    "description": "Citation present; verify source.",
+                })
+
+        if re.search(r"\d+%|\bpercent\b", text_lower):
+            if not any(v["category"] == "false_statistics" for v in violations):
+                violations.append({
+                    "category": "false_statistics",
+                    "detection_method": "heuristic",
+                    "severity_score": 0.2,
+                    "description": "Statistical claim present.",
+                })
+
+        if re.search(r"definitely|absolutely|100%|guaranteed", text, re.IGNORECASE):
+            violations.append({
+                "category": "overconfidence",
+                "detection_method": "keyword",
+                "severity_score": 0.15,
+                "description": "Overconfident language present.",
+            })
 
         return violations
 
-    def _build_metadata(self, text: str, violations: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _build_metadata(self, text: str, violations: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Build metadata counts for analytics/tests."""
-        citation_count = len(re.findall(r"\(\\d{4}\\)", text)) + len(re.findall(r"et al", text, re.IGNORECASE))
-        statistic_count = len(re.findall(r"\\d+%|percent", text, re.IGNORECASE))
-        specific_detail_count = len(re.findall(r"(\\d{3}[-\\s]?\\d{3}[-\\s]?\\d{4})", text)) + len(re.findall(r"\\d{1,2}\\s+\\w+\\s+\\d{4}", text))
+        citation_count = len(re.findall(r"\(\d{4}\)", text)) + len(re.findall(r"et al\.?", text, re.IGNORECASE))
+        statistic_count = len(re.findall(r"\d+%|\bpercent\b", text, re.IGNORECASE))
+        specific_detail_count = len(re.findall(r"(\d{3}[-\s]?\d{3}[-\s]?\d{4})", text))
+        specific_detail_count += len(re.findall(r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}", text, re.IGNORECASE))
         overconfidence_count = len(re.findall(r"definitely|absolutely|100%|guaranteed", text, re.IGNORECASE))
+
+        total_risk = 0.0
+        if citation_count:
+            total_risk += 0.25 + 0.1 * min(citation_count, 3)
+        if statistic_count:
+            total_risk += 0.2 + 0.05 * min(statistic_count, 3)
+        if specific_detail_count:
+            total_risk += 0.15
+        if overconfidence_count:
+            total_risk += 0.15
+
+        categories = list({v["category"] for v in violations})
+
+        mitigation = None
+        if categories:
+            mitigation = "Verify citations and statistics; add sources or rephrase uncertain claims."
 
         return {
             "violations": violations,
@@ -164,6 +209,9 @@ class HallucinationDetector(Detector):
             "statistic_count": statistic_count,
             "specific_detail_count": specific_detail_count,
             "overconfidence_count": overconfidence_count,
+            "categories": categories,
+            "risk_score": min(1.0, total_risk),
+            "mitigation": mitigation,
         }
 
     def _compute_severity(self, violations: List[Dict[str, Any]]) -> float:

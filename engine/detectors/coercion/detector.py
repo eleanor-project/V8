@@ -37,10 +37,12 @@ DETECTION_PATTERNS = [
         patterns=[
             r"\b(threaten|threatening|threat)\s+(to|with)\s+(harm|hurt|kill|destroy)",
             r"\b(I|we)\s+will\s+(harm|hurt|punish|destroy|ruin)\b",
+            r"\b(or else\s+i'?ll\s+make\s+sure\s+you\s+regret\s+it)\b",
+            r"\b(you'?ll\s+regret\s+it)\b",
         ],
         keywords=[
             "threaten you", "threat to", "will harm", "will hurt",
-            "will kill", "will destroy", "will punish"
+            "will kill", "will destroy", "will punish", "or else i'll"
         ],
         severity_weight=0.95,
         description="Direct threats of harm or punishment"
@@ -66,7 +68,7 @@ DETECTION_PATTERNS = [
         ],
         keywords=[
             "guilt trip", "shame on you", "disappoint everyone",
-            "betray us", "make you feel bad", "ungrateful"
+            "betray us", "make you feel bad", "ungrateful", "if you really loved me"
         ],
         severity_weight=0.6,
         description="Emotional manipulation to influence behavior"
@@ -96,6 +98,40 @@ DETECTION_PATTERNS = [
         ],
         severity_weight=0.85,
         description="Gaslighting and reality manipulation"
+    ),
+    DetectionPattern(
+        category="pressure",
+        patterns=[
+            r"\b(act now|last chance|time is running out|don't think, just do it)\b",
+        ],
+        keywords=[
+            "act now", "last chance", "don't think", "just do it", "limited time"
+        ],
+        severity_weight=0.45,
+        description="High-pressure language reducing deliberation"
+    ),
+    DetectionPattern(
+        category="autonomy_denial",
+        patterns=[
+            r"\b(you have no choice|i decide for you|you must obey|i'll decide for you)\b",
+        ],
+        keywords=[
+            "no choice", "must obey", "i decide", "i'll decide"
+        ],
+        severity_weight=0.85,
+        description="Removal of autonomy or decision rights"
+    ),
+    DetectionPattern(
+        category="isolation",
+        patterns=[
+            r"\b(don't talk to|avoid|stay away from)\s+(your|their)\s+(family|friends|others)\b",
+            r"\bonly i understand you\b",
+        ],
+        keywords=[
+            "don't talk to your family", "only i understand you", "avoid your friends"
+        ],
+        severity_weight=0.65,
+        description="Isolation from support networks"
     ),
 ]
 
@@ -135,12 +171,15 @@ class CoercionDetector(Detector):
             DetectorSignal with severity, violations, and evidence
         """
         violations = self._analyze_text(text)
-        severity = self._compute_severity(violations)
-        metadata = self._build_metadata(text, violations, severity)
+        severity_score = self._compute_severity(violations)
+        metadata = self._build_metadata(text, violations, severity_score)
+        confidence = min(1.0, severity_score + 0.2 * len(violations))
 
         return DetectorSignal(
             detector_name=self.name,
-            severity=severity,
+            severity=SeverityLevel(severity_score),
+            confidence=confidence,
+            description="Coercion risk assessment",
             violations=[v["category"] for v in violations],
             evidence=metadata,
             flags=self._generate_flags(violations)
@@ -208,11 +247,25 @@ class CoercionDetector(Detector):
         if violations:
             mitigation = "Remove coercive language; emphasize autonomy and informed choice."
 
+        category_aliases = {
+            "direct_threats": "threat",
+            "implied_consequences": "pressure",
+            "emotional_manipulation": "emotional_manipulation",
+            "intimidation": "autonomy_denial",
+            "gaslighting": "gaslighting",
+            "pressure": "pressure",
+            "autonomy_denial": "autonomy_denial",
+            "isolation": "isolation",
+        }
+        normalized_categories = list({
+            category_aliases.get(v["category"], v["category"]) for v in violations
+        })
+
         return {
             "violations": violations,
             "text_excerpt": text[:500],
             "risk_score": severity,
-            "categories": [v["category"] for v in violations],
+            "categories": normalized_categories,
             "autonomy_respecting_phrases": autonomy_respecting_phrases,
             "mitigation": mitigation,
         }
