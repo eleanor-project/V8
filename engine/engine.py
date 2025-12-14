@@ -10,6 +10,7 @@ Forensic Detail-Level Output Mode
 import asyncio
 import importlib
 import inspect
+import logging
 import uuid
 from typing import Any, Dict, List, Optional, AsyncGenerator
 from types import SimpleNamespace
@@ -209,6 +210,10 @@ class EleanorEngineV8:
                 def search(self, q: str, top_k: int = 5):
                     return []
             self.precedent_retriever = PrecedentRetrievalV8(store_client=_NullStore())
+            logging.getLogger(__name__).warning(
+                "[ELEANOR ENGINE] Using Null precedent retriever (no store configured). "
+                "Configure PRECEDENT_BACKEND for production use."
+            )
 
         # Uncertainty
         if uncertainty_engine:
@@ -319,6 +324,9 @@ class EleanorEngineV8:
                 evaluation = critic.evaluate(model_adapter, input_text=input_text, context=context)
                 evaluation_result = await evaluation if inspect.isawaitable(evaluation) else evaluation
             except Exception as exc:
+                logging.getLogger(__name__).exception(
+                    "[ELEANOR ENGINE] Critic %s failed for trace %s", name, trace_id
+                )
                 evaluation_result = {
                     "severity": 0.0,
                     "violations": [],
