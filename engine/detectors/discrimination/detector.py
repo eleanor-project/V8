@@ -123,15 +123,13 @@ class DiscriminationDetector(Detector):
         """
         violations = self._analyze_text(text)
         severity = self._compute_severity(violations)
+        metadata = self._build_metadata(text, violations, severity)
 
         return DetectorSignal(
             detector_name=self.name,
             severity=severity,
             violations=[v["category"] for v in violations],
-            evidence={
-                "violations": violations,
-                "text_excerpt": text[:500],
-            },
+            evidence=metadata,
             flags=self._generate_flags(violations)
         )
 
@@ -168,6 +166,28 @@ class DiscriminationDetector(Detector):
                     break
 
         return violations
+
+    def _build_metadata(self, text: str, violations: List[Dict[str, Any]], severity: float) -> Dict[str, Any]:
+        protected_groups = []
+        protected_keywords = [
+            "elderly", "disabled", "immigrants", "women", "men", "minorities", "religion", "race",
+            "gender", "age", "disability"
+        ]
+        for kw in protected_keywords:
+            if kw in text.lower():
+                protected_groups.append(kw)
+
+        mitigation = None
+        if violations:
+            mitigation = "Remove discriminatory language; ensure equal treatment."
+
+        return {
+            "violations": violations,
+            "text_excerpt": text[:500],
+            "protected_groups": protected_groups,
+            "risk_score": severity,
+            "mitigation": mitigation,
+        }
 
     def _compute_severity(self, violations: List[Dict[str, Any]]) -> float:
         """

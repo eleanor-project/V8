@@ -120,6 +120,7 @@ class RouterV8:
                 or response.get("text")
                 or response.get("model_output")
                 or response.get("output")
+                or response.get("response")
             )
             model_name = response.get("model_name", model_name)
             model_version = response.get("model_version")
@@ -268,10 +269,9 @@ class RouterV8:
     # Routing with fallback logic
     # ---------------------------------------------------------------
 
-    async def route(self, text: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def _route_async(self, text: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Route the request to the primary adapter.
-        If it fails, apply fallback logic based on routing_policy.
+        Async implementation of routing logic.
         """
         context = context or {}
         primary = self.policy.get("primary")
@@ -318,12 +318,15 @@ class RouterV8:
                 if result["success"]:
                     out = result["output"]
                     return {
+                        "success": True,
                         "response_text": out["response_text"],
+                        "model_output": out["response_text"],
                         "model_name": out["model_name"] or adapter_name,
                         "model_version": out["model_version"],
                         "reason": out.get("reason") or f"policy_selected:{adapter_name}",
                         "health_score": self.health.get(adapter_name, True),
                         "cost": adapter_costs.get(adapter_name, out.get("cost")),
+                        "used_adapter": adapter_name,
                         "diagnostics": {
                             "attempts": attempts,
                             "adapter_used": adapter_name,
@@ -332,14 +335,32 @@ class RouterV8:
 
         # If no model succeeded
         return {
+            "success": False,
             "response_text": None,
+            "model_output": None,
             "model_name": None,
             "model_version": None,
             "reason": "All model adapters failed to produce output.",
             "health_score": 0.0,
             "cost": None,
+            "used_adapter": None,
             "diagnostics": {"attempts": attempts},
         }
+
+    def route(self, text: str, context: Optional[Dict[str, Any]] = None):
+        """
+        Route request; works in both sync and async contexts.
+        Returns dict if called synchronously, or coroutine if awaited in an event loop.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running():
+                return self._route_async(text, context)
+        except RuntimeError:
+            loop = None
+
+        # No running loop; execute synchronously
+        return asyncio.run(self._route_async(text, context))
 
     # ---------------------------------------------------------------
     # Public convenience method

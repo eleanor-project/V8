@@ -25,3 +25,23 @@ class DetectorSignal(BaseModel):
     violations: List[str] = Field(default_factory=list)  # List of violation categories
     evidence: Dict[str, Any] = Field(default_factory=dict)  # Supporting evidence
     flags: List[str] = Field(default_factory=list)  # Flags for escalation/routing
+
+    @property
+    def violation(self) -> bool:
+        """Compatibility alias: True if any violation, False otherwise."""
+        return bool(self.violations)
+
+    @property
+    def metadata(self) -> Dict[str, Any]:
+        """Alias for evidence to satisfy legacy consumers."""
+        return self.evidence
+
+    @property
+    def mitigation(self) -> Any:
+        """Optional mitigation guidance if provided."""
+        return self.evidence.get("mitigation")
+
+    @property
+    def description(self) -> Any:
+        """Optional description if provided."""
+        return self.evidence.get("description")

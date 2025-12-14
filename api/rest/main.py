@@ -254,12 +254,6 @@ def initialize_engine():
         raise
 
 
-@app.on_event("startup")
-async def startup_checks():
-    """Fail fast if required security or storage dependencies are missing."""
-    run_readiness_checks()
-
-
 def resolve_final_decision(aggregator_decision: Optional[str], opa_result: Dict[str, Any]) -> str:
     """Combine aggregator decision with OPA governance outcome."""
     if not opa_result.get("allow", True):
@@ -343,6 +337,12 @@ app = FastAPI(
         500: {"model": ErrorResponse},
     }
 )
+
+
+@app.on_event("startup")
+async def startup_checks():
+    """Fail fast if required security or storage dependencies are missing."""
+    run_readiness_checks()
 enable_tracing(app)
 enable_prometheus_middleware(app)
 

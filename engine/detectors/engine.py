@@ -25,10 +25,11 @@ class DetectorEngineV8:
     Orchestrates detector execution and signal aggregation.
     """
 
-    def __init__(self, timeout_seconds: float = 2.0):
-        self.detectors: Dict[str, Detector] = {}
+    def __init__(self, detectors: Dict[str, Detector] | None = None, timeout_seconds: float = 2.0):
+        self.detectors: Dict[str, Detector] = detectors or {}
         self.timeout = timeout_seconds
-        self._load_detectors()
+        if not self.detectors:
+            self._load_detectors()
 
     def _load_detectors(self):
         """Dynamically load all detector modules."""
