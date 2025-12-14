@@ -8,6 +8,8 @@ Commands:
   eleanor stream "<text>"
   eleanor trace <trace_id>
   eleanor governance preview <file.json>
+  eleanor review list
+  eleanor review replay <case_id>
   eleanor version
 
 This wraps the REST and WebSocket APIs to give operators,
@@ -26,6 +28,7 @@ from engine.version import (
     CRITIC_SUITE,
     CORE_HASH
 )
+from api.cli.review import list_reviews, replay_case
 
 API_BASE = "http://localhost:8000"
 WS_URL = "ws://localhost:8000/ws/deliberate"
@@ -156,6 +159,8 @@ def main():
         print("  eleanor stream \"text\"")
         print("  eleanor trace <id>")
         print("  eleanor governance preview <file>")
+        print("  eleanor review list")
+        print("  eleanor review replay <case_id>")
         print("  eleanor version")
         sys.exit(1)
 
@@ -193,6 +198,25 @@ def main():
     if cmd == "governance" and len(sys.argv) >= 4 and sys.argv[2] == "preview":
         file_path = sys.argv[3]
         return cmd_governance_preview(file_path)
+
+    # review commands
+    if cmd == "review":
+        if len(sys.argv) < 3:
+            print("Error: review requires subcommand: list|replay <case_id>")
+            sys.exit(1)
+        subcmd = sys.argv[2]
+        if subcmd == "list":
+            reviews = list_reviews()
+            header("REVIEW PACKETS")
+            print("\n".join(reviews) if reviews else "No review packets found.")
+            return
+        if subcmd == "replay":
+            if len(sys.argv) < 4:
+                print("Error: review replay requires case_id")
+                sys.exit(1)
+            return replay_case(sys.argv[3])
+        print("Unknown review subcommand:", subcmd)
+        sys.exit(1)
 
     # unknown command
     print("Unknown command:", cmd)

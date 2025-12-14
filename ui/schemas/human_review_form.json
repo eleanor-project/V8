@@ -1,0 +1,61 @@
+{
+  "title": "Constitutional Human Review",
+  "type": "object",
+  "required": [
+    "coverage_issues",
+    "severity_assessment",
+    "dissent_evaluation",
+    "uncertainty_adequate",
+    "outcome",
+    "reviewer_justification"
+  ],
+  "properties": {
+    "coverage_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["critic", "missing_reference", "notes"],
+        "properties": {
+          "critic": { "type": "string" },
+          "missing_reference": { "type": "string" },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "severity_assessment": {
+      "type": "object",
+      "required": ["original", "justification"],
+      "properties": {
+        "original": { "type": "number" },
+        "adjusted": { "type": ["number", "null"] },
+        "justification": { "type": "string" }
+      }
+    },
+    "dissent_evaluation": {
+      "type": "object",
+      "required": ["present", "preserved"],
+      "properties": {
+        "present": { "type": "boolean" },
+        "preserved": { "type": "boolean" },
+        "notes": { "type": "string" }
+      }
+    },
+    "uncertainty_adequate": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "affirmed",
+        "clarified",
+        "adjusted",
+        "contested",
+        "rejected"
+      ]
+    },
+    "reviewer_justification": {
+      "type": "string",
+      "maxLength": 1200
+    }
+  }
+}
