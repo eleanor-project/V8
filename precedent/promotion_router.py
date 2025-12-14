@@ -14,6 +14,7 @@ import json
 import uuid
 
 from governance.human_review.schemas import ReviewOutcome, HumanReviewRecord
+from precedent.promotion_guard import assert_promotion_allowed
 
 
 class PromotionRouter:
@@ -180,6 +181,9 @@ class PromotionRouter:
         Returns:
             Precedent entry if successful, None if case not found in candidates
         """
+        # Governance guardrail: ensure human review is completed and allows promotion
+        assert_promotion_allowed(case_id)
+
         # Check if case is in precedent_candidate lane
         candidate_file = self.lanes["precedent_candidate"] / f"{case_id}.json"
 
