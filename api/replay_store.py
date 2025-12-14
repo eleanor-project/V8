@@ -25,6 +25,14 @@ os.makedirs(REVIEW_PACKET_DIR, exist_ok=True)
 os.makedirs(REVIEW_RECORD_DIR, exist_ok=True)
 
 
+def _atomic_write_json(path: str, record: Dict[str, Any]):
+    """Write JSON to path atomically to avoid partial writes."""
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w") as f:
+        json.dump(record, f, indent=2, default=str)
+    os.replace(tmp_path, path)
+
+
 class ReplayStore:
     def __init__(self, path: str = "replay_log.jsonl", max_cache: int = 1000):
         self.path = Path(path)
@@ -103,8 +111,7 @@ def store_review_packet(packet):
         return None
 
     path = os.path.join(REVIEW_PACKET_DIR, f"{case_id}_{record['packet_id']}.json")
-    with open(path, "w") as f:
-        json.dump(record, f, indent=2, default=str)
+    _atomic_write_json(path, record)
 
     return path
 
@@ -122,8 +129,7 @@ def store_human_review(review_record):
         return None
 
     path = os.path.join(REVIEW_RECORD_DIR, f"{review_id}.json")
-    with open(path, "w") as f:
-        json.dump(record, f, indent=2, default=str)
+    _atomic_write_json(path, record)
 
     return path
 
@@ -145,7 +151,8 @@ def load_review_packet(case_id: str):
         try:
             with open(path, "r") as f:
                 record = json.load(f)
-        except Exception:
+        except Exception as exc:
+            print(f"[REPLAY STORE] Failed to load review packet {path}: {exc}")
             continue
 
         ts_val = record.get("stored_at")
@@ -159,6 +166,32 @@ def load_review_packet(case_id: str):
             latest = record
 
     return latest
+
+
+def list_review_packets(case_id: str):
+    """
+    Return all review packets for a given case_id (most recent first).
+    """
+    if not os.path.exists(REVIEW_PACKET_DIR):
+        return []
+
+    packets = []
+    for fname in os.listdir(REVIEW_PACKET_DIR):
+        if not fname.endswith(".json"):
+            continue
+        if not (fname == f"{case_id}.json" or fname.startswith(f"{case_id}_")):
+            continue
+        path = os.path.join(REVIEW_PACKET_DIR, fname)
+        try:
+            with open(path, "r") as f:
+                record = json.load(f)
+                packets.append(record)
+        except Exception as exc:
+            print(f"[REPLAY STORE] Failed to load review packet {path}: {exc}")
+            continue
+
+    packets.sort(key=lambda r: r.get("stored_at") or "", reverse=True)
+    return packets
 
 
 def load_human_reviews(case_id: str):
@@ -182,5 +215,6 @@ __all__ = [
     "store_review_packet",
     "store_human_review",
     "load_review_packet",
+    "list_review_packets",
     "load_human_reviews",
 ]

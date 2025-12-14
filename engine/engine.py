@@ -51,7 +51,7 @@ except Exception:
     AggregatorV8 = None
 
 # Governance
-from governance.review_triggers import ReviewTriggerEvaluator
+from governance.review_triggers import ReviewTriggerEvaluator, Case
 from governance.review_packets import build_review_packet
 from replay_store import store_review_packet
 
@@ -526,19 +526,27 @@ class EleanorEngineV8:
         uncertainty_flags = self._collect_uncertainty_flags(uncertainty_data)
         case_uncertainty = SimpleNamespace(flags=uncertainty_flags)
 
-        return SimpleNamespace(
-            id=trace_id,
-            domain=context.get("domain", "general"),
+        case_obj = Case(
             severity=severity,
-            critic_outputs=critic_results,
-            aggregator_summary=aggregated.get("final_output", "") or "",
-            dissent=aggregated.get("dissent"),
-            citations=self._collect_citations(critic_results),
-            uncertainty=case_uncertainty,
-            rights_impacted=aggregated.get("rights_impacted", []),
             critic_disagreement=self._calculate_critic_disagreement(critic_results),
             novel_precedent=bool((precedent_data or {}).get("novel", False)),
+            rights_impacted=aggregated.get("rights_impacted", []),
+            uncertainty_flags=uncertainty_flags,
+            uncertainty=case_uncertainty,
         )
+
+        # Attach additional fields used by packet builders
+        for key, value in {
+            "id": trace_id,
+            "domain": context.get("domain", "general"),
+            "critic_outputs": critic_results,
+            "aggregator_summary": aggregated.get("final_output", "") or "",
+            "dissent": aggregated.get("dissent"),
+            "citations": self._collect_citations(critic_results),
+        }.items():
+            setattr(case_obj, key, value)
+
+        return case_obj
 
     def _run_governance_review_gate(self, case: SimpleNamespace):
         # Non-blocking governance trigger: failures never stop the pipeline
