@@ -19,6 +19,10 @@ const fetchJson = async (path, opts = {}) => {
 };
 
 const pretty = (obj) => JSON.stringify(obj, null, 2);
+const truncate = (text, len = 240) => {
+  if (!text) return "—";
+  return text.length > len ? `${text.slice(0, len)}…` : text;
+};
 
 const DeliberatePanel = () => {
   const [input, setInput] = useState("Should I approve this loan application?");
@@ -108,6 +112,22 @@ const SimpleConsole = () => {
   const [prompt, setPrompt] = useState("Ask Eleanor something ethically complicated...");
   const [events, setEvents] = useState([]);
   const [status, setStatus] = useState("idle");
+  const [showRaw, setShowRaw] = useState(false);
+
+  const finalData = useMemo(() => {
+    const last = [...events].reverse().find((e) => e.event === "final");
+    return last?.data || null;
+  }, [events]);
+
+  const modelInfo = useMemo(() => {
+    const routerEvt = [...events].reverse().find((e) => e.event === "router_selected");
+    return routerEvt?.data?.model_info || finalData?.model_info || null;
+  }, [events, finalData]);
+
+  const timeline = useMemo(
+    () => events.map((e, idx) => `${idx + 1}. ${e.event || "event"}`).join(" • "),
+    [events],
+  );
 
   const run = () => {
     setEvents([]);
@@ -163,13 +183,68 @@ const SimpleConsole = () => {
         </p>
       </div>
       <div className="panel">
-        <h3>Events</h3>
-        <div className="scroll">
-          {events.map((evt, idx) => (
-            <pre key={idx}>{pretty(evt)}</pre>
-          ))}
-          {!events.length && <div className="small">No events yet.</div>}
+        <h3>Result</h3>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <div className="small">Timeline: {events.length ? timeline : "Waiting…"}</div>
+          <button onClick={() => setShowRaw((v) => !v)} style={{ padding: "6px 10px" }}>
+            {showRaw ? "Hide JSON" : "View JSON"}
+          </button>
         </div>
+
+        {!showRaw && (
+          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+            <div className="metric">
+              <div className="label">Decision</div>
+              <div className="value">{finalData?.final_decision || "—"}</div>
+            </div>
+            <div className="metric">
+              <div className="label">Model</div>
+              <div className="value">
+                {modelInfo?.model_name || "—"}
+                {modelInfo?.model_version ? ` (${modelInfo.model_version})` : ""}
+              </div>
+            </div>
+            <div className="metric">
+              <div className="label">Output</div>
+              <div className="value small">{truncate(finalData?.model_output)}</div>
+            </div>
+            <div className="metric">
+              <div className="label">Aggregation</div>
+              <div className="value small">
+                {finalData?.aggregation?.decision || finalData?.aggregation?.final_output
+                  ? `${finalData?.aggregation?.decision || ""} ${truncate(finalData?.aggregation?.final_output, 140)}`
+                  : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="label">Critics</div>
+              {finalData?.critic_outputs ? (
+                <div className="critics-grid">
+                  {Object.entries(finalData.critic_outputs).map(([name, data]) => (
+                    <div key={name} className="critic-card">
+                      <div className="critic-name">{name}</div>
+                      <div className="critic-detail small">
+                        severity: {data.severity ?? data.score ?? "—"}
+                      </div>
+                      <div className="critic-detail small">{truncate(data.justification || data.concern, 120)}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="small">No critic outputs yet.</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {showRaw && (
+          <div className="scroll" style={{ marginTop: 10 }}>
+            {events.map((evt, idx) => (
+              <pre key={idx}>{pretty(evt)}</pre>
+            ))}
+            {!events.length && <div className="small">No events yet.</div>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -271,6 +346,14 @@ const AdminPanel = () => {
   const [critics, setCritics] = useState([]);
   const [adapters, setAdapters] = useState([]);
   const [newBinding, setNewBinding] = useState({ critic: "", adapter: "" });
+  const [adapterForm, setAdapterForm] = useState({
+    name: "ollama-phi3",
+    type: "ollama",
+    model: "phi3",
+    device: "cpu",
+    apiKey: "",
+  });
+  const [savingAdapter, setSavingAdapter] = useState(false);
 
   const loadBindings = async () => {
     try {
@@ -305,6 +388,21 @@ const AdminPanel = () => {
       await loadBindings();
     } catch (err) {
       alert(err.message);
+    }
+  };
+
+  const registerAdapter = async () => {
+    setSavingAdapter(true);
+    try {
+      await fetchJson("/admin/router/adapters", {
+        method: "POST",
+        body: JSON.stringify(adapterForm),
+      });
+      await loadBindings();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingAdapter(false);
     }
   };
 
@@ -350,6 +448,52 @@ const AdminPanel = () => {
         <pre>{bindings ? pretty(bindings) : "—"}</pre>
       </div>
       <div className="panel">
+        <h3>Add Router Adapter</h3>
+        <div className="row">
+          <input
+            placeholder="name (e.g. ollama-phi3)"
+            value={adapterForm.name}
+            onChange={(e) => setAdapterForm({ ...adapterForm, name: e.target.value })}
+          />
+          <select
+            value={adapterForm.type}
+            onChange={(e) => setAdapterForm({ ...adapterForm, type: e.target.value })}
+          >
+            <option value="ollama">Ollama (local)</option>
+            <option value="hf">HuggingFace (local)</option>
+            <option value="openai">OpenAI</option>
+            <option value="claude">Claude</option>
+            <option value="grok">Grok</option>
+          </select>
+        </div>
+        <div className="row" style={{ marginTop: 8 }}>
+          <input
+            placeholder="model (phi3, llama3, gpt-4o-mini, etc.)"
+            value={adapterForm.model}
+            onChange={(e) => setAdapterForm({ ...adapterForm, model: e.target.value })}
+          />
+          <input
+            placeholder="device (cpu / cuda)"
+            value={adapterForm.device}
+            onChange={(e) => setAdapterForm({ ...adapterForm, device: e.target.value })}
+            disabled={adapterForm.type !== "hf"}
+          />
+        </div>
+        <input
+          style={{ marginTop: 8 }}
+          placeholder="API key (only for OpenAI/Claude/Grok)"
+          value={adapterForm.apiKey}
+          onChange={(e) => setAdapterForm({ ...adapterForm, apiKey: e.target.value })}
+          disabled={!["openai", "claude", "grok"].includes(adapterForm.type)}
+        />
+        <div className="row" style={{ marginTop: 8 }}>
+          <button onClick={registerAdapter} disabled={savingAdapter || !adapterForm.name}>
+            {savingAdapter ? "Saving…" : "Register Adapter"}
+          </button>
+          <div className="small">Adapters available: {adapters.join(", ") || "none"}</div>
+        </div>
+      </div>
+      <div className="panel">
         <h3>Router Health</h3>
         <div className="row" style={{ marginBottom: 8 }}>
           <button onClick={loadRouterHealth}>Refresh</button>
@@ -376,10 +520,10 @@ const MetricsPanel = () => {
 };
 
 const App = () => {
-  const [tab, setTab] = useState("deliberate");
+  const [tab, setTab] = useState("simple");
   const tabs = [
-    { id: "deliberate", label: "Deliberate" },
     { id: "simple", label: "Simple Stream" },
+    { id: "deliberate", label: "Deliberate" },
     { id: "traces", label: "Traces & Audit" },
     { id: "admin", label: "Admin" },
     { id: "metrics", label: "Metrics" },
