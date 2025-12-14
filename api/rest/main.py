@@ -65,14 +65,7 @@ from api.bootstrap import (
     GOVERNANCE_SCHEMA_VERSION,
 )
 from api.replay_store import ReplayStore
-from engine.router.adapters import (
-    AdapterRegistry,
-    GPTAdapter,
-    ClaudeAdapter,
-    GrokAdapter,
-    LlamaHFAdapter,
-    OllamaAdapter,
-)
+from engine.router.adapters import GPTAdapter, ClaudeAdapter, GrokAdapter, LlamaHFAdapter, OllamaAdapter
 from api.websocket.websocket_server import ws_router
 from pydantic import BaseModel
 from pathlib import Path
