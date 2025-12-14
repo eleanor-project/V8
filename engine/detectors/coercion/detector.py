@@ -18,7 +18,7 @@ from typing import Dict, Any, List
 from dataclasses import dataclass
 
 from ..base import Detector
-from ..signals import DetectorSignal
+from ..signals import DetectorSignal, SeverityLevel
 
 
 @dataclass

@@ -381,7 +381,7 @@ class EleanorEngineV8:
     # PRECEDENT + UNCERTAINTY + AGGREGATION
     # -----------------------------------------------------
 
-    async def _run_precedent_alignment(self, critic_results, trace_id: str, text: str):
+    async def _run_precedent_alignment(self, critic_results, trace_id: str, text: str = ""):
         if not self.precedent_engine:
             return None
         start = asyncio.get_event_loop().time()
@@ -415,7 +415,7 @@ class EleanorEngineV8:
         return out
 
 
-    async def _run_uncertainty_engine(self, precedent_alignment, critic_results, model_name: str):
+    async def _run_uncertainty_engine(self, precedent_alignment, critic_results, model_name: str = "unknown-model"):
         if not self.uncertainty_engine:
             return None
         start = asyncio.get_event_loop().time()
@@ -435,7 +435,13 @@ class EleanorEngineV8:
         return out
 
 
-    async def _aggregate_results(self, critic_results, model_response: str, precedent_data: Optional[Dict[str, Any]], uncertainty_data: Optional[Dict[str, Any]]):
+    async def _aggregate_results(
+        self,
+        critic_results,
+        model_response: str,
+        precedent_data: Optional[Dict[str, Any]] = None,
+        uncertainty_data: Optional[Dict[str, Any]] = None,
+    ):
         if not self.aggregator:
             raise RuntimeError("AggregatorV8 not available")
         start = asyncio.get_event_loop().time()
