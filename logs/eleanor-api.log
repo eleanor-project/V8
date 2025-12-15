@@ -1,0 +1,145 @@
+/Users/billp/Documents/GitHub/V8/api/rest/main.py:344: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+/Users/billp/Documents/GitHub/V8/.venv/lib/python3.14/site-packages/fastapi/applications.py:4580: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)
+[ELEANOR ENGINE] V8 Enterprise Engine module loaded successfully.
+[ELEANOR ENGINE] Initialized V8 engine 0b4e7b15-c954-42cf-8dc0-1817e8f5bae3
+[ELEANOR ENGINE] create_engine() → Engine instance ready: 0b4e7b15-c954-42cf-8dc0-1817e8f5bae3
+{"event": "Human review API endpoints registered", "level": "info", "logger": "api.rest.main", "timestamp": "2025-12-14T23:59:51.892571Z"}
+{"event": "No CORS origins configured. Set CORS_ORIGINS environment variable for cross-origin requests.", "level": "warning", "logger": "api.rest.main", "timestamp": "2025-12-14T23:59:51.892921Z"}
+INFO:     Started server process [93591]
+INFO:     Waiting for application startup.
+{"event": "Starting ELEANOR V8 API server...", "level": "info", "logger": "api.rest.main", "timestamp": "2025-12-14T23:59:51.903545Z"}
+[ELEANOR ENGINE] Initialized V8 engine 12181619-e5e7-47a6-850f-acd1363c1109
+[ELEANOR ENGINE] create_engine() → Engine instance ready: 12181619-e5e7-47a6-850f-acd1363c1109
+{"event": "ELEANOR V8 engine initialized successfully", "level": "info", "logger": "api.rest.main", "timestamp": "2025-12-14T23:59:51.912455Z"}
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:62660 - "GET /admin/router/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62662 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62664 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62666 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62668 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62670 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62672 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62674 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62676 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62678 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62680 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62682 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62684 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62686 - "GET /admin/router/adapters HTTP/1.1" 405 Method Not Allowed
+INFO:     127.0.0.1:62688 - "GET /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62710 - "GET /admin/router/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62712 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62714 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62716 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62718 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62720 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62722 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62724 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62726 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62728 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62730 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62732 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62734 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62736 - "GET /admin/router/adapters HTTP/1.1" 405 Method Not Allowed
+INFO:     127.0.0.1:62738 - "GET /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62773 - "GET /admin/router/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62775 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62777 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62779 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62781 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62783 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62785 - "POST /admin/router/adapters HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62787 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62789 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62791 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62793 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62795 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62797 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62799 - "GET /admin/router/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62801 - "GET /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62843 - "GET /ui HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:62843 - "GET /ui/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62843 - "GET /ui/assets/index-B7MbfraM.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62844 - "GET /ui/assets/index-Chajlau7.css HTTP/1.1" 200 OK
+/Users/billp/Documents/GitHub/V8/.venv/lib/python3.14/site-packages/websockets/legacy/server.py:1178: DeprecationWarning: remove second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", DeprecationWarning)
+INFO:     127.0.0.1:62858 - "WebSocket /ws/deliberate" [accepted]
+INFO:     connection open
+/Users/billp/Documents/GitHub/V8/engine/recorder/evidence_recorder.py:18: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+/Users/billp/Documents/GitHub/V8/engine/recorder/evidence_recorder.py:93: PydanticDeprecatedSince20: The `json` method is deprecated; use `model_dump_json` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+  line = record.json() + "\n"
+/Users/billp/Documents/GitHub/V8/engine/engine.py:890: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+  r.dict() if hasattr(r, "dict") else r for r in forensic_evidence
+INFO:     connection closed
+INFO:     127.0.0.1:62901 - "WebSocket /ws/deliberate" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:62909 - "WebSocket /ws/deliberate" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:63895 - "WebSocket /ws/deliberate" [accepted]
+INFO:     connection open
+INFO:     connection closed
+{"trace_id": "3d75046f-9579-40a2-98cd-41c3a300e413", "user_id": null, "input_length": 39, "event": "deliberation_started", "level": "info", "logger": "api.rest.main", "timestamp": "2025-12-15T04:37:51.986110Z"}
+[ELEANOR ENGINE] Critic autonomy failed for trace 3d75046f-9579-40a2-98cd-41c3a300e413
+Traceback (most recent call last):
+  File "/Users/billp/Documents/GitHub/V8/.venv/lib/python3.14/site-packages/requests/models.py", line 965, in json
+    return complexjson.loads(self.content.decode(encoding), **kwargs)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/__init__.py", line 352, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/json/decoder.py", line 348, in decode
+    raise JSONDecodeError("Extra data", s, end)
+json.decoder.JSONDecodeError: Extra data: line 2 column 1 (char 89)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/billp/Documents/GitHub/V8/engine/engine.py", line 330, in _run_single_critic
+    evaluation_result = await evaluation if inspect.isawaitable(evaluation) else evaluation
+                        ^^^^^^^^^^^^^^^^
+  File "/Users/billp/Documents/GitHub/V8/engine/critics/autonomy.py", line 126, in evaluate
+    output = await model.generate(input_text, context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/billp/Documents/GitHub/V8/engine/engine.py", line 317, in generate
+    res = self.fn(prompt, context=context) if "context" in inspect.signature(self.fn).parameters else self.fn(prompt)
+                                                                                                      ~~~~~~~^^^^^^^^
+  File "/Users/billp/Documents/GitHub/V8/engine/router/adapters.py", line 162, in __call__
+    data = response.json()
+  File "/Users/billp/Documents/GitHub/V8/.venv/lib/python3.14/site-packages/requests/models.py", line 973, in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+requests.exceptions.JSONDecodeError: Extra data: line 2 column 1 (char 89)
+INFO:     127.0.0.1:63938 - "GET /ui/ HTTP/1.1" 304 Not Modified
+/Users/billp/Documents/GitHub/V8/engine/engine.py:723: PydanticDeprecatedSince20: The `dict` method is deprecated; use `model_dump` instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+  r.dict() if hasattr(r, "dict") else r for r in forensic_buffer
+{"trace_id": "3d75046f-9579-40a2-98cd-41c3a300e413", "decision": "deny", "model_used": "default", "duration_ms": 19663.08, "uncertainty": 0.020000000000000004, "escalated": false, "event": "deliberation_complete", "level": "info", "logger": "api.rest.main", "timestamp": "2025-12-15T04:38:11.652021Z"}
+INFO:     127.0.0.1:63906 - "POST /deliberate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63938 - "GET /ui/assets/index-B7MbfraM.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:63945 - "GET /ui/assets/index-Chajlau7.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:63968 - "GET /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63969 - "GET /admin/router/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63994 - "POST /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63994 - "GET /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64088 - "GET /admin/critics/bindings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64089 - "GET /admin/router/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58482 - "WebSocket /ws/deliberate" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:58501 - "WebSocket /ws/deliberate" [accepted]
+INFO:     connection open
+INFO:     connection closed
