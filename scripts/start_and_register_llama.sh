@@ -1,116 +1,141 @@
 #!/usr/bin/env bash
+
+# Start the Eleanor API and register local Ollama critic adapters/bindings.
+# The script will:
+#   1) Ensure uvicorn is available (prefers .venv, creates it if needed)
+#   2) Launch the API (or reuse an already running instance)
+#   3) Register Ollama adapters for each critic
+#   4) Bind critics to those adapters
+#   5) Print router health and bindings
+
 set -euo pipefail
 
-# Starts the Eleanor API locally (if not already running) and registers
-# Ollama-backed critic adapters plus bindings.
-
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PORT="${PORT:-8000}"
+cd "$ROOT"
+
 HOST="${HOST:-0.0.0.0}"
+PORT="${PORT:-8000}"
+API_URL="${API_URL:-http://${HOST}:${PORT}}"
+READY_TIMEOUT="${READY_TIMEOUT:-60}"
 LOG_DIR="$ROOT/logs"
-API_LOG="$LOG_DIR/eleanor-api.log"
-API_STARTED=0
+LOG_FILE="${LOG_FILE:-$LOG_DIR/eleanor-api.log}"
 
-VENV_UVICORN="$ROOT/.venv/bin/uvicorn"
-UVICORN_BIN="${UVICORN_BIN:-}"
+# Default models (override to match what you have pulled in Ollama)
+CRITIC_MODEL="${CRITIC_MODEL:-llama3}"
+AUTONOMY_MODEL="${AUTONOMY_MODEL:-phi3}"
 
-if [ -z "$UVICORN_BIN" ]; then
-  if [ -x "$VENV_UVICORN" ]; then
-    UVICORN_BIN="$VENV_UVICORN"
-  else
-    UVICORN_BIN="$(command -v uvicorn || true)"
-  fi
-fi
+# API configuration
+export ELEANOR_ENV="${ELEANOR_ENV:-local}"
+export CONSTITUTIONAL_CONFIG_PATH="${CONSTITUTIONAL_CONFIG_PATH:-governance/constitutional.yaml}"
+export PYTHONUNBUFFERED=1
 
-start_uvicorn() {
-  if [ -z "$UVICORN_BIN" ]; then
-    echo "uvicorn not found. Install dependencies or set UVICORN_BIN."
-    exit 1
-  fi
+mkdir -p "$LOG_DIR"
 
-  ELEANOR_ENV=${ELEANOR_ENV:-local} \
-  CONSTITUTIONAL_CONFIG_PATH=${CONSTITUTIONAL_CONFIG_PATH:-governance/constitutional.yaml} \
-  "$UVICORN_BIN" api.rest.main:app --host "$HOST" --port "$PORT" >"$API_LOG" 2>&1 &
-}
+UVICORN_BIN=""
+API_PID=""
+STARTED_API=0
 
-start_api() {
-  if lsof -i :"$PORT" >/dev/null 2>&1; then
-    echo "API already running on port $PORT; skipping start."
+ensure_uvicorn() {
+  if [ -x "$ROOT/.venv/bin/uvicorn" ]; then
+    UVICORN_BIN="$ROOT/.venv/bin/uvicorn"
+    # shellcheck disable=SC1091
+    source "$ROOT/.venv/bin/activate"
     return
   fi
 
-  mkdir -p "$LOG_DIR"
-  echo "Starting Eleanor API (logs: $API_LOG)..."
-  (cd "$ROOT" && start_uvicorn) >/dev/null
-  API_STARTED=1
+  if command -v uvicorn >/dev/null 2>&1; then
+    UVICORN_BIN="$(command -v uvicorn)"
+    return
+  fi
+
+  echo "Setting up Python venv and installing dependencies..."
+  python3 -m venv "$ROOT/.venv"
+  # shellcheck disable=SC1091
+  source "$ROOT/.venv/bin/activate"
+  .venv/bin/python -m ensurepip --upgrade >/dev/null
+  PIP_NO_BUILD_ISOLATION=1 pip install -q -e .
+  UVICORN_BIN="$ROOT/.venv/bin/uvicorn"
+}
+
+api_running() {
+  curl -fsS --max-time 2 "$API_URL/health" >/dev/null 2>&1
+}
+
+start_api() {
+  echo "Starting Eleanor API (logs: $LOG_FILE)..."
+  "$UVICORN_BIN" api.rest.main:app --host "$HOST" --port "$PORT" >"$LOG_FILE" 2>&1 &
+  API_PID=$!
+  STARTED_API=1
 }
 
 wait_for_api() {
-  echo "Waiting for API on port $PORT..."
-  for _ in {1..40}; do
-    if curl -sf "http://localhost:$PORT/admin/router/health" >/dev/null 2>&1; then
-      echo "API is ready."
-      return
+  echo "Waiting for API on port $PORT ..."
+  local deadline=$((SECONDS + READY_TIMEOUT))
+  until curl -fsS "$API_URL/admin/router/health" >/dev/null 2>&1; do
+    if [ $SECONDS -ge $deadline ]; then
+      echo "API did not become ready; check $LOG_FILE"
+      exit 1
     fi
-    sleep 2
+    sleep 1
   done
+  echo "API is ready."
+}
 
-  echo "API did not become ready; check $API_LOG"
-  exit 1
+post_json() {
+  local path="$1"
+  local body="$2"
+  curl -fsS -H "Content-Type: application/json" -X POST "$API_URL$path" -d "$body"
 }
 
 register_adapters() {
   echo "Registering Ollama adapters..."
-  local models=(rights fairness risk truth pragmatics phi3)
-  for name in "${models[@]}"; do
-    local payload
-    payload=$(printf '{"name":"ollama-%s","type":"ollama","model":"%s"}' "$name" "$name")
-    curl -sf -X POST "http://localhost:$PORT/admin/router/adapters" \
-      -H "Content-Type: application/json" \
-      -d "$payload" >/dev/null
-    echo "  adapter registered: ollama-$name"
-  done
+  post_json "/admin/router/adapters" "{\"name\":\"ollama-rights\",\"type\":\"ollama\",\"model\":\"$CRITIC_MODEL\"}" >/dev/null
+  post_json "/admin/router/adapters" "{\"name\":\"ollama-fairness\",\"type\":\"ollama\",\"model\":\"$CRITIC_MODEL\"}" >/dev/null
+  post_json "/admin/router/adapters" "{\"name\":\"ollama-risk\",\"type\":\"ollama\",\"model\":\"$CRITIC_MODEL\"}" >/dev/null
+  post_json "/admin/router/adapters" "{\"name\":\"ollama-truth\",\"type\":\"ollama\",\"model\":\"$CRITIC_MODEL\"}" >/dev/null
+  post_json "/admin/router/adapters" "{\"name\":\"ollama-pragmatics\",\"type\":\"ollama\",\"model\":\"$CRITIC_MODEL\"}" >/dev/null
+  post_json "/admin/router/adapters" "{\"name\":\"ollama-phi3\",\"type\":\"ollama\",\"model\":\"$AUTONOMY_MODEL\"}" >/dev/null
 }
 
 bind_critics() {
-  echo "Binding critics..."
-  local bindings=(
-    "rights:ollama-rights"
-    "fairness:ollama-fairness"
-    "risk:ollama-risk"
-    "truth:ollama-truth"
-    "pragmatics:ollama-pragmatics"
-    "autonomy:ollama-phi3"
-  )
-
-  for entry in "${bindings[@]}"; do
-    IFS=: read -r critic adapter <<<"$entry"
-    local payload
-    payload=$(printf '{"critic":"%s","adapter":"%s"}' "$critic" "$adapter")
-    curl -sf -X POST "http://localhost:$PORT/admin/critics/bindings" \
-      -H "Content-Type: application/json" \
-      -d "$payload" >/dev/null
-    echo "  $critic -> $adapter"
-  done
+  echo "Binding critics to adapters..."
+  post_json "/admin/critics/bindings" "{\"critic\":\"rights\",\"adapter\":\"ollama-rights\"}" >/dev/null
+  post_json "/admin/critics/bindings" "{\"critic\":\"fairness\",\"adapter\":\"ollama-fairness\"}" >/dev/null
+  post_json "/admin/critics/bindings" "{\"critic\":\"risk\",\"adapter\":\"ollama-risk\"}" >/dev/null
+  post_json "/admin/critics/bindings" "{\"critic\":\"truth\",\"adapter\":\"ollama-truth\"}" >/dev/null
+  post_json "/admin/critics/bindings" "{\"critic\":\"pragmatics\",\"adapter\":\"ollama-pragmatics\"}" >/dev/null
+  post_json "/admin/critics/bindings" "{\"critic\":\"autonomy\",\"adapter\":\"ollama-phi3\"}" >/dev/null
 }
 
-show_status() {
+print_status() {
+  echo ""
   echo "Router health:"
-  curl -s "http://localhost:$PORT/admin/router/health" || true
+  curl -fsS "$API_URL/admin/router/health" || true
+  echo ""
   echo ""
   echo "Critic bindings:"
-  curl -s "http://localhost:$PORT/admin/critics/bindings" || true
-  echo ""
+  curl -fsS "$API_URL/admin/critics/bindings" || true
 }
 
-start_api
-wait_for_api
-register_adapters
-bind_critics
-show_status
+main() {
+  ensure_uvicorn
 
-if [ "$API_STARTED" -eq 1 ]; then
-  echo ""
-  echo "Eleanor API is running in the background (logs: $API_LOG)."
-  echo "Press Ctrl+C to stop it or kill the process manually when done."
-fi
+  if api_running; then
+    echo "API already running at $API_URL — skipping start."
+  else
+    start_api
+  fi
+
+  wait_for_api
+  register_adapters
+  bind_critics
+  print_status
+
+  if [ "$STARTED_API" -eq 1 ]; then
+    echo ""
+    echo "API was started by this script (PID: $API_PID). Use 'kill $API_PID' to stop it."
+    echo "Logs: $LOG_FILE"
+  fi
+}
+
+main "$@"
