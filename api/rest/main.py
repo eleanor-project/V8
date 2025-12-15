@@ -218,9 +218,12 @@ def run_readiness_checks() -> Dict[str, str]:
 
     # Storage write checks for governance audit
     try:
+        # replay_store has per-instance log path; packet/review dirs are module-level constants
+        from api.replay_store import REVIEW_PACKET_DIR, REVIEW_RECORD_DIR
+
         _ensure_writable_path(replay_store.path.parent)
-        _ensure_writable_path(replay_store.REVIEW_PACKET_DIR)
-        _ensure_writable_path(replay_store.REVIEW_RECORD_DIR)
+        _ensure_writable_path(REVIEW_PACKET_DIR)
+        _ensure_writable_path(REVIEW_RECORD_DIR)
         results["storage"] = "ok"
     except Exception as exc:
         results["storage"] = f"error:{exc}"
