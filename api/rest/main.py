@@ -364,7 +364,9 @@ if os.path.isdir("ui"):
 # Register human review router
 try:
     from api.rest.review import router as review_router
+    from api.rest.governance import router as governance_router
     app.include_router(review_router)
+    app.include_router(governance_router)
     logger.info("Human review API endpoints registered")
 except Exception as e:
     logger.warning(f"Failed to register review router: {e}")
