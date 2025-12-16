@@ -8,9 +8,9 @@ import data.eleanor.safety
 import data.eleanor.reversibility
 import data.eleanor.pragmatics
 
-default allow = false
+default allow := false
 
-allow {
+allow if {
   dignity.allow
   autonomy.allow
   truth.allow

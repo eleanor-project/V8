@@ -68,10 +68,34 @@ def bind_critic_models(engine, bindings: Optional[Dict[str, str]] = None) -> Non
     Bind critics to specific router adapters so each critic can run on a
     dedicated model. Bindings can be provided explicitly or via the
     CRITIC_MODEL_BINDINGS env var (JSON or critic=adapter,crit...).
+
+    If no explicit bindings are provided, we fall back to a sensible default:
+    - CRITIC_DEFAULT_ADAPTER env var, if set
+    - OLLAMA_CRITIC_MODEL / OLLAMA_MODEL env var (auto-prefix with ollama-)
+    - first Ollama adapter discovered on the router (ollama-*), if present
     """
     mapping = bindings or _parse_critic_bindings(os.getenv("CRITIC_MODEL_BINDINGS"))
     if not mapping:
-        return
+        default_adapter = os.getenv("CRITIC_DEFAULT_ADAPTER")
+
+        if not default_adapter:
+            ollama_model = os.getenv("OLLAMA_CRITIC_MODEL") or os.getenv("OLLAMA_MODEL")
+            if ollama_model:
+                default_adapter = f"ollama-{ollama_model}" if ollama_model != "llama3" else "ollama"
+
+        if not default_adapter:
+            router = getattr(engine, "router", None)
+            adapters = getattr(router, "adapters", {}) if router else {}
+            for name in adapters.keys():
+                if name.startswith("ollama"):
+                    default_adapter = name
+                    break
+
+        if default_adapter:
+            critics = getattr(engine, "critics", {}) or {}
+            mapping = {critic: default_adapter for critic in critics.keys()}
+        else:
+            return
 
     router = getattr(engine, "router", None)
     adapters = getattr(router, "adapters", {}) if router else {}

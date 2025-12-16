@@ -253,6 +253,11 @@ def initialize_engine():
     try:
         constitution = get_constitutional_config()
         engine = build_engine(constitution)
+
+        # Allow explicitly disabling OPA via env for local/dev setups
+        if os.getenv("ELEANOR_DISABLE_OPA", "").lower() in ("1", "true", "yes"):
+            setattr(engine, "opa_callback", None)
+            logger.info("OPA disabled via ELEANOR_DISABLE_OPA")
         logger.info("ELEANOR V8 engine initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize engine: {e}")
@@ -499,7 +504,8 @@ async def health_check():
         checks["readiness"] = f"error:{exc}"
 
     # Determine overall status
-    if all(v == "ok" for v in checks.values()):
+    okish = {"ok", "not_configured", "disabled", "enabled"}
+    if all(v in okish for v in checks.values()):
         overall_status = "healthy"
     elif checks["engine"] == "ok" and checks["api"] == "ok":
         overall_status = "degraded"
