@@ -1,18 +1,18 @@
 package eleanor.escalation
-default escalate = false
+default escalate := false
 
-escalate {
+escalate if {
   input.uncertainty_score > input.thresholds.uncertainty_global
 }
 
-escalate {
+escalate if {
   input.critic_dissent > input.thresholds.dissent_global
 }
 
-escalate {
+escalate if {
   input.dignity_violation_detected == true
 }
 
-escalate {
+escalate if {
   not input.precedent_conflict_resolved
 }
