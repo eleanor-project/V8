@@ -465,6 +465,7 @@ class EleanorEngineV8:
             model_output=model_response,
         )
         out = await agg_result if inspect.isawaitable(agg_result) else agg_result
+
         end = asyncio.get_event_loop().time()
         self.timings["aggregation_ms"] = (end - start) * 1000
         return out

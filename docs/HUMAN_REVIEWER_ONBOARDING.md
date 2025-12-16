@@ -22,6 +22,7 @@ Your role is to evaluate:
 2. Severity reflects impact magnitude, not probability
 3. Citations must do real work
 4. Uncertainty is a strength, not a flaw
+5. Critics may trigger human review unilaterally; your role is to acknowledge or determine, not to silence or rewrite dissent.
 
 ## Outcomes Explained
 - Affirmed: reasoning stands as-is

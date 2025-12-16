@@ -15,6 +15,12 @@ The governance layer exists to:
 
 This distinction is fundamental to Eleanor’s identity as a **constitutional deliberation engine**, not an alignment enforcer.
 
+## Critic Independence & Escalation (Summary)
+- Critics operate in **epistemic isolation** during primary evaluation; no cross-visibility, no consensus pressure.
+- **Dissent is preserved** verbatim; disagreement is treated as signal, not noise.
+- Critics can **unilaterally trigger human review** when charter clauses are met; this gates automation but never rewrites reasoning.
+- See `docs/CRITIC_INDEPENDENCE_AND_ESCALATION.md` for the full spec and current Autonomy escalation clauses/tiers.
+
 ---
 
 ## OPA Integration (Consultative Policy Assessment)
@@ -164,6 +170,5 @@ Behavioral restrictions
 Alignment-like control logic
 
 Eleanor governs interpretation, not users or systems.
-
 
 

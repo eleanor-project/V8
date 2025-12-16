@@ -19,6 +19,9 @@ This is the heart of the V8 constitutional engine.
 from typing import Dict, Any, List
 import statistics
 
+from engine.schemas.escalation import CriticEvaluation
+from engine.aggregator.escalation import resolve_escalation
+
 
 # ============================================================
 # CONSTITUTIONAL PRIORITY ORDER (Lexicographic)
@@ -84,7 +87,27 @@ class AggregatorV8:
         # 6. Determine outcome
         decision = self._decision_logic(score, lex, uncertainty)
 
-        # 7. Build auditor package
+        # 7. Escalation resolution (doctrine-compliant)
+        critic_evals: List[CriticEvaluation] = []
+        for name, data in adjusted.items():
+            critic_evals.append(
+                CriticEvaluation(
+                    critic_id=name,
+                    charter_version=str(data.get("charter_version", "")),
+                    concerns=[],
+                    escalation=data.get("escalation"),
+                    severity_score=float(data.get("severity", 0.0)),
+                    citations=data.get("precedent_refs", []) or [],
+                    uncertainty=data.get("uncertainty"),
+                )
+            )
+
+        escalation_result = resolve_escalation(
+            critic_evaluations=critic_evals,
+            synthesis=model_output,
+        )
+
+        # 8. Build auditor package
         return {
             "decision": decision,
             "score": score,
@@ -93,6 +116,10 @@ class AggregatorV8:
             "precedent": precedent,
             "uncertainty": uncertainty,
             "final_output": model_output,
+            "escalation_summary": escalation_result.escalation_summary.model_dump(),
+            "execution_gate": escalation_result.execution_gate.model_dump(),
+            "dissent_present": escalation_result.dissent_present,
+            "audit_hash": escalation_result.audit_hash,
         }
 
     # ----------------------------------------------------------
