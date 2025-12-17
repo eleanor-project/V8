@@ -172,7 +172,7 @@ def check_content_length(request: Request, max_bytes: int = None):
                     detail=f"Request too large (>{max_allowed} bytes)",
                 )
         except ValueError:
-            pass
+            logger.warning("Invalid content-length header; continuing without size enforcement")
 
 
 def get_constitutional_config() -> dict:

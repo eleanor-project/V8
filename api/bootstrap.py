@@ -53,7 +53,7 @@ def _parse_critic_bindings(raw: Optional[str]) -> Dict[str, str]:
         if isinstance(data, dict):
             return {str(k): str(v) for k, v in data.items()}
     except Exception:
-        pass
+        logger.warning("Failed to parse CRITIC_MODEL_BINDINGS as JSON; falling back to comma parsing")
 
     bindings: Dict[str, str] = {}
     for chunk in raw.split(","):
@@ -124,7 +124,7 @@ def build_engine(constitution: Optional[Dict[str, Any]] = None) -> Any:
                 import numpy as np  # type: ignore
                 np.random.seed(seed_val)
             except Exception:
-                pass
+                logger.debug("NumPy not available for deterministic seeding; continuing without it")
         except ValueError:
             logger.warning("ELEANOR_SEED is not an int; skipping deterministic seeding")
 

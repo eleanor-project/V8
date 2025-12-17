@@ -20,7 +20,13 @@ def execute_decision(decision: ExecutableDecision) -> None:
 
 def _perform_execution(decision: ExecutableDecision) -> None:
     """
-    Placeholder for the real side-effecting execution.
+    Side-effecting execution hook.
+
+    Replace or extend this with the actual invocation of downstream systems
+    (e.g., workflow engines, actuators, or API calls). The default behavior
+    intentionally raises to prevent silent no-ops.
     """
-    # Side effects (API calls, state mutation, etc.) would live here.
-    pass
+    raise RuntimeError(
+        "Execution backend is not configured. Implement _perform_execution to call your "
+        "side-effecting systems."
+    )
