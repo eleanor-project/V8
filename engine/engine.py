@@ -17,6 +17,8 @@ from types import SimpleNamespace
 
 from pydantic import BaseModel, Field
 
+logger = logging.getLogger(__name__)
+
 # Critics (V8 implementations)
 from engine.critics.rights import RightsCriticV8
 from engine.critics.risk import RiskCriticV8
@@ -69,8 +71,8 @@ def load_router_backend():
     try:
         from engine.router.router import RouterV8
         return RouterV8
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Primary router import failed: %s", exc)
 
     candidates = [
         "engine.router",
@@ -85,7 +87,8 @@ def load_router_backend():
                 lowered = name.lower()
                 if inspect.isclass(obj) and (lowered.endswith("router") or lowered.endswith("routerv8")):
                     return obj
-        except Exception:
+        except Exception as exc:
+            logger.debug("Router candidate import failed for %s: %s", mod, exc)
             continue
     raise ImportError("No valid router backend found.")
 
@@ -367,7 +370,7 @@ class EleanorEngineV8:
                     trace_id=trace_id,
                 )
             except Exception:
-                pass
+                logger.debug("Evidence recorder failed for critic %s; continuing", name, exc_info=True)
 
             return evaluation_result
 

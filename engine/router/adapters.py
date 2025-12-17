@@ -23,7 +23,10 @@ You may add new adapters without modifying the engine.
 
 import os
 import json
+import logging
 import requests
+
+logger = logging.getLogger(__name__)
 
 # Optional imports (only load if available)
 try:
@@ -244,18 +247,18 @@ def bootstrap_default_registry(
     if OpenAI is not None and openai_key:
         try:
             reg.register("gpt", GPTAdapter(api_key=openai_key))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to register GPT adapter: %s", exc)
     if anthropic is not None and anthropic_key:
         try:
             reg.register("claude", ClaudeAdapter(api_key=anthropic_key))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to register Claude adapter: %s", exc)
     if xai_key:
         try:
             reg.register("grok", GrokAdapter(api_key=xai_key))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to register Grok adapter: %s", exc)
 
     # Local Models (guarded)
     _register_hf_models()
