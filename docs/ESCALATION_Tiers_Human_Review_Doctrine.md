@@ -1,4 +1,6 @@
-# ELEANOR V8 — Escalation Tiers & Human Review Doctrine
+# ELEANOR V8 — Escalation Tiers & Human Review Doctrine (v8.1)
+
+Version v8.1 is enforced in code via `engine/schemas/escalation.py`, `engine/aggregator/escalation.py`, `engine/execution/human_review.py`, and CI at `.github/workflows/constitutional-ci.yml`.
 
 ## 1. Purpose
 Defines escalation tiers, triggers, and human review requirements so automation never exceeds legitimate authority, minority concerns cannot be silently suppressed, and humans explicitly own risk when proceeding past constitutional warnings. Escalation is governance, not error.
@@ -64,7 +66,12 @@ Different moral failure modes may share a tier; tiers reflect legitimacy and res
 ## 7. Audit & Traceability Guarantees
 For every escalation the system preserves: triggering critic + clause, tier, aggregator synthesis, human action, timestamps, attribution. Records are immutable and auditable.
 
-## 8. Closing Principle
+## 8. Enforcement Linkage
+- Schemas and gates are implemented in `engine/schemas/escalation.py`, `engine/aggregator/escalation.py`, and `engine/execution/human_review.py`.
+- CI (`.github/workflows/constitutional-ci.yml`) blocks merges if escalation, human review, or execution guardrails are altered.
+- Policy intent is captured in `POLICY_CONSTITUTIONAL_GOVERNANCE.md` so governance failures are visible to reviewers.
+
+## 9. Closing Principle
 > Automation may recommend. Critics may warn. Only humans may legitimize irreversible risk.
 
 See also: `docs/CRITIC_INDEPENDENCE_AND_ESCALATION.md` for independence/dissent rules and autonomy clause rationale.***

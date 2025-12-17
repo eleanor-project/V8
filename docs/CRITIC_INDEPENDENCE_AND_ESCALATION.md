@@ -28,5 +28,10 @@ This document codifies the rules we agreed in conversation: critics stay epistem
 
 Hard rule: a critic’s escalation cannot be vetoed or averaged out. It blocks automatic finality until the required human action occurs.
 
-## Next Critics (roadmap)
-Apply the same structure to Dignity, Privacy/Identity, Fairness, Due Process, Precedent, and Uncertainty critics: rights-anchored clause → tier → rationale. This keeps escalation principled and auditable.
+## Cross-Critic Clause Matrix
+All critics now carry rights-anchored clauses and tiers (see `governance/critic_escalation.py` and `docs/ESCALATION_Tiers_Human_Review_Doctrine.md`). Clauses are executable contracts: when a critic triggers one, it emits an `EscalationSignal` that gates automation until the mandated human action occurs.
+
+## Enforcement Notes
+- Escalation signals are encoded in `engine/schemas/escalation.py` and surfaced via `engine/aggregator/escalation.py`.
+- Human review enforcement lives in `engine/execution/human_review.py` and is guarded by CI in `.github/workflows/constitutional-ci.yml`.
+- Policy intent is mirrored in `POLICY_CONSTITUTIONAL_GOVERNANCE.md` so governance drift is caught in review.

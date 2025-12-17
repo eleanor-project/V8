@@ -12,6 +12,7 @@ api/middleware/__init__.py
 api/middleware/auth.py
 api/middleware/rate_limit.py
 api/rest/__init__.py
+api/rest/governance.py
 api/rest/main.py
 api/rest/review.py
 api/websocket/__init__.py
@@ -31,6 +32,7 @@ engine/logging_config.py
 engine/version.py
 engine/aggregator/__init__.py
 engine/aggregator/aggregator.py
+engine/aggregator/escalation.py
 engine/core/__init__.py
 engine/core/engine.py
 engine/critics/__init__.py
@@ -74,6 +76,9 @@ engine/detectors/psychological_harm/detector.py
 engine/detectors/resource_burden/detector.py
 engine/detectors/structural_disadvantage/detector.py
 engine/detectors/time_constraints/detector.py
+engine/execution/executor.py
+engine/execution/human_review.py
+engine/execution/runner.py
 engine/governance/opa_client.py
 engine/models/__init__.py
 engine/models/registry.py
@@ -94,11 +99,14 @@ engine/recorder/package.py
 engine/router/__init__.py
 engine/router/adapters.py
 engine/router/router.py
+engine/schemas/__init__.py
+engine/schemas/escalation.py
 engine/uncertainty/__init__.py
 engine/uncertainty/uncertainty.py
 engine/utils/__init__.py
 engine/utils/circuit_breaker.py
 engine/utils/retry.py
+governance/critic_escalation.py
 governance/review_packets.py
 governance/review_triggers.py
 governance/stewardship.py
@@ -110,6 +118,7 @@ governance/human_review/prompts.py
 governance/human_review/schemas.py
 governance/human_review/service.py
 tests/conftest.py
+tests/test_aggregator_escalation.py
 tests/test_api_smoke.py
 tests/test_constitutional_invariants.py
 tests/test_critics_v8.py
@@ -125,6 +134,8 @@ tests/test_engine_precedent.py
 tests/test_engine_routing.py
 tests/test_engine_streaming.py
 tests/test_engine_uncertainty.py
+tests/test_execution_guard.py
 tests/test_governance_review.py
+tests/test_human_review_enforcement.py
 tests/test_infrastructure_v8.py
 tests/test_model_configuration.py
