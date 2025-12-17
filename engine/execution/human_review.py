@@ -66,6 +66,12 @@ def enforce_human_review(
             "Execution blocked: required human review not provided.",
         )
 
+    if gate.required_action is None or gate.escalation_tier is None:
+        return _blocked_decision(
+            aggregation_result,
+            "Execution blocked: escalation gate is missing required action metadata.",
+        )
+
     # Validate human action
     _validate_human_action(
         required_action=gate.required_action,

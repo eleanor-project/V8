@@ -1,0 +1,74 @@
+name: Constitutional Governance
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  governance:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]"
+
+      - name: Run tests
+        run: python -m pytest
+
+      - name: Governance mypy gate (schemas and escalation path)
+        run: >
+          python -m mypy
+          engine/schemas/escalation.py
+          engine/aggregator/escalation.py
+          engine/execution/human_review.py
+          engine/execution/executor.py
+          governance/critic_escalation.py
+
+      - name: Policy check (executor guardrails)
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          import sys
+
+          executor_path = Path("engine/execution/executor.py")
+          source = executor_path.read_text()
+          tree = ast.parse(source)
+
+          def fail(msg: str) -> None:
+              sys.stderr.write(msg + "\n")
+              sys.exit(1)
+
+          has_ensure_call = False
+          for node in tree.body:
+              if isinstance(node, ast.FunctionDef) and node.name == "execute_decision":
+                  if not node.args.args or node.args.args[0].annotation is None:
+                      fail("execute_decision must require ExecutableDecision.")
+                  ann = node.args.args[0].annotation
+                  if not (isinstance(ann, ast.Name) and ann.id == "ExecutableDecision"):
+                      fail("execute_decision must accept ExecutableDecision.")
+                  for stmt in node.body:
+                      if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+                          func = stmt.value.func
+                          if isinstance(func, ast.Name) and func.id == "ensure_executable":
+                              has_ensure_call = True
+                              break
+                  if not has_ensure_call:
+                      fail("execute_decision must call ensure_executable before side effects.")
+                  break
+          else:
+              fail("execute_decision not found in executor.")
+          PY
