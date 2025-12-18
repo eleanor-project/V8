@@ -1,0 +1,17 @@
+# Default ELEANOR V8 prototype configuration
+# Used by start scripts; API primarily reads environment + governance/constitutional.yaml
+
+environment: local
+governance:
+  constitutional_config_path: governance/constitutional.yaml
+models:
+  config_path: config/models.yaml
+storage:
+  evidence_path: evidence.jsonl
+  replay_log_path: replay_log.jsonl
+precedent:
+  backend: weaviate
+  enable_writeback: true
+logging:
+  level: INFO
+  format: json
