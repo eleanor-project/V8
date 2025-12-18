@@ -10,7 +10,7 @@ embeddings, governance, and evidence sinks.
 import os
 import json
 import inspect
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from engine.engine import create_engine, EngineConfig
 from engine.router.router import RouterV8
@@ -95,15 +95,21 @@ def _build_router(
             "max_retries": 2,
             "circuit_breaker": {"enabled": False},
             "adapter_costs": _parse_mapping("ROUTER_ADAPTER_COSTS"),
-            "max_cost": float(os.getenv("ROUTER_MAX_COST")) if os.getenv("ROUTER_MAX_COST") else None,
+            "max_cost": _parse_float_env("ROUTER_MAX_COST"),
             "adapter_latency": _parse_mapping("ROUTER_ADAPTER_LATENCIES"),
-            "latency_budget_ms": float(os.getenv("ROUTER_LATENCY_BUDGET_MS")) if os.getenv("ROUTER_LATENCY_BUDGET_MS") else None,
+            "latency_budget_ms": _parse_float_env("ROUTER_LATENCY_BUDGET_MS"),
         }
 
     return lambda: RouterV8(adapters=adapters, routing_policy=router_policy)
 
 
-def _build_precedent_layer(precedent_store: Optional[Any], embed_backend: str, openai_key: str, anthropic_key: str, xai_key: str):
+def _build_precedent_layer(
+    precedent_store: Optional[Any],
+    embed_backend: str,
+    openai_key: Optional[str],
+    anthropic_key: Optional[str],
+    xai_key: Optional[str],
+):
     retriever = None
     store = precedent_store
 
@@ -125,7 +131,7 @@ def _build_precedent_layer(precedent_store: Optional[Any], embed_backend: str, o
         if backend == "weaviate":
             try:
                 import weaviate
-                client = weaviate.Client(url=os.getenv("WEAVIATE_URL", "http://localhost:8080"))
+                client = weaviate.Client(url=os.getenv("WEAVIATE_URL", "http://localhost:8080"))  # type: ignore[call-arg]
                 store = WeaviatePrecedentStore(
                     client=client,
                     class_name=os.getenv("WEAVIATE_CLASS_NAME", "Precedent"),
@@ -155,7 +161,7 @@ def _build_precedent_layer(precedent_store: Optional[Any], embed_backend: str, o
                     return self.items[:top_k]
             store = MemoryStore(embed_fn=embed_fn)
 
-    if store and PrecedentRetrievalV8:
+    if store and PrecedentRetrievalV8 is not None:
         retriever = PrecedentRetrievalV8(store_client=store)
 
     return retriever
@@ -240,11 +246,11 @@ def build_eleanor_engine_v8(
         "privacy": HeuristicDetector("privacy", [r"reveal personal", r"publish.*private", r"share.*medical"]),
     }
 
-    detector_engine = DetectorEngineV8(detectors=detectors)
+    detector_engine = DetectorEngineV8(detectors=cast(Dict[str, Any], detectors))
 
-    uncertainty = UncertaintyEngineV8() if UncertaintyEngineV8 else None
+    uncertainty = UncertaintyEngineV8() if UncertaintyEngineV8 is not None else None
     aggregator = AggregatorV8()
-    precedent_engine = PrecedentAlignmentEngineV8() if PrecedentAlignmentEngineV8 else None
+    precedent_engine = PrecedentAlignmentEngineV8() if PrecedentAlignmentEngineV8 is not None else None
 
     engine_instance = create_engine(
         config=EngineConfig(),
@@ -272,3 +278,11 @@ def build_eleanor_engine_v8(
 
 
 __all__ = ["build_eleanor_engine_v8"]
+def _parse_float_env(var_name: str) -> Optional[float]:
+    val = os.getenv(var_name)
+    if not val:
+        return None
+    try:
+        return float(val)
+    except ValueError:
+        return None

@@ -33,25 +33,37 @@ from engine.detectors.engine import DetectorEngineV8
 # Evidence Recorder
 from engine.recorder.evidence_recorder import EvidenceRecorder
 
-# Precedent Engine
-try:
-    from engine.precedent.alignment import PrecedentAlignmentEngineV8
-    from engine.precedent.retrieval import PrecedentRetrievalV8
-except Exception:
-    PrecedentAlignmentEngineV8 = None  # type: ignore[assignment]
-    PrecedentRetrievalV8 = None  # type: ignore[assignment]
+# Precedent Engine (optional imports)
+PrecedentAlignmentEngineCls: Optional[type] = None
+PrecedentRetrievalCls: Optional[type] = None
+UncertaintyEngineCls: Optional[type] = None
+AggregatorCls: Optional[type] = None
 
-# Uncertainty Engine
 try:
-    from engine.uncertainty.uncertainty import UncertaintyEngineV8
+    from engine.precedent.alignment import PrecedentAlignmentEngineV8 as _PrecedentAlignmentEngineV8
+    PrecedentAlignmentEngineCls = _PrecedentAlignmentEngineV8
 except Exception:
-    UncertaintyEngineV8 = None  # type: ignore[assignment]
+    PrecedentAlignmentEngineCls = None
 
-# Aggregator
 try:
-    from engine.aggregator.aggregator import AggregatorV8
+    from engine.precedent.retrieval import PrecedentRetrievalV8 as _PrecedentRetrievalV8
+    PrecedentRetrievalCls = _PrecedentRetrievalV8
 except Exception:
-    AggregatorV8 = None  # type: ignore[assignment]
+    PrecedentRetrievalCls = None
+
+# Uncertainty Engine (optional)
+try:
+    from engine.uncertainty.uncertainty import UncertaintyEngineV8 as _UncertaintyEngineV8
+    UncertaintyEngineCls = _UncertaintyEngineV8
+except Exception:
+    UncertaintyEngineCls = None
+
+# Aggregator (optional)
+try:
+    from engine.aggregator.aggregator import AggregatorV8 as _AggregatorV8
+    AggregatorCls = _AggregatorV8
+except Exception:
+    AggregatorCls = None
 
 # Governance
 from governance.review_triggers import ReviewTriggerEvaluator, Case
@@ -206,18 +218,18 @@ class EleanorEngineV8:
         # Precedent
         if precedent_engine:
             self.precedent_engine = precedent_engine
-        elif PrecedentAlignmentEngineV8 is not None:
-            self.precedent_engine = PrecedentAlignmentEngineV8()
+        elif PrecedentAlignmentEngineCls is not None:
+            self.precedent_engine = PrecedentAlignmentEngineCls()
         else:
             self.precedent_engine = None
 
         # Precedent Retriever (optional)
         self.precedent_retriever = precedent_retriever
-        if self.precedent_retriever is None and PrecedentRetrievalV8 is not None:
+        if self.precedent_retriever is None and PrecedentRetrievalCls is not None:
             class _NullStore:
                 def search(self, q: str, top_k: int = 5):
                     return []
-            self.precedent_retriever = PrecedentRetrievalV8(store_client=_NullStore())
+            self.precedent_retriever = PrecedentRetrievalCls(store_client=_NullStore())
             logging.getLogger(__name__).warning(
                 "[ELEANOR ENGINE] Using Null precedent retriever (no store configured). "
                 "Configure PRECEDENT_BACKEND for production use."
@@ -226,16 +238,16 @@ class EleanorEngineV8:
         # Uncertainty
         if uncertainty_engine:
             self.uncertainty_engine = uncertainty_engine
-        elif UncertaintyEngineV8 is not None:
-            self.uncertainty_engine = UncertaintyEngineV8()
+        elif UncertaintyEngineCls is not None:
+            self.uncertainty_engine = UncertaintyEngineCls()
         else:
             self.uncertainty_engine = None
 
         # Aggregator
         if aggregator:
             self.aggregator = aggregator
-        elif AggregatorV8 is not None:
-            self.aggregator = AggregatorV8()
+        elif AggregatorCls is not None:
+            self.aggregator = AggregatorCls()
         else:
             self.aggregator = None
 
@@ -299,16 +311,17 @@ class EleanorEngineV8:
 
             # Choose model for this critic: explicit binding overrides router output
             bound_adapter = self.critic_models.get(name)
+            model_adapter: Any = None
 
             if bound_adapter is None:
-                class _StaticModel:
+                class _StaticModelResponse:
                     def __init__(self, response: str):
                         self.response = response
 
                     async def generate(self, prompt: str, context: Optional[Dict[str, Any]] = None):
                         return self.response
 
-                model_adapter = _StaticModel(model_response)
+                model_adapter = _StaticModelResponse(model_response)
             else:
                 if hasattr(bound_adapter, "generate"):
                     model_adapter = bound_adapter
@@ -321,12 +334,12 @@ class EleanorEngineV8:
                             return await res if inspect.isawaitable(res) else res
                     model_adapter = _BoundCallable(bound_adapter)
                 else:
-                    class _StaticModel:
+                    class _StaticModelFallback:
                         def __init__(self, response: str):
                             self.response = response
                         async def generate(self, prompt: str, context: Optional[Dict[str, Any]] = None):
                             return self.response
-                    model_adapter = _StaticModel(model_response)
+                    model_adapter = _StaticModelFallback(model_response)
 
             try:
                 evaluation = critic.evaluate(model_adapter, input_text=input_text, context=context)
@@ -397,13 +410,18 @@ class EleanorEngineV8:
     # PRECEDENT + UNCERTAINTY + AGGREGATION
     # -----------------------------------------------------
 
-    async def _run_precedent_alignment(self, critic_results, trace_id: str, text: str = ""):
+    async def _run_precedent_alignment(
+        self,
+        critic_results: Dict[str, Any],
+        trace_id: str,
+        text: str = "",
+    ):
         if not self.precedent_engine:
             return None
         start = asyncio.get_event_loop().time()
-        cases = []
-        query_embedding = []
-        retrieval_meta = None
+        cases: List[Dict[str, Any]] = []
+        query_embedding: List[float] = []
+        retrieval_meta: Optional[Dict[str, Any]] = None
 
         if self.precedent_retriever:
             try:
@@ -477,11 +495,11 @@ class EleanorEngineV8:
     # GOVERNANCE HOOKS
     # -----------------------------------------------------
     def _calculate_critic_disagreement(self, critic_outputs: Dict[str, Any]) -> float:
-        severities = []
+        severities: List[float] = []
         for critic_data in critic_outputs.values():
             if not isinstance(critic_data, dict):
                 continue
-            val = critic_data.get("severity")
+            val: Any = critic_data.get("severity")
             if val is None:
                 val = critic_data.get("score")
             try:
@@ -528,16 +546,21 @@ class EleanorEngineV8:
         critic_results: Dict[str, Any],
         precedent_data: Optional[Dict[str, Any]],
         uncertainty_data: Optional[Dict[str, Any]],
-    ) -> SimpleNamespace:
+    ) -> Case:
         aggregated = aggregated or {}
         critic_results = critic_results or {}
 
-        severity = (aggregated.get("score") or {}).get("average_severity", 0.0)
-        critic_severities = []
+        severity_raw: Any = (aggregated.get("score") or {}).get("average_severity", 0.0)
+        try:
+            severity = float(severity_raw)
+        except (TypeError, ValueError):
+            severity = 0.0
+
+        critic_severities: List[float] = []
         for critic_data in critic_results.values():
             if not isinstance(critic_data, dict):
                 continue
-            val = critic_data.get("severity")
+            val: Any = critic_data.get("severity")
             if val is None:
                 val = critic_data.get("score")
             try:
@@ -572,7 +595,7 @@ class EleanorEngineV8:
 
         return case_obj
 
-    def _run_governance_review_gate(self, case: SimpleNamespace):
+    def _run_governance_review_gate(self, case: Case):
         # Non-blocking governance trigger: failures never stop the pipeline
         try:
             review_decision = self.review_trigger_evaluator.evaluate(case)
@@ -581,19 +604,31 @@ class EleanorEngineV8:
                 review_packet = build_review_packet(case, review_decision)
                 store_review_packet(review_packet)
 
-                case.governance_flags = {
-                    "human_review_required": True,
-                    "review_triggers": review_decision.get("triggers", []),
-                }
+                setattr(
+                    case,
+                    "governance_flags",
+                    {
+                        "human_review_required": True,
+                        "review_triggers": review_decision.get("triggers", []),
+                    },
+                )
             else:
-                case.governance_flags = {
-                    "human_review_required": False
-                }
+                setattr(
+                    case,
+                    "governance_flags",
+                    {
+                        "human_review_required": False,
+                    },
+                )
         except Exception as review_exc:
-            case.governance_flags = {
-                "human_review_required": False,
-                "error": str(review_exc),
-            }
+            setattr(
+                case,
+                "governance_flags",
+                {
+                    "human_review_required": False,
+                    "error": str(review_exc),
+                },
+            )
             print(f"[ELEANOR ENGINE] Governance review gate failed (non-fatal): {review_exc}")
     # -----------------------------------------------------
     # FULL STRUCTURED OUTPUT MODE — run()
