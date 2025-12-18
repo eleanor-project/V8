@@ -14,7 +14,7 @@ import os
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, cast
 from uuid import uuid4
 
 
@@ -25,7 +25,7 @@ os.makedirs(REVIEW_PACKET_DIR, exist_ok=True)
 os.makedirs(REVIEW_RECORD_DIR, exist_ok=True)
 
 
-def _atomic_write_json(path: str, record: Dict[str, Any]):
+def _atomic_write_json(path: str, record: Dict[str, Any]) -> None:
     """Write JSON to path atomically to avoid partial writes."""
     tmp_path = f"{path}.tmp"
     with open(tmp_path, "w") as f:
@@ -42,7 +42,7 @@ class ReplayStore:
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._load_existing()
 
-    def _load_existing(self):
+    def _load_existing(self) -> None:
         if not self.path.exists():
             return
         try:
@@ -86,7 +86,7 @@ class ReplayStore:
                 with self.path.open("r", encoding="utf-8") as f:
                     for line in f:
                         try:
-                            item = json.loads(line)
+                            item = cast(Dict[str, Any], json.loads(line))
                         except json.JSONDecodeError:
                             continue
                         if item.get("trace_id") == trace_id:
@@ -97,7 +97,7 @@ class ReplayStore:
         return None
 
 
-def store_review_packet(packet):
+def store_review_packet(packet: Any) -> Optional[str]:
     """
     Stores immutable review packets for human adjudication.
     These are NEVER modified once written.
@@ -116,7 +116,7 @@ def store_review_packet(packet):
     return path
 
 
-def store_human_review(review_record):
+def store_human_review(review_record: Any) -> Optional[str]:
     """
     Stores completed human reviews.
     These are append-only governance artifacts.
@@ -134,12 +134,12 @@ def store_human_review(review_record):
     return path
 
 
-def load_review_packet(case_id: str):
+def load_review_packet(case_id: str) -> Optional[Dict[str, Any]]:
     if not os.path.exists(REVIEW_PACKET_DIR):
         return None
 
-    latest = None
-    latest_ts = None
+    latest: Optional[Dict[str, Any]] = None
+    latest_ts: Optional[float] = None
 
     for fname in os.listdir(REVIEW_PACKET_DIR):
         if not fname.endswith(".json"):
@@ -168,14 +168,14 @@ def load_review_packet(case_id: str):
     return latest
 
 
-def list_review_packets(case_id: str):
+def list_review_packets(case_id: str) -> List[Dict[str, Any]]:
     """
     Return all review packets for a given case_id (most recent first).
     """
     if not os.path.exists(REVIEW_PACKET_DIR):
         return []
 
-    packets = []
+    packets: List[Dict[str, Any]] = []
     for fname in os.listdir(REVIEW_PACKET_DIR):
         if not fname.endswith(".json"):
             continue
@@ -194,8 +194,8 @@ def list_review_packets(case_id: str):
     return packets
 
 
-def load_human_reviews(case_id: str):
-    reviews = []
+def load_human_reviews(case_id: str) -> List[Dict[str, Any]]:
+    reviews: List[Dict[str, Any]] = []
 
     if not os.path.exists(REVIEW_RECORD_DIR):
         return reviews

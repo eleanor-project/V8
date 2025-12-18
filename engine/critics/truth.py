@@ -19,7 +19,7 @@ Constitutional Mapping:
 """
 
 import re
-from typing import Dict, Any, List, Tuple, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 from dataclasses import dataclass, field
 from collections import defaultdict
 
@@ -348,10 +348,16 @@ class TruthCriticV8(BaseCriticV8):
             justification=rationale,
         )
 
-    def build_evidence(self, *, severity: float = None, violations: List[str] = None,
-                       justification: str = None, **kwargs) -> Dict[str, Any]:
+    def build_evidence(
+        self,
+        *,
+        severity: Optional[float] = None,
+        violations: Optional[List[str]] = None,
+        justification: Optional[str] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
         """Extended build_evidence with additional fields for aggregator."""
-        base = super().build_evidence(**kwargs)
+        base: Dict[str, Any] = cast(Dict[str, Any], super().build_evidence(**kwargs))
 
         if severity is not None:
             base["severity"] = severity
@@ -404,7 +410,7 @@ class TruthCriticV8(BaseCriticV8):
     def _detect_domain(self, text: str) -> Dict[str, Any]:
         """Detect which truth-sensitive domains the text relates to."""
         text_lower = text.lower()
-        detected_domains = {}
+        detected_domains: Dict[str, Dict[str, Any]] = {}
 
         for domain, indicators in TRUTH_SENSITIVE_DOMAINS.items():
             matches = [ind for ind in indicators if ind.lower() in text_lower]
@@ -414,11 +420,15 @@ class TruthCriticV8(BaseCriticV8):
                     "count": len(matches)
                 }
 
+        primary_domain = (
+            max(detected_domains.items(), key=lambda item: item[1]["count"])[0]
+            if detected_domains
+            else None
+        )
         return {
             "domains": detected_domains,
             "is_sensitive": len(detected_domains) > 0,
-            "primary_domain": max(detected_domains.keys(),
-                                   key=lambda d: detected_domains[d]["count"]) if detected_domains else None
+            "primary_domain": primary_domain,
         }
 
     def _analyze_hedging(self, text: str) -> Dict[str, Any]:
@@ -521,7 +531,7 @@ class TruthCriticV8(BaseCriticV8):
 
     def _compute_dimension_scores(self, violations: List[Dict[str, Any]]) -> Dict[str, float]:
         """Compute scores for each truth dimension."""
-        dimensions = defaultdict(float)
+        dimensions: Dict[str, float] = defaultdict(float)
 
         for v in violations:
             dim = v.get("truth_dimension", "unknown")

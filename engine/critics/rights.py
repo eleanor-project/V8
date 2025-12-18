@@ -17,7 +17,7 @@ Constitutional Mapping:
 """
 
 import re
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple, cast
 from dataclasses import dataclass
 
 from .base import BaseCriticV8
@@ -291,10 +291,16 @@ class RightsCriticV8(BaseCriticV8):
             justification=rationale,
         )
 
-    def build_evidence(self, *, severity: float = None, violations: List[str] = None,
-                       justification: str = None, **kwargs) -> Dict[str, Any]:
+    def build_evidence(
+        self,
+        *,
+        severity: Optional[float] = None,
+        violations: Optional[List[str]] = None,
+        justification: Optional[str] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
         """Extended build_evidence with additional fields for aggregator."""
-        base = super().build_evidence(**kwargs)
+        base: Dict[str, Any] = cast(Dict[str, Any], super().build_evidence(**kwargs))
 
         # Add fields expected by aggregator
         if severity is not None:
@@ -352,7 +358,7 @@ class RightsCriticV8(BaseCriticV8):
         Analyze text for mentions of protected characteristics.
         """
         text_lower = text.lower()
-        found_characteristics = {}
+        found_characteristics: Dict[str, List[str]] = {}
 
         for category, terms in PROTECTED_CHARACTERISTICS.items():
             for term in terms:
