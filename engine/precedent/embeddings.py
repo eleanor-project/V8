@@ -17,8 +17,8 @@ Backends:
 """
 
 import json
+import os
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Sequence, cast
-
 import requests
 
 
@@ -91,7 +91,6 @@ class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
             api_key: Voyage AI API key (or set VOYAGE_API_KEY env var)
             fallback_to_local: If True, use local embeddings when Voyage unavailable
         """
-        import os
         self.model = model
         self.api_key = api_key or os.getenv("VOYAGE_API_KEY")
         self.fallback_to_local = fallback_to_local
@@ -110,15 +109,13 @@ class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
 
     def _init_local_fallback(self):
         """Initialize local sentence-transformer as fallback."""
-        try:
-            from sentence_transformers import SentenceTransformer
-            # Use a high-quality model that's compatible with most use cases
-            self._local_model = SentenceTransformer("all-mpnet-base-v2")
-        except ImportError:
+        if SentenceTransformer is None:
             raise ImportError(
                 "Neither Voyage AI SDK nor sentence-transformers installed. "
                 "Install one of: pip install voyageai OR pip install sentence-transformers"
             )
+        # Use a high-quality model that's compatible with most use cases
+        self._local_model = SentenceTransformer("all-mpnet-base-v2")
 
     def embed(self, text: str) -> List[float]:
         """

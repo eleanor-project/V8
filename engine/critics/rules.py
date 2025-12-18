@@ -28,10 +28,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
-class EscalationTier(Enum):
-    """Escalation tiers from Handbook Section 3."""
-    TIER_2 = "tier_2"  # Mandatory Human Acknowledgment
-    TIER_3 = "tier_3"  # Mandatory Human Determination
+# Reuse canonical escalation tier from runtime schemas to avoid divergence.
+from engine.schemas.escalation import EscalationTier as EscalationTier  # noqa: F401
 
 
 class HumanAction(Enum):

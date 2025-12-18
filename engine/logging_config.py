@@ -1,20 +1,17 @@
-"""
-ELEANOR V8 — Structured Logging Configuration
-----------------------------------------------
-
-Provides structured logging using structlog for consistent,
-machine-readable log output.
-
-Configuration via environment variables:
-- LOG_LEVEL: Logging level (default: INFO)
-- LOG_FORMAT: Output format - json or console (default: json in production)
-- ELEANOR_ENV: Environment - development or production
-"""
-
 import os
 import sys
 import logging
-from typing import Optional
+from typing import (
+    Any,
+    Callable,
+    Iterable,
+    List,
+    Mapping,
+    MutableMapping,
+    Optional,
+    TYPE_CHECKING,
+    cast,
+)
 from datetime import datetime
 
 # Graceful import of structlog
@@ -23,7 +20,13 @@ try:
     STRUCTLOG_AVAILABLE = True
 except ImportError:
     STRUCTLOG_AVAILABLE = False
-    structlog = None
+    structlog = None  # type: ignore[assignment]
+
+if TYPE_CHECKING:  # pragma: no cover
+    from structlog.stdlib import BoundLogger  # type: ignore[misc]
+
+
+Processor = Callable[[Any, str, MutableMapping[str, Any]], Any]
 
 
 def get_log_level() -> int:
@@ -63,7 +66,7 @@ def configure_logging() -> None:
         return
 
     # Common processors
-    shared_processors = [
+    shared_processors: List[Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
@@ -75,14 +78,16 @@ def configure_logging() -> None:
 
     if log_format == "json":
         # JSON output for production
-        processors = shared_processors + [
+        processors: List[Processor] = [
+            *shared_processors,
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer()
         ]
     else:
         # Console output for development
-        processors = shared_processors + [
-            structlog.dev.ConsoleRenderer(colors=True)
+        processors = [
+            *shared_processors,
+            structlog.dev.ConsoleRenderer(colors=True),
         ]
 
     structlog.configure(
@@ -94,7 +99,7 @@ def configure_logging() -> None:
     )
 
 
-def get_logger(name: str = None) -> logging.Logger:
+def get_logger(name: Optional[str] = None) -> "BoundLogger | logging.Logger":
     """
     Get a logger instance.
 
@@ -102,7 +107,7 @@ def get_logger(name: str = None) -> logging.Logger:
     Otherwise returns a standard logging logger.
     """
     if STRUCTLOG_AVAILABLE:
-        return structlog.get_logger(name)
+        return cast("BoundLogger | logging.Logger", structlog.get_logger(name))
     return logging.getLogger(name)
 
 
@@ -133,13 +138,13 @@ class LogContext:
 
 
 def log_request(
-    logger,
+    logger: logging.Logger,
     method: str,
     path: str,
     status_code: int,
     duration_ms: float,
-    trace_id: str = None,
-    user_id: str = None,
+    trace_id: Optional[str] = None,
+    user_id: Optional[str] = None,
     **extra
 ) -> None:
     """
@@ -157,23 +162,25 @@ def log_request(
     """
     logger.info(
         "http_request",
-        method=method,
-        path=path,
-        status_code=status_code,
-        duration_ms=round(duration_ms, 2),
-        trace_id=trace_id,
-        user_id=user_id,
-        **extra
+        extra={
+            "method": method,
+            "path": path,
+            "status_code": status_code,
+            "duration_ms": round(duration_ms, 2),
+            "trace_id": trace_id,
+            "user_id": user_id,
+            **extra,
+        },
     )
 
 
 def log_deliberation(
-    logger,
+    logger: logging.Logger,
     trace_id: str,
     decision: str,
     model_used: str,
     duration_ms: float,
-    uncertainty: float = None,
+    uncertainty: Optional[float] = None,
     escalated: bool = False,
     **extra
 ) -> None:
@@ -192,24 +199,26 @@ def log_deliberation(
     """
     logger.info(
         "deliberation_complete",
-        trace_id=trace_id,
-        decision=decision,
-        model_used=model_used,
-        duration_ms=round(duration_ms, 2),
-        uncertainty=uncertainty,
-        escalated=escalated,
-        **extra
+        extra={
+            "trace_id": trace_id,
+            "decision": decision,
+            "model_used": model_used,
+            "duration_ms": round(duration_ms, 2),
+            "uncertainty": uncertainty,
+            "escalated": escalated,
+            **extra,
+        },
     )
 
 
 def log_critic_execution(
-    logger,
+    logger: logging.Logger,
     trace_id: str,
     critic_name: str,
     severity: float,
     duration_ms: float,
     success: bool = True,
-    error: str = None,
+    error: Optional[str] = None,
     **extra
 ) -> None:
     """
@@ -218,13 +227,15 @@ def log_critic_execution(
     level = "info" if success else "warning"
     getattr(logger, level)(
         "critic_executed",
-        trace_id=trace_id,
-        critic_name=critic_name,
-        severity=severity,
-        duration_ms=round(duration_ms, 2),
-        success=success,
-        error=error,
-        **extra
+        extra={
+            "trace_id": trace_id,
+            "critic_name": critic_name,
+            "severity": severity,
+            "duration_ms": round(duration_ms, 2),
+            "success": success,
+            "error": error,
+            **extra,
+        },
     )
 
 
@@ -242,10 +253,12 @@ def log_precedent_retrieval(
     """
     logger.info(
         "precedent_retrieved",
-        trace_id=trace_id,
-        query_length=query_length,
-        cases_found=cases_found,
-        alignment_score=alignment_score,
-        duration_ms=round(duration_ms, 2),
-        **extra
+        extra={
+            "trace_id": trace_id,
+            "query_length": query_length,
+            "cases_found": cases_found,
+            "alignment_score": alignment_score,
+            "duration_ms": round(duration_ms, 2),
+            **extra,
+        },
     )
