@@ -1,6 +1,15 @@
+from __future__ import annotations
+
 import uuid
 import time
-from typing import Dict, Any, Optional
+from abc import ABC, abstractmethod
+from typing import Dict, Any, Optional, List
+
+from engine.schemas.escalation import (
+    CriticEvaluation,
+    Concern,
+    EscalationSignal,
+)
 
 class BaseCriticV8:
     """
@@ -126,3 +135,49 @@ class BaseCriticV8:
             "flags": flags or [],
             "uuid": str(uuid.uuid4())
         }
+
+
+# ============================================================
+# ConstitutionalCritic — structured escalation output
+# ============================================================
+
+class ConstitutionalCritic(ABC):
+    """
+    Base class for schema-aligned constitutional critics.
+
+    Guarantees:
+    - uniform CriticEvaluation output
+    - explicit, clause-aware escalation
+    - stable charter_version tracking
+    """
+
+    critic_id: str
+    charter_version: str
+
+    def __init__(self, *, charter_version: str):
+        self.charter_version = charter_version
+
+    @abstractmethod
+    def evaluate(self, **kwargs) -> CriticEvaluation:
+        """Perform critic-specific evaluation and return a CriticEvaluation."""
+        raise NotImplementedError
+
+    def _build_evaluation(
+        self,
+        *,
+        concerns: List[Concern],
+        severity_score: float,
+        citations: List[str],
+        escalation: Optional[EscalationSignal] = None,
+        uncertainty: Optional[str] = None,
+    ) -> CriticEvaluation:
+        """Assemble a CriticEvaluation with consistent field names."""
+        return CriticEvaluation(
+            critic_id=self.critic_id,
+            charter_version=self.charter_version,
+            concerns=concerns,
+            escalation=escalation,
+            severity_score=severity_score,
+            citations=citations,
+            uncertainty=uncertainty,
+        )

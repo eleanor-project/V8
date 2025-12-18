@@ -72,3 +72,43 @@ jobs:
           else:
               fail("execute_decision not found in executor.")
           PY
+
+      - name: Policy check (human review linkage)
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          import sys
+
+          path = Path("engine/execution/human_review.py")
+          tree = ast.parse(path.read_text())
+
+          def fail(msg: str) -> None:
+              sys.stderr.write(msg + "\n")
+              sys.exit(1)
+
+          # Ensure _validate_human_action requires aggregation_result
+          for node in tree.body:
+              if isinstance(node, ast.FunctionDef) and node.name == "_validate_human_action":
+                  kw_names = [a.arg for a in node.args.kwonlyargs]
+                  if "aggregation_result" not in kw_names:
+                      fail("_validate_human_action must accept aggregation_result as a kw-only arg.")
+                  break
+          else:
+              fail("_validate_human_action not found in human_review.py.")
+
+          # Ensure enforce_human_review passes aggregation_result into _validate_human_action
+          for node in tree.body:
+              if isinstance(node, ast.FunctionDef) and node.name == "enforce_human_review":
+                  for stmt in ast.walk(node):
+                      if isinstance(stmt, ast.Call) and isinstance(stmt.func, ast.Name) and stmt.func.id == "_validate_human_action":
+                          kw = {k.arg for k in stmt.keywords}
+                          if "aggregation_result" not in kw:
+                              fail("enforce_human_review must pass aggregation_result to _validate_human_action.")
+                          break
+                  else:
+                      fail("No _validate_human_action call found in enforce_human_review.")
+                  break
+          else:
+              fail("enforce_human_review not found in human_review.py.")
+          PY

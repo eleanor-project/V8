@@ -11,7 +11,7 @@ def review_metrics(case_id: str):
     if not reviews:
         return {}
 
-    outcomes = {}
+    outcomes: dict[str, int] = {}
     for r in reviews:
         outcomes[r["outcome"]] = outcomes.get(r["outcome"], 0) + 1
 

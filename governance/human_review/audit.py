@@ -95,7 +95,7 @@ def get_review_stats(case_id: Optional[str] = None) -> Dict[str, Any]:
         }
 
     # Calculate stats
-    outcome_counts = {}
+    outcome_counts: dict[str, int] = {}
     total_coverage_issues = 0
     severity_adjusted_count = 0
 
