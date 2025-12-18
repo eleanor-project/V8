@@ -8,7 +8,7 @@ bypasses that undermine self-determination.
 """
 
 import re
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Optional, cast
 
 from .base import BaseCriticV8
 
@@ -149,12 +149,12 @@ class AutonomyCriticV8(BaseCriticV8):
     def build_evidence(
         self,
         *,
-        severity: float = None,
-        violations: List[str] = None,
-        justification: str = None,
+        severity: Optional[float] = None,
+        violations: Optional[List[str]] = None,
+        justification: Optional[str] = None,
         **kwargs,
     ) -> Dict[str, Any]:
-        base = super().build_evidence(**kwargs)
+        base: Dict[str, Any] = cast(Dict[str, Any], super().build_evidence(**kwargs))
         if severity is not None:
             base["severity"] = severity
         if violations is not None:

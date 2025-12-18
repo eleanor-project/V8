@@ -19,7 +19,7 @@ Constitutional Mapping:
 """
 
 import re
-from typing import Dict, Any, List, Tuple, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 from dataclasses import dataclass, field
 from collections import defaultdict
 
@@ -342,10 +342,16 @@ class PragmaticsCriticV8(BaseCriticV8):
             justification=rationale,
         )
 
-    def build_evidence(self, *, severity: float = None, violations: List[str] = None,
-                       justification: str = None, **kwargs) -> Dict[str, Any]:
+    def build_evidence(
+        self,
+        *,
+        severity: Optional[float] = None,
+        violations: Optional[List[str]] = None,
+        justification: Optional[str] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
         """Extended build_evidence with additional fields for aggregator."""
-        base = super().build_evidence(**kwargs)
+        base: Dict[str, Any] = cast(Dict[str, Any], super().build_evidence(**kwargs))
 
         if severity is not None:
             base["severity"] = severity
@@ -358,7 +364,7 @@ class PragmaticsCriticV8(BaseCriticV8):
 
     def _analyze_text(self, text: str) -> Dict[str, Any]:
         """Analyze text for pragmatics concerns."""
-        concerns = []
+        concerns: List[Dict[str, Any]] = []
         text_lower = text.lower()
 
         for pp in PRAGMATICS_PATTERNS:
@@ -485,7 +491,7 @@ class PragmaticsCriticV8(BaseCriticV8):
 
     def _compute_dimension_scores(self, concerns: List[Dict[str, Any]]) -> Dict[str, float]:
         """Compute scores for each pragmatics dimension."""
-        dimensions = defaultdict(float)
+        dimensions: Dict[str, float] = defaultdict(float)
 
         for c in concerns:
             dim = c.get("pragmatics_dimension", "unknown")

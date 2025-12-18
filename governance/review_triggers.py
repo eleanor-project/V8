@@ -6,7 +6,7 @@ It defines explicit constitutional triggers only.
 """
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import Any, List, Optional
 
 
 @dataclass
@@ -16,7 +16,7 @@ class Case:
     novel_precedent: bool = False
     rights_impacted: List[str] = field(default_factory=list)
     uncertainty_flags: List[str] = field(default_factory=list)
-    uncertainty: any = None
+    uncertainty: Optional[Any] = None
 
 
 class ReviewTriggerEvaluator:
@@ -28,7 +28,7 @@ class ReviewTriggerEvaluator:
         self.severity_threshold = severity_threshold
         self.disagreement_threshold = disagreement_threshold
 
-    def evaluate(self, case) -> dict:
+    def evaluate(self, case: Any) -> dict:
         triggers = []
 
         if getattr(case, "severity", 0) >= self.severity_threshold:
