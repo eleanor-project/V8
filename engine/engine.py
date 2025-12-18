@@ -38,20 +38,20 @@ try:
     from engine.precedent.alignment import PrecedentAlignmentEngineV8
     from engine.precedent.retrieval import PrecedentRetrievalV8
 except Exception:
-    PrecedentAlignmentEngineV8 = None
-    PrecedentRetrievalV8 = None
+    PrecedentAlignmentEngineV8 = None  # type: ignore[assignment]
+    PrecedentRetrievalV8 = None  # type: ignore[assignment]
 
 # Uncertainty Engine
 try:
     from engine.uncertainty.uncertainty import UncertaintyEngineV8
 except Exception:
-    UncertaintyEngineV8 = None
+    UncertaintyEngineV8 = None  # type: ignore[assignment]
 
 # Aggregator
 try:
     from engine.aggregator.aggregator import AggregatorV8
 except Exception:
-    AggregatorV8 = None
+    AggregatorV8 = None  # type: ignore[assignment]
 
 # Governance
 from governance.review_triggers import ReviewTriggerEvaluator, Case
@@ -206,14 +206,14 @@ class EleanorEngineV8:
         # Precedent
         if precedent_engine:
             self.precedent_engine = precedent_engine
-        elif PrecedentAlignmentEngineV8:
+        elif PrecedentAlignmentEngineV8 is not None:
             self.precedent_engine = PrecedentAlignmentEngineV8()
         else:
             self.precedent_engine = None
 
         # Precedent Retriever (optional)
         self.precedent_retriever = precedent_retriever
-        if self.precedent_retriever is None and PrecedentRetrievalV8:
+        if self.precedent_retriever is None and PrecedentRetrievalV8 is not None:
             class _NullStore:
                 def search(self, q: str, top_k: int = 5):
                     return []
@@ -226,7 +226,7 @@ class EleanorEngineV8:
         # Uncertainty
         if uncertainty_engine:
             self.uncertainty_engine = uncertainty_engine
-        elif UncertaintyEngineV8:
+        elif UncertaintyEngineV8 is not None:
             self.uncertainty_engine = UncertaintyEngineV8()
         else:
             self.uncertainty_engine = None
@@ -234,7 +234,7 @@ class EleanorEngineV8:
         # Aggregator
         if aggregator:
             self.aggregator = aggregator
-        elif AggregatorV8:
+        elif AggregatorV8 is not None:
             self.aggregator = AggregatorV8()
         else:
             self.aggregator = None

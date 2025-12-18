@@ -12,7 +12,7 @@ This engine:
 """
 
 import asyncio
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 import importlib
 
@@ -25,7 +25,7 @@ class DetectorEngineV8:
     Orchestrates detector execution and signal aggregation.
     """
 
-    def __init__(self, detectors: Dict[str, Detector] | None = None, timeout_seconds: float = 2.0):
+    def __init__(self, detectors: Optional[Dict[str, Detector]] = None, timeout_seconds: float = 2.0):
         self.detectors: Dict[str, Detector] = detectors or {}
         self.timeout = timeout_seconds
         if not self.detectors:
@@ -105,25 +105,15 @@ class DetectorEngineV8:
         for name, task in tasks:
             try:
                 signal = await task
-                try:
-                    severity_value = float(signal.severity)
-                    # Preserve label if available
-                    label = getattr(signal, "severity_label", None)
-                    if isinstance(signal.evidence, dict) and label:
-                        signal.evidence.setdefault("severity_label", label)
-                    # Coerce to raw float for compatibility with legacy checks
-                    object.__setattr__(signal, "severity", severity_value)
-                except Exception:
-                    pass
                 results[name] = signal
             except Exception as e:
                 # Return empty signal on failure
                 results[name] = DetectorSignal(
                     detector_name=name,
-                    severity=0.0,
+                    severity=0.0,  # type: ignore[arg-type]  # coerced by validator
                     violations=[],
                     evidence={"error": str(e)},
-                    flags=["DETECTOR_FAILURE"]
+                    flags=["DETECTOR_FAILURE"],
                 )
 
         return results
@@ -145,18 +135,18 @@ class DetectorEngineV8:
         except asyncio.TimeoutError:
             return DetectorSignal(
                 detector_name=name,
-                severity=0.0,
+                severity=0.0,  # type: ignore[arg-type]  # coerced by validator
                 violations=[],
                 evidence={"error": "timeout"},
-                flags=["TIMEOUT"]
+                flags=["TIMEOUT"],
             )
         except Exception as e:
             return DetectorSignal(
                 detector_name=name,
-                severity=0.0,
+                severity=0.0,  # type: ignore[arg-type]  # coerced by validator
                 violations=[],
                 evidence={"error": str(e)},
-                flags=["ERROR"]
+                flags=["ERROR"],
             )
 
     def aggregate_signals(
@@ -172,7 +162,7 @@ class DetectorEngineV8:
         max_severity = 0.0
         critical_flags = []
 
-        by_severity = {
+        by_severity: Dict[str, List[str]] = {
             "critical": [],  # severity >= 0.8
             "high": [],      # severity >= 0.6
             "medium": [],    # severity >= 0.3

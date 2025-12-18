@@ -18,11 +18,13 @@ sys.path.insert(0, '/Users/billp/documents/github/v8')
 
 from engine.critics.consistency import ConsistencyEngine, CharterViolationType
 from engine.critics.redundancy import RedundancyEngine, validate_no_cross_critic_suppression
+from engine.critics.privacy import PrivacyIdentityCritic
 from engine.critics.rules import (
-    CLAUSES, CriticDomain, EscalationTier, HumanAction,
+    CLAUSES, CriticDomain, HumanAction,
     get_clause, get_clauses_by_critic, get_clauses_by_tier,
     validate_clause_id, get_clause_statistics
 )
+from engine.schemas.escalation import EscalationTier
 
 
 # ============================================================
@@ -497,6 +499,226 @@ def test_clauses_utility_functions():
 
 
 # ============================================================
+# TEST 7: Privacy & Identity Critic
+# ============================================================
+
+def test_privacy_p1_identity_inference():
+    """
+    TEST: Verify P1 (Non-consensual identity inference) escalates to TIER_3.
+
+    Privacy clause P1 protects against inferring sensitive identity attributes
+    without explicit consent.
+    """
+    print("=" * 70)
+    print("TEST 7.1: Privacy P1 - Identity Inference (TIER_3)")
+    print("=" * 70)
+
+    critic = PrivacyIdentityCritic()
+
+    # Test P1: identity_inference=True should trigger TIER_3 escalation
+    result = critic.evaluate(identity_inference=True)
+
+    # Assertions
+    assert result.severity_score >= 0.9, \
+        "❌ P1 violation should have severity >= 0.9"
+    assert len(result.concerns) >= 1, \
+        "❌ P1 violation should generate concerns"
+    assert result.escalation is not None, \
+        "❌ P1 violation must escalate"
+    assert result.escalation.tier == EscalationTier.TIER_3, \
+        f"❌ P1 must escalate to TIER_3, got {result.escalation.tier}"
+    assert result.escalation.clause_id == "P1", \
+        f"❌ Expected clause_id='P1', got '{result.escalation.clause_id}'"
+
+    print("✅ P1 (Identity Inference) validation passed")
+    print(f"   - Severity: {result.severity_score}")
+    print(f"   - Escalation: {result.escalation.tier.value} ({result.escalation.clause_id})")
+    print(f"   - Concerns: {len(result.concerns)}")
+    print()
+
+
+def test_privacy_p2_persistent_identity():
+    """
+    TEST: Verify P2 (Persistent identity linkage) escalates to TIER_3.
+
+    Privacy clause P2 protects against persistent identity construction
+    across sessions or contexts.
+    """
+    print("=" * 70)
+    print("TEST 7.2: Privacy P2 - Persistent Identity (TIER_3)")
+    print("=" * 70)
+
+    critic = PrivacyIdentityCritic()
+
+    # Test P2: persistent_identity=True should trigger TIER_3 escalation
+    result = critic.evaluate(persistent_identity=True)
+
+    # Assertions
+    assert result.severity_score >= 0.85, \
+        "❌ P2 violation should have severity >= 0.85"
+    assert len(result.concerns) >= 1, \
+        "❌ P2 violation should generate concerns"
+    assert result.escalation is not None, \
+        "❌ P2 violation must escalate"
+    assert result.escalation.tier == EscalationTier.TIER_3, \
+        f"❌ P2 must escalate to TIER_3, got {result.escalation.tier}"
+    assert result.escalation.clause_id == "P2", \
+        f"❌ Expected clause_id='P2', got '{result.escalation.clause_id}'"
+
+    print("✅ P2 (Persistent Identity) validation passed")
+    print(f"   - Severity: {result.severity_score}")
+    print(f"   - Escalation: {result.escalation.tier.value} ({result.escalation.clause_id})")
+    print(f"   - Concerns: {len(result.concerns)}")
+    print()
+
+
+def test_privacy_p3_context_collapse():
+    """
+    TEST: Verify P3 (Context collapse) escalates to TIER_2.
+
+    Privacy clause P3 protects against using data outside its original
+    contextual boundary.
+    """
+    print("=" * 70)
+    print("TEST 7.3: Privacy P3 - Context Collapse (TIER_2)")
+    print("=" * 70)
+
+    critic = PrivacyIdentityCritic()
+
+    # Test P3: context_mismatch=True should trigger TIER_2 escalation
+    result = critic.evaluate(context_mismatch=True)
+
+    # Assertions
+    assert result.severity_score >= 0.7, \
+        "❌ P3 violation should have severity >= 0.7"
+    assert len(result.concerns) >= 1, \
+        "❌ P3 violation should generate concerns"
+    assert result.escalation is not None, \
+        "❌ P3 violation must escalate"
+    assert result.escalation.tier == EscalationTier.TIER_2, \
+        f"❌ P3 must escalate to TIER_2, got {result.escalation.tier}"
+    assert result.escalation.clause_id == "P3", \
+        f"❌ Expected clause_id='P3', got '{result.escalation.clause_id}'"
+
+    print("✅ P3 (Context Collapse) validation passed")
+    print(f"   - Severity: {result.severity_score}")
+    print(f"   - Escalation: {result.escalation.tier.value} ({result.escalation.clause_id})")
+    print(f"   - Concerns: {len(result.concerns)}")
+    print()
+
+
+def test_privacy_p4_secondary_use():
+    """
+    TEST: Verify P4 (Secondary use expansion) escalates to TIER_2.
+
+    Privacy clause P4 protects against data reuse beyond original
+    authorization scope.
+    """
+    print("=" * 70)
+    print("TEST 7.4: Privacy P4 - Secondary Use (TIER_2)")
+    print("=" * 70)
+
+    critic = PrivacyIdentityCritic()
+
+    # Test P4: secondary_use=True should trigger TIER_2 escalation
+    result = critic.evaluate(secondary_use=True)
+
+    # Assertions
+    assert result.severity_score >= 0.75, \
+        "❌ P4 violation should have severity >= 0.75"
+    assert len(result.concerns) >= 1, \
+        "❌ P4 violation should generate concerns"
+    assert result.escalation is not None, \
+        "❌ P4 violation must escalate"
+    assert result.escalation.tier == EscalationTier.TIER_2, \
+        f"❌ P4 must escalate to TIER_2, got {result.escalation.tier}"
+    assert result.escalation.clause_id == "P4", \
+        f"❌ Expected clause_id='P4', got '{result.escalation.clause_id}'"
+
+    print("✅ P4 (Secondary Use) validation passed")
+    print(f"   - Severity: {result.severity_score}")
+    print(f"   - Escalation: {result.escalation.tier.value} ({result.escalation.clause_id})")
+    print(f"   - Concerns: {len(result.concerns)}")
+    print()
+
+
+def test_privacy_escalation_priority():
+    """
+    TEST: Verify escalation priority (P1 > P2 > P3 > P4).
+
+    When multiple privacy violations occur, only the highest-priority
+    violation should escalate.
+    """
+    print("=" * 70)
+    print("TEST 7.5: Privacy Escalation Priority")
+    print("=" * 70)
+
+    critic = PrivacyIdentityCritic()
+
+    # Test 1: P1 takes priority over P2, P3, P4
+    result = critic.evaluate(
+        identity_inference=True,
+        persistent_identity=True,
+        context_mismatch=True,
+        secondary_use=True
+    )
+
+    assert result.escalation.clause_id == "P1", \
+        "❌ P1 should have highest priority"
+    print("✅ P1 has highest priority")
+
+    # Test 2: P2 takes priority over P3, P4
+    result = critic.evaluate(
+        persistent_identity=True,
+        context_mismatch=True,
+        secondary_use=True
+    )
+
+    assert result.escalation.clause_id == "P2", \
+        "❌ P2 should take priority over P3/P4"
+    print("✅ P2 prioritized over P3/P4")
+
+    # Test 3: P3 takes priority over P4
+    result = critic.evaluate(
+        context_mismatch=True,
+        secondary_use=True
+    )
+
+    assert result.escalation.clause_id == "P3", \
+        "❌ P3 should take priority over P4"
+    print("✅ P3 prioritized over P4")
+
+    print("✅ Privacy escalation priority validation passed")
+    print()
+
+
+def test_privacy_no_violations():
+    """
+    TEST: Verify no escalation when no privacy violations occur.
+    """
+    print("=" * 70)
+    print("TEST 7.6: Privacy - No Violations")
+    print("=" * 70)
+
+    critic = PrivacyIdentityCritic()
+
+    # Test: No violations
+    result = critic.evaluate()
+
+    assert result.severity_score == 0.0, \
+        "❌ No violations should have severity 0.0"
+    assert len(result.concerns) == 0, \
+        "❌ No violations should have no concerns"
+    assert result.escalation is None, \
+        "❌ No violations should not escalate"
+
+    print("✅ No privacy violations correctly handled")
+    print(f"   - Severity: {result.severity_score}")
+    print(f"   - Escalation: None")
+    print()
+
+
+# ============================================================
 # MAIN TEST RUNNER
 # ============================================================
 
@@ -519,6 +741,14 @@ def main():
         test_clauses_tier_and_human_action_mappings()
         test_clauses_utility_functions()
 
+        # Privacy & Identity Tests
+        test_privacy_p1_identity_inference()
+        test_privacy_p2_persistent_identity()
+        test_privacy_p3_context_collapse()
+        test_privacy_p4_secondary_use()
+        test_privacy_escalation_priority()
+        test_privacy_no_violations()
+
         print("=" * 70)
         print("✅ ALL CONSTITUTIONAL COMPLIANCE TESTS PASSED!")
         print("=" * 70)
@@ -528,6 +758,7 @@ def main():
         print("  ✓ Clause-aware escalation signals validated")
         print("  ✓ All 22 constitutional clauses present and correct")
         print("  ✓ Tier and human action mappings accurate")
+        print("  ✓ Privacy & Identity critic (P1-P4) validated")
         print("\nConstitutional Alignment: CONFIRMED")
         print("Handbook v8.1 Compliance: PASS")
         print("=" * 70 + "\n")

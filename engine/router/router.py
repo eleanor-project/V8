@@ -22,7 +22,7 @@ The Router DOES NOT:
 It ONLY handles model selection + call orchestration.
 """
 
-from typing import Dict, Any, Callable, Optional, List
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Union, cast
 import inspect
 import traceback
 import time
@@ -347,7 +347,9 @@ class RouterV8:
             "diagnostics": {"attempts": attempts},
         }
 
-    def route(self, text: str, context: Optional[Dict[str, Any]] = None):
+    def route(
+        self, text: str, context: Optional[Dict[str, Any]] = None
+    ) -> Union[Dict[str, Any], Awaitable[Dict[str, Any]]]:
         """
         Route request; works in both sync and async contexts.
         Returns dict if called synchronously, or coroutine if awaited in an event loop.
@@ -370,4 +372,5 @@ class RouterV8:
         """
         Public interface — semantic alias to route().
         """
-        return await self.route(input_text, context=context)
+        result = await self._route_async(input_text, context)  # re-use async path directly
+        return cast(Dict[str, Any], result)

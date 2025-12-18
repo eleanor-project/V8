@@ -25,25 +25,28 @@ import os
 import json
 import logging
 import requests
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
 # Optional imports (only load if available)
-try:
-    from openai import OpenAI
-except:
-    OpenAI = None
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from openai import OpenAI as OpenAIClient
+else:
+    OpenAIClient = None  # type: ignore[assignment]
 
 try:
     import anthropic
-except:
-    anthropic = None
+except Exception:
+    anthropic = None  # type: ignore[assignment]
 
 try:
     from transformers import AutoTokenizer, AutoModelForCausalLM
     import torch
-except:
-    AutoTokenizer = AutoModelForCausalLM = torch = None
+except Exception:
+    AutoTokenizer = AutoModelForCausalLM = torch = None  # type: ignore[assignment]
 
 
 # ============================================================
@@ -65,9 +68,9 @@ class GPTAdapter(BaseLLMAdapter):
     """Adapter for GPT-4.1, GPT-5, etc. via OpenAI API."""
 
     def __init__(self, model="gpt-4.1", api_key=None):
-        if OpenAI is None:
+        if OpenAIClient is None:
             raise ImportError("OpenAI SDK not installed")
-        self.client = OpenAI(api_key=api_key)
+        self.client = OpenAIClient(api_key=api_key)
         self.model = model
 
     def __call__(self, prompt: str) -> str:
@@ -75,7 +78,8 @@ class GPTAdapter(BaseLLMAdapter):
             model=self.model,
             messages=[{"role": "user", "content": prompt}]
         )
-        return response.choices[0].message.content.strip()
+        content: Any = response.choices[0].message.content
+        return str(content).strip()
 
 
 # ============================================================
@@ -97,7 +101,7 @@ class ClaudeAdapter(BaseLLMAdapter):
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}]
         )
-        return response.content[0].text.strip()
+        return str(response.content[0].text).strip()
 
 
 # ============================================================
@@ -107,7 +111,7 @@ class ClaudeAdapter(BaseLLMAdapter):
 class GrokAdapter(BaseLLMAdapter):
     """Adapter for Grok 1.5 / Grok 3 via xAI’s HTTP API."""
 
-    def __init__(self, model="grok-beta", api_key=None):
+    def __init__(self, model: str = "grok-beta", api_key: Optional[str] = None):
         self.model = model
         self.api_key = api_key
 
@@ -121,8 +125,8 @@ class GrokAdapter(BaseLLMAdapter):
         }
 
         resp = requests.post(url, headers=headers, json=payload)
-        data = resp.json()
-        return data["choices"][0]["message"]["content"].strip()
+        data: Any = resp.json()
+        return str(data["choices"][0]["message"]["content"]).strip()
 
 
 # ============================================================
@@ -132,7 +136,7 @@ class GrokAdapter(BaseLLMAdapter):
 class LlamaHFAdapter(BaseLLMAdapter):
     """Adapter for running Llama locally via HuggingFace Transformers."""
 
-    def __init__(self, model_path="meta-llama/Llama-3-8b", device="cpu"):
+    def __init__(self, model_path: str = "meta-llama/Llama-3-8b", device: str = "cpu"):
         if AutoTokenizer is None:
             raise ImportError("Transformers library not installed")
 
@@ -144,7 +148,7 @@ class LlamaHFAdapter(BaseLLMAdapter):
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
         outputs = self.model.generate(**inputs, max_new_tokens=300)
         text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        return text.strip()
+        return str(text).strip()
 
 
 # ============================================================
@@ -154,7 +158,7 @@ class LlamaHFAdapter(BaseLLMAdapter):
 class OllamaAdapter(BaseLLMAdapter):
     """Adapter for running local models via Ollama HTTP endpoints."""
 
-    def __init__(self, model="llama3"):
+    def __init__(self, model: str = "llama3"):
         self.model = model
 
     def __call__(self, prompt: str) -> str:
@@ -162,8 +166,8 @@ class OllamaAdapter(BaseLLMAdapter):
             "http://localhost:11434/api/generate",
             json={"model": self.model, "prompt": prompt}
         )
-        data = response.json()
-        return data.get("response", "").strip()
+        data: Any = response.json()
+        return str(data.get("response", "")).strip()
 
 
 # ============================================================
@@ -244,7 +248,7 @@ def bootstrap_default_registry(
                 continue
 
     # Cloud Models (guarded)
-    if OpenAI is not None and openai_key:
+    if OpenAIClient is not None and openai_key:
         try:
             reg.register("gpt", GPTAdapter(api_key=openai_key))
         except Exception as exc:
