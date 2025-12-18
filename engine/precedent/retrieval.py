@@ -51,9 +51,9 @@ class PrecedentRetrievalV8:
 
         # Value overlap ratio
         if not current_values:
-            value_alignment = 0
+            value_alignment = 0.0
         else:
-            value_alignment = len(case_values & current_values) / len(current_values)
+            value_alignment = len(case_values & current_values) / float(len(current_values))
 
         # Score similarity (very rough)
         case_score = case.get("aggregate_score", 0.5)
