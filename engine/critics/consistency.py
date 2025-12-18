@@ -1,362 +1,390 @@
 """
-ELEANOR V8 — ConsistencyEngine
--------------------------------
+ELEANOR V8.1 — ConsistencyEngine (Constitutional Charter Compliance Validator)
+-------------------------------------------------------------------------------
 
-Validates mutual consistency across critic evaluations to ensure:
-1. Intra-critic consistency: Violations within a critic don't contradict
-2. Inter-critic consistency: Critics don't make contradictory claims
-3. Severity-violation alignment: Severity scores match violation counts
-4. Evidence consistency: Rationales support reported severities
+PURPOSE: Validates that critics follow their constitutional charters and emit
+proper clause-aware escalation signals.
 
-Returns consistency metrics that feed into uncertainty quantification
-without modifying or rejecting critic outputs.
+CRITICAL: This is a DIAGNOSTIC and VALIDATION tool for critic implementation.
+It does NOT filter, suppress, or modify critic outputs at runtime.
+
+Constitutional Principles (from Handbook v8.1):
+1. Critics must stay within their charter boundaries
+2. Dissent is expected and valued - contradictions are often intentional
+3. Escalation signals must be clause-aware (A1, D2, P4, etc.)
+4. Cross-critic overlap is intentional, not an error
+
+Usage:
+- During critic development: Validate charter compliance
+- In CI/testing: Ensure critics don't violate boundaries
+- For audit: Detect implementation drift from charters
+- NEVER for runtime filtering or dissent suppression
 """
 
-from typing import Dict, Any, List
-import statistics
+from typing import Dict, Any, List, Optional
+from enum import Enum
+
+
+class CriticDomain(Enum):
+    """Canonical critic domains from Handbook v8.1."""
+    AUTONOMY = "autonomy"
+    DIGNITY = "dignity"
+    PRIVACY = "privacy"
+    FAIRNESS = "fairness"
+    DUE_PROCESS = "due_process"
+    PRECEDENT = "precedent"
+    UNCERTAINTY = "uncertainty"
+
+
+class CharterViolationType(Enum):
+    """Types of charter boundary violations."""
+    DOMAIN_OVERSTEP = "domain_overstep"
+    MISSING_CLAUSE_ID = "missing_clause_id"
+    INVALID_CLAUSE_ID = "invalid_clause_id"
+    MISSING_TIER = "missing_tier"
+    INVALID_TIER = "invalid_tier"
 
 
 class ConsistencyEngine:
     """
-    ConsistencyEngine validates critic evaluation consistency.
+    Constitutional Charter Compliance Validator.
 
-    Design principles:
-    - Non-destructive: Never modifies critic outputs
-    - Advisory: Provides metrics, doesn't reject evaluations
-    - Transparent: Returns detailed consistency analysis for audit
-    - Integrated: Feeds into UncertaintyEngine via consistency scores
+    Validates that critic implementations follow their charters as defined
+    in the Constitutional Critics & Escalation Governance Handbook v8.1.
+
+    Design Principles:
+    - DIAGNOSTIC ONLY: Never modifies critic outputs
+    - PRESERVES DISSENT: Intentional overlap is not an error
+    - CHARTER-FOCUSED: Validates boundaries, not outcomes
+    - CI/AUDIT TOOL: For implementation validation, not runtime filtering
     """
 
     def __init__(self):
-        # Severity-violation alignment thresholds
-        self.severity_thresholds = {
-            0.0: (0, 0),      # No violations expected
-            1.0: (1, 2),      # Minor: 1-2 violations
-            2.0: (2, 5),      # Moderate: 2-5 violations
-            3.0: (3, 100),    # Severe: 3+ violations
+        # Charter boundaries from Handbook Section 5
+        self.charter_boundaries = {
+            "autonomy": {
+                "owns": ["consent", "agency", "coercion", "reversibility"],
+                "must_not": ["dignity_judgment", "fairness_judgment", "outcome_scoring"],
+                "valid_clauses": ["A1", "A2", "A3"],
+                "intentional_overlap": ["privacy"]  # Only in consent framing
+            },
+            "dignity": {
+                "owns": ["intrinsic_worth", "non_degradation", "moral_presence", "instrumentalization"],
+                "must_not": ["fairness_math", "consent_checks"],
+                "valid_clauses": ["D1", "D2", "D3"],
+                "intentional_overlap": ["due_process"]  # Voice vs appeal
+            },
+            "privacy": {
+                "owns": ["identity_inference", "persistence", "linkage", "contextual_integrity", "secondary_use"],
+                "must_not": ["fairness_scoring", "dignity_consequence_scoring"],
+                "valid_clauses": ["P1", "P2", "P3", "P4"],
+                "intentional_overlap": ["fairness"]  # When identity inference causes disparate impact
+            },
+            "fairness": {
+                "owns": ["disparate_impact", "protected_class_outcomes", "bias_amplification", "differential_treatment"],
+                "must_not": ["intent_judgment", "virtue_judgment", "dignity_framing"],
+                "valid_clauses": ["F1", "F2", "F3"],
+                "intentional_overlap": ["due_process", "privacy"]  # Explainability vs contestability
+            },
+            "due_process": {
+                "owns": ["contestability", "attribution", "reviewability", "accountability"],
+                "must_not": ["fairness_reargument", "dignity_reargument"],
+                "valid_clauses": ["DP1", "DP2", "DP3"],
+                "intentional_overlap": ["uncertainty", "dignity"]  # Auditability vs epistemic insufficiency
+            },
+            "precedent": {
+                "owns": ["norm_creation", "precedent_voids", "precedent_conflicts", "legitimacy"],
+                "must_not": ["present_harm_scoring", "consent_analysis"],
+                "valid_clauses": ["PR1", "PR2", "PR3"],
+                "intentional_overlap": ["due_process"]  # Legitimacy documentation
+            },
+            "uncertainty": {
+                "owns": ["epistemic_insufficiency", "competence_bounds", "high_impact_unknowns", "missing_context"],
+                "must_not": ["moral_judgment"],
+                "valid_clauses": ["U1", "U2", "U3"],
+                "intentional_overlap": ["due_process"]  # "Can we know" vs "can we review"
+            }
         }
 
-        # Inter-critic contradiction patterns
-        self.contradiction_patterns = [
-            {
-                "critics": ["truth", "risk"],
-                "pattern": "high_confidence_with_high_risk",
-                "check": self._check_truth_risk_contradiction
-            },
-            {
-                "critics": ["fairness", "rights"],
-                "pattern": "equity_with_rights_violation",
-                "check": self._check_fairness_rights_contradiction
-            },
-            {
-                "critics": ["pragmatics", "risk"],
-                "pattern": "feasible_with_irreversible_harm",
-                "check": self._check_pragmatics_risk_contradiction
-            }
-        ]
+        # Valid tiers from Handbook Section 3
+        self.valid_tiers = ["tier_2", "tier_3", 2, 3]
 
-    def validate(self, critics: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    def validate_charter_compliance(
+        self,
+        critics: Dict[str, Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """
-        Main entry point for consistency validation.
+        Validate that critic outputs comply with constitutional charters.
 
         Args:
             critics: Dictionary of critic_name -> critic_output
 
         Returns:
-            Consistency analysis with:
-            - overall_consistency_score: 0-1 (1 = fully consistent)
-            - intra_critic_issues: List of within-critic inconsistencies
-            - inter_critic_issues: List of cross-critic contradictions
-            - severity_alignment_issues: List of severity-violation mismatches
-            - recommendations: Suggested actions for inconsistencies
+            Charter compliance report with:
+            - compliant: Boolean indicating full compliance
+            - violations: List of charter boundary violations
+            - warnings: List of potential concerns (not violations)
+            - intentional_overlaps: Detected overlaps that are expected
+            - recommendations: Suggestions for critic implementation
         """
 
-        # Validate each critic internally
-        intra_issues = self._validate_intra_critic_consistency(critics)
+        violations = []
+        warnings = []
+        intentional_overlaps = []
 
-        # Check for inter-critic contradictions
-        inter_issues = self._validate_inter_critic_consistency(critics)
+        for critic_name, evaluation in critics.items():
+            # Normalize critic name
+            normalized_name = self._normalize_critic_name(critic_name)
 
-        # Check severity-violation alignment
-        severity_issues = self._validate_severity_alignment(critics)
+            if normalized_name not in self.charter_boundaries:
+                warnings.append({
+                    "critic": critic_name,
+                    "type": "unknown_critic",
+                    "description": f"Critic '{critic_name}' not in canonical charter (v8.1)"
+                })
+                continue
 
-        # Compute overall consistency score
-        consistency_score = self._compute_consistency_score(
-            intra_issues, inter_issues, severity_issues
-        )
+            # Validate escalation signals are clause-aware
+            escalation_violations = self._validate_escalation_signals(
+                critic_name, normalized_name, evaluation
+            )
+            violations.extend(escalation_violations)
+
+            # Detect potential charter boundary violations
+            boundary_violations = self._detect_boundary_violations(
+                critic_name, normalized_name, evaluation
+            )
+            violations.extend(boundary_violations)
+
+            # Detect intentional overlaps (these are NOT errors)
+            overlaps = self._detect_intentional_overlaps(
+                critic_name, normalized_name, evaluation, critics
+            )
+            intentional_overlaps.extend(overlaps)
 
         return {
-            "overall_consistency_score": consistency_score,
-            "intra_critic_issues": intra_issues,
-            "inter_critic_issues": inter_issues,
-            "severity_alignment_issues": severity_issues,
-            "total_issues": len(intra_issues) + len(inter_issues) + len(severity_issues),
-            "recommendations": self._generate_recommendations(
-                intra_issues, inter_issues, severity_issues
-            ),
-            "audit_flags": self._generate_audit_flags(consistency_score)
+            "compliant": len(violations) == 0,
+            "violations": violations,
+            "warnings": warnings,
+            "intentional_overlaps": intentional_overlaps,
+            "total_violations": len(violations),
+            "total_warnings": len(warnings),
+            "recommendations": self._generate_recommendations(violations, warnings),
+            "audit_note": "This is a charter compliance check. Dissent is preserved. Overlaps may be intentional."
         }
 
-    # ----------------------------------------------------------
-    # Intra-critic consistency validation
-    # ----------------------------------------------------------
-    def _validate_intra_critic_consistency(
-        self, critics: Dict[str, Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """
-        Check for contradictions within each critic's evaluation.
+    def _normalize_critic_name(self, name: str) -> str:
+        """Normalize critic name to canonical form."""
+        name_lower = name.lower().replace("_", " ").replace("-", " ")
 
-        Examples:
-        - Severity 0.0 but multiple violations listed
-        - Contradictory violation categories
-        - Rationale doesn't support severity
-        """
-        issues = []
+        # Map variations to canonical names
+        if "autonomy" in name_lower or "agency" in name_lower:
+            return "autonomy"
+        elif "dignity" in name_lower or "rights" in name_lower:
+            return "dignity"
+        elif "privacy" in name_lower or "identity" in name_lower:
+            return "privacy"
+        elif "fairness" in name_lower or "discrimination" in name_lower:
+            return "fairness"
+        elif "due process" in name_lower or "accountability" in name_lower:
+            return "due_process"
+        elif "precedent" in name_lower or "legitimacy" in name_lower:
+            return "precedent"
+        elif "uncertainty" in name_lower:
+            return "uncertainty"
 
-        for critic_name, evaluation in critics.items():
-            severity = evaluation.get("severity", 0.0)
-            violations = evaluation.get("violations", [])
-            justification = evaluation.get("justification", "")
+        return name_lower
 
-            # Check 1: Severity-violation count mismatch
-            violation_count = len(violations)
-            expected_range = self._get_expected_violation_range(severity)
-
-            if not (expected_range[0] <= violation_count <= expected_range[1]):
-                issues.append({
-                    "critic": critic_name,
-                    "type": "severity_violation_mismatch",
-                    "severity": severity,
-                    "violation_count": violation_count,
-                    "expected_range": expected_range,
-                    "description": f"{critic_name}: Severity {severity} with {violation_count} violations (expected {expected_range})"
-                })
-
-            # Check 2: Zero severity with violations
-            if severity < 0.1 and violation_count > 0:
-                issues.append({
-                    "critic": critic_name,
-                    "type": "zero_severity_with_violations",
-                    "severity": severity,
-                    "violation_count": violation_count,
-                    "description": f"{critic_name}: Zero severity but {violation_count} violations listed"
-                })
-
-            # Check 3: High severity with no justification
-            if severity >= 2.0 and len(justification.strip()) < 10:
-                issues.append({
-                    "critic": critic_name,
-                    "type": "high_severity_without_justification",
-                    "severity": severity,
-                    "justification_length": len(justification),
-                    "description": f"{critic_name}: High severity ({severity}) with insufficient justification"
-                })
-
-        return issues
-
-    def _get_expected_violation_range(self, severity: float) -> tuple:
-        """Map severity score to expected violation count range."""
-        if severity < 0.5:
-            return (0, 0)
-        elif severity < 1.5:
-            return (1, 2)
-        elif severity < 2.5:
-            return (2, 5)
-        else:
-            return (3, 100)
-
-    # ----------------------------------------------------------
-    # Inter-critic consistency validation
-    # ----------------------------------------------------------
-    def _validate_inter_critic_consistency(
-        self, critics: Dict[str, Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """
-        Check for contradictions between different critics.
-
-        Examples:
-        - Truth critic says "high confidence" while Risk critic says "irreversible harm"
-        - Fairness critic says "equitable" while Rights critic says "discrimination"
-        """
-        issues = []
-
-        for pattern in self.contradiction_patterns:
-            # Check if all required critics are present
-            required_critics = pattern["critics"]
-            if all(c in critics for c in required_critics):
-                contradiction = pattern["check"](critics)
-                if contradiction:
-                    issues.append({
-                        "type": "inter_critic_contradiction",
-                        "pattern": pattern["pattern"],
-                        "critics_involved": required_critics,
-                        "description": contradiction,
-                    })
-
-        return issues
-
-    def _check_truth_risk_contradiction(self, critics: Dict[str, Dict[str, Any]]) -> str:
-        """Check for truth-risk contradictions."""
-        truth = critics.get("truth", {})
-        risk = critics.get("risk", {})
-
-        truth_severity = truth.get("severity", 0.0)
-        risk_severity = risk.get("severity", 0.0)
-
-        # Contradiction: High truth confidence (low severity) + high risk
-        if truth_severity < 1.0 and risk_severity >= 2.5:
-            return f"Truth critic shows high confidence (severity {truth_severity}) while Risk critic flags severe harm (severity {risk_severity})"
-
-        return ""
-
-    def _check_fairness_rights_contradiction(self, critics: Dict[str, Dict[str, Any]]) -> str:
-        """Check for fairness-rights contradictions."""
-        fairness = critics.get("fairness", {})
-        rights = critics.get("rights", {})
-
-        fairness_severity = fairness.get("severity", 0.0)
-        rights_severity = rights.get("severity", 0.0)
-
-        # Contradiction: Low fairness concern + high rights violation
-        # (Both should flag discrimination)
-        if fairness_severity < 1.0 and rights_severity >= 2.5:
-            rights_violations = rights.get("violations", [])
-            if any("discrimination" in str(v).lower() for v in rights_violations):
-                return f"Rights critic flags discrimination (severity {rights_severity}) while Fairness critic shows no concern (severity {fairness_severity})"
-
-        return ""
-
-    def _check_pragmatics_risk_contradiction(self, critics: Dict[str, Dict[str, Any]]) -> str:
-        """Check for pragmatics-risk contradictions."""
-        pragmatics = critics.get("pragmatics", {})
-        risk = critics.get("risk", {})
-
-        pragmatics_severity = pragmatics.get("severity", 0.0)
-        risk_severity = risk.get("severity", 0.0)
-
-        # Contradiction: Highly feasible + irreversible harm
-        if pragmatics_severity < 1.0 and risk_severity >= 2.5:
-            risk_violations = risk.get("violations", [])
-            if any("irreversible" in str(v).lower() for v in risk_violations):
-                return f"Pragmatics critic shows high feasibility (severity {pragmatics_severity}) while Risk critic flags irreversible harm (severity {risk_severity})"
-
-        return ""
-
-    # ----------------------------------------------------------
-    # Severity alignment validation
-    # ----------------------------------------------------------
-    def _validate_severity_alignment(
-        self, critics: Dict[str, Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """
-        Validate that severity scores align with violation evidence.
-        """
-        issues = []
-
-        for critic_name, evaluation in critics.items():
-            severity = evaluation.get("severity", 0.0)
-            violations = evaluation.get("violations", [])
-            evidence = evaluation.get("evidence", {})
-
-            # Check if evidence supports the severity
-            if severity >= 2.0:  # Constitutional threshold
-                if not violations:
-                    issues.append({
-                        "critic": critic_name,
-                        "type": "high_severity_no_violations",
-                        "severity": severity,
-                        "description": f"{critic_name}: Constitutional severity ({severity}) with no violations"
-                    })
-
-                if not evidence or len(evidence) == 0:
-                    issues.append({
-                        "critic": critic_name,
-                        "type": "high_severity_no_evidence",
-                        "severity": severity,
-                        "description": f"{critic_name}: Constitutional severity ({severity}) with no evidence"
-                    })
-
-        return issues
-
-    # ----------------------------------------------------------
-    # Consistency score computation
-    # ----------------------------------------------------------
-    def _compute_consistency_score(
+    def _validate_escalation_signals(
         self,
-        intra_issues: List[Dict[str, Any]],
-        inter_issues: List[Dict[str, Any]],
-        severity_issues: List[Dict[str, Any]]
-    ) -> float:
+        critic_name: str,
+        normalized_name: str,
+        evaluation: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
         """
-        Compute overall consistency score (0-1, where 1 = fully consistent).
+        Validate that escalation signals are clause-aware.
 
-        Weighting:
-        - Intra-critic issues: 0.4 weight (most critical)
-        - Inter-critic issues: 0.3 weight
-        - Severity alignment: 0.3 weight
+        From Handbook 8.1: "Critics SHALL emit clause-aware escalation signals
+        directly (e.g., P4, DP2). Escalation SHALL NOT be inferred at aggregation time."
         """
-        total_issues = len(intra_issues) + len(inter_issues) + len(severity_issues)
+        violations = []
+        charter = self.charter_boundaries[normalized_name]
+        valid_clauses = charter["valid_clauses"]
 
-        if total_issues == 0:
-            return 1.0
+        # Check for escalation signal
+        escalation = evaluation.get("escalation")
 
-        # Weight different issue types
-        weighted_score = (
-            len(intra_issues) * 0.4 +
-            len(inter_issues) * 0.3 +
-            len(severity_issues) * 0.3
-        )
+        if escalation:
+            # Should have clause_id
+            clause_id = escalation.get("clause_id") if isinstance(escalation, dict) else None
 
-        # Normalize to 0-1 range (assume max 10 issues is complete inconsistency)
-        consistency = max(0.0, 1.0 - (weighted_score / 10.0))
+            if not clause_id:
+                violations.append({
+                    "critic": critic_name,
+                    "type": CharterViolationType.MISSING_CLAUSE_ID.value,
+                    "severity": "high",
+                    "description": f"{critic_name} has escalation without clause_id (violates Handbook 8.1)",
+                    "fix": f"Emit clause-aware signal: {valid_clauses}"
+                })
+            elif clause_id not in valid_clauses:
+                violations.append({
+                    "critic": critic_name,
+                    "type": CharterViolationType.INVALID_CLAUSE_ID.value,
+                    "severity": "high",
+                    "description": f"{critic_name} emitted invalid clause '{clause_id}' (valid: {valid_clauses})",
+                    "fix": f"Use only chartered clauses: {valid_clauses}"
+                })
 
-        return round(consistency, 3)
+            # Should have tier
+            tier = escalation.get("tier") if isinstance(escalation, dict) else None
 
-    # ----------------------------------------------------------
-    # Recommendations and audit flags
-    # ----------------------------------------------------------
+            if not tier:
+                violations.append({
+                    "critic": critic_name,
+                    "type": CharterViolationType.MISSING_TIER.value,
+                    "severity": "high",
+                    "description": f"{critic_name} escalation missing tier",
+                    "fix": "Specify tier_2 or tier_3"
+                })
+            elif tier not in self.valid_tiers:
+                violations.append({
+                    "critic": critic_name,
+                    "type": CharterViolationType.INVALID_TIER.value,
+                    "severity": "medium",
+                    "description": f"{critic_name} has invalid tier '{tier}' (expected tier_2 or tier_3)",
+                    "fix": "Use tier_2 or tier_3"
+                })
+
+        return violations
+
+    def _detect_boundary_violations(
+        self,
+        critic_name: str,
+        normalized_name: str,
+        evaluation: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Detect potential charter boundary violations.
+
+        From Handbook Section 5: Each critic has "Owns" and "Must NOT" boundaries.
+        """
+        violations = []
+        charter = self.charter_boundaries[normalized_name]
+        must_not = charter["must_not"]
+
+        # Check justification and violations for boundary violations
+        justification = evaluation.get("justification", "").lower()
+        violations_text = " ".join(str(v).lower() for v in evaluation.get("violations", []))
+        combined_text = justification + " " + violations_text
+
+        # Check for forbidden domains
+        for forbidden in must_not:
+            forbidden_lower = forbidden.replace("_", " ")
+
+            # Specific checks based on charter
+            if normalized_name == "autonomy":
+                if "dignity" in combined_text and "violation" in combined_text:
+                    violations.append({
+                        "critic": critic_name,
+                        "type": CharterViolationType.DOMAIN_OVERSTEP.value,
+                        "severity": "medium",
+                        "description": f"Autonomy critic may be judging dignity (charter: must not judge dignity)",
+                        "text_sample": combined_text[:100]
+                    })
+                if "fairness" in combined_text or "equitable" in combined_text:
+                    violations.append({
+                        "critic": critic_name,
+                        "type": CharterViolationType.DOMAIN_OVERSTEP.value,
+                        "severity": "medium",
+                        "description": f"Autonomy critic may be judging fairness (charter: must not judge fairness)",
+                        "text_sample": combined_text[:100]
+                    })
+
+            elif normalized_name == "dignity":
+                if "consent" in combined_text or "authorization" in combined_text:
+                    violations.append({
+                        "critic": critic_name,
+                        "type": CharterViolationType.DOMAIN_OVERSTEP.value,
+                        "severity": "medium",
+                        "description": f"Dignity critic may be checking consent (charter: must not do consent checks)",
+                        "text_sample": combined_text[:100]
+                    })
+
+            elif normalized_name == "fairness":
+                if "intent" in combined_text or "intention" in combined_text:
+                    violations.append({
+                        "critic": critic_name,
+                        "type": CharterViolationType.DOMAIN_OVERSTEP.value,
+                        "severity": "low",
+                        "description": f"Fairness critic may be judging intent (charter: must not judge intent)",
+                        "text_sample": combined_text[:100]
+                    })
+
+        return violations
+
+    def _detect_intentional_overlaps(
+        self,
+        critic_name: str,
+        normalized_name: str,
+        evaluation: Dict[str, Any],
+        all_critics: Dict[str, Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Detect intentional overlaps between critics.
+
+        From Handbook Section 5: "Intentional Overlap" is EXPECTED, not an error.
+        """
+        overlaps = []
+        charter = self.charter_boundaries[normalized_name]
+        intentional_overlap_critics = charter.get("intentional_overlap", [])
+
+        for overlap_critic in intentional_overlap_critics:
+            if overlap_critic in [self._normalize_critic_name(c) for c in all_critics.keys()]:
+                overlaps.append({
+                    "critics": [critic_name, overlap_critic],
+                    "type": "intentional_overlap",
+                    "description": f"{critic_name} and {overlap_critic} may overlap (this is intentional per charter)",
+                    "note": "NOT AN ERROR - Handbook Section 5 explicitly allows this"
+                })
+
+        return overlaps
+
     def _generate_recommendations(
         self,
-        intra_issues: List[Dict[str, Any]],
-        inter_issues: List[Dict[str, Any]],
-        severity_issues: List[Dict[str, Any]]
+        violations: List[Dict[str, Any]],
+        warnings: List[Dict[str, Any]]
     ) -> List[str]:
-        """Generate actionable recommendations based on consistency issues."""
+        """Generate recommendations for fixing charter violations."""
         recommendations = []
 
-        if intra_issues:
+        if not violations and not warnings:
+            recommendations.append("✅ All critics comply with constitutional charters")
+            return recommendations
+
+        # High severity violations
+        high_severity = [v for v in violations if v.get("severity") == "high"]
+        if high_severity:
             recommendations.append(
-                f"Review {len(intra_issues)} intra-critic inconsistencies for potential critic logic errors"
+                f"🔴 CRITICAL: Fix {len(high_severity)} high-severity charter violations immediately"
+            )
+            for v in high_severity[:3]:  # Show first 3
+                recommendations.append(f"  - {v['description']}")
+
+        # Medium severity violations
+        medium_severity = [v for v in violations if v.get("severity") == "medium"]
+        if medium_severity:
+            recommendations.append(
+                f"🟡 Review {len(medium_severity)} potential charter boundary violations"
             )
 
-        if inter_issues:
+        # Warnings
+        if warnings:
             recommendations.append(
-                f"Investigate {len(inter_issues)} inter-critic contradictions - may indicate complex edge case"
+                f"ℹ️  {len(warnings)} warnings - review for best practices"
             )
 
-        if severity_issues:
-            recommendations.append(
-                f"Verify {len(severity_issues)} severity-evidence misalignments for potential calibration issues"
-            )
-
-        # High-priority recommendation
-        total_issues = len(intra_issues) + len(inter_issues) + len(severity_issues)
-        if total_issues >= 5:
-            recommendations.insert(0, "ESCALATE: High inconsistency detected - consider human review")
+        recommendations.append(
+            "📖 Reference: Constitutional Critics & Escalation Governance Handbook v8.1"
+        )
 
         return recommendations
-
-    def _generate_audit_flags(self, consistency_score: float) -> List[str]:
-        """Generate audit flags based on consistency score."""
-        flags = []
-
-        if consistency_score < 0.5:
-            flags.append("CRITICAL_INCONSISTENCY")
-        elif consistency_score < 0.7:
-            flags.append("MODERATE_INCONSISTENCY")
-        elif consistency_score < 0.9:
-            flags.append("MINOR_INCONSISTENCY")
-        else:
-            flags.append("CONSISTENT")
-
-        return flags
