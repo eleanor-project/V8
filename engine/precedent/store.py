@@ -18,7 +18,7 @@ import os
 import hashlib
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, cast
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 import logging
@@ -156,9 +156,9 @@ class InMemoryStore(BasePrecedentStore):
         """Compute cosine similarity between two vectors."""
         if len(a) != len(b):
             return 0.0
-        dot = sum(x * y for x, y in zip(a, b))
-        norm_a = sum(x * x for x in a) ** 0.5
-        norm_b = sum(x * x for x in b) ** 0.5
+        dot = float(sum(x * y for x, y in zip(a, b)))
+        norm_a = float(sum(x * x for x in a) ** 0.5)
+        norm_b = float(sum(x * x for x in b) ** 0.5)
         if norm_a == 0 or norm_b == 0:
             return 0.0
         return dot / (norm_a * norm_b)
@@ -282,7 +282,7 @@ class PgVectorStore(BasePrecedentStore):
 
     def __init__(
         self,
-        connection_string: str = None,
+        connection_string: Optional[str] = None,
         table_name: str = "precedent_cases",
         embedding_dim: int = 1536,
         pool_size: int = 5
@@ -464,7 +464,7 @@ class PgVectorStore(BasePrecedentStore):
 
             with conn.cursor() as cur:
                 cur.execute(f"DELETE FROM {self.table_name} WHERE case_id = %s", (case_id,))
-                deleted = cur.rowcount > 0
+                deleted = bool(cur.rowcount and cur.rowcount > 0)
                 conn.commit()
                 return deleted
         finally:
@@ -479,7 +479,7 @@ class PgVectorStore(BasePrecedentStore):
             with conn.cursor() as cur:
                 cur.execute(f"SELECT COUNT(*) as cnt FROM {self.table_name}")
                 row = cur.fetchone()
-                return row["cnt"] if row else 0
+                return int(row["cnt"]) if row else 0
         finally:
             conn.close()
 
@@ -497,7 +497,11 @@ class ChromaStore(BasePrecedentStore):
         - chromadb package installed
     """
 
-    def __init__(self, collection_name: str = "precedent_cases", persist_directory: str = None):
+    def __init__(
+        self,
+        collection_name: str = "precedent_cases",
+        persist_directory: Optional[str] = None,
+    ):
         """
         Initialize ChromaDB store.
 
@@ -603,7 +607,7 @@ class ChromaStore(BasePrecedentStore):
             return False
 
     def count(self) -> int:
-        return self._collection.count()
+        return int(self._collection.count())
 
     @staticmethod
     def _generate_id(text: str) -> str:
@@ -622,7 +626,7 @@ def create_store(backend: str = "memory", **kwargs) -> BasePrecedentStore:
     Returns:
         Configured precedent store instance
     """
-    backends = {
+    backends: Dict[str, Any] = {
         "memory": InMemoryStore,
         "json": JSONFileStore,
         "pgvector": PgVectorStore,
@@ -632,4 +636,5 @@ def create_store(backend: str = "memory", **kwargs) -> BasePrecedentStore:
     if backend not in backends:
         raise ValueError(f"Unknown backend: {backend}. Available: {list(backends.keys())}")
 
-    return backends[backend](**kwargs)
+    store_cls = backends[backend]
+    return cast(BasePrecedentStore, store_cls(**kwargs))
