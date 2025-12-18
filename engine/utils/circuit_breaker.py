@@ -83,7 +83,7 @@ class CircuitBreaker:
         success_threshold: int = 2,
         recovery_timeout: float = 30.0,
         half_open_max_calls: int = 3,
-        on_state_change: Callable[[str, CircuitState, CircuitState], None] = None
+        on_state_change: Optional[Callable[[str, CircuitState, CircuitState], None]] = None
     ):
         self.name = name
         self.config = CircuitBreakerConfig(
@@ -100,7 +100,7 @@ class CircuitBreaker:
         self._half_open_calls = 0
         self._lock = threading.Lock()
 
-        self._on_state_change = on_state_change
+        self._on_state_change: Optional[Callable[[str, CircuitState, CircuitState], None]] = on_state_change
         self.metrics = CircuitBreakerMetrics()
 
     @property
@@ -140,7 +140,7 @@ class CircuitBreaker:
             self._half_open_calls = 0
 
         # Callback for monitoring
-        if self._on_state_change:
+        if self._on_state_change is not None:
             try:
                 self._on_state_change(self.name, old_state, new_state)
             except Exception:

@@ -23,7 +23,7 @@ import random
 import time
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import Callable, Any, Optional, Type, Tuple, Union, List
+from typing import Any, Callable, List, Optional, Tuple, Type, Union
 import logging
 
 logger = logging.getLogger(__name__)
@@ -41,12 +41,12 @@ class RetryConfig:
     jitter_factor: float = 0.1  # Jitter as fraction of delay
 
     # Exceptions to retry on (empty means retry on all exceptions)
-    retryable_exceptions: Tuple[Type[Exception], ...] = field(
+    retryable_exceptions: Tuple[Type[BaseException], ...] = field(
         default_factory=lambda: (Exception,)
     )
 
     # Exceptions to never retry on
-    non_retryable_exceptions: Tuple[Type[Exception], ...] = field(
+    non_retryable_exceptions: Tuple[Type[BaseException], ...] = field(
         default_factory=lambda: (KeyboardInterrupt, SystemExit)
     )
 
@@ -124,14 +124,14 @@ def should_retry(
 
 
 def retry_with_backoff(
-    max_retries: int = None,
-    base_delay: float = None,
-    max_delay: float = None,
-    exponential_base: float = None,
-    jitter: bool = None,
-    config: RetryConfig = None,
-    on_retry: Callable[[int, Exception, float], None] = None
-):
+    max_retries: Optional[int] = None,
+    base_delay: Optional[float] = None,
+    max_delay: Optional[float] = None,
+    exponential_base: Optional[float] = None,
+    jitter: Optional[bool] = None,
+    config: Optional[RetryConfig] = None,
+    on_retry: Optional[Callable[[int, Exception, float], None]] = None,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator for retry with exponential backoff.
 
@@ -170,10 +170,10 @@ def retry_with_backoff(
     if jitter is not None:
         config.jitter = jitter
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         async def async_wrapper(*args, **kwargs) -> Any:
-            last_exception = None
+            last_exception: Optional[Exception] = None
             total_delay = 0.0
 
             for attempt in range(config.max_retries + 1):
@@ -212,16 +212,17 @@ def retry_with_backoff(
                     await asyncio.sleep(delay)
 
             # Should never reach here, but just in case
+            last_exc = last_exception or Exception("Unknown error")
             raise RetryExhausted(
                 f"Retry exhausted for {func.__name__}",
                 attempts=config.max_retries + 1,
-                last_exception=last_exception,
+                last_exception=last_exc,
                 total_delay=total_delay
             )
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs) -> Any:
-            last_exception = None
+            last_exception: Optional[Exception] = None
             total_delay = 0.0
 
             for attempt in range(config.max_retries + 1):
@@ -259,10 +260,11 @@ def retry_with_backoff(
 
                     time.sleep(delay)
 
+            last_exc = last_exception or Exception("Unknown error")
             raise RetryExhausted(
                 f"Retry exhausted for {func.__name__}",
                 attempts=config.max_retries + 1,
-                last_exception=last_exception,
+                last_exception=last_exc,
                 total_delay=total_delay
             )
 
@@ -275,10 +277,10 @@ def retry_with_backoff(
 
 
 async def retry_async(
-    func: Callable,
+    func: Callable[..., Any],
     *args,
-    config: RetryConfig = None,
-    on_retry: Callable[[int, Exception, float], None] = None,
+    config: Optional[RetryConfig] = None,
+    on_retry: Optional[Callable[[int, Exception, float], None]] = None,
     **kwargs
 ) -> Any:
     """
@@ -295,7 +297,7 @@ async def retry_async(
         )
     """
     config = config or RetryConfig()
-    last_exception = None
+    last_exception: Optional[Exception] = None
     total_delay = 0.0
 
     for attempt in range(config.max_retries + 1):
@@ -329,9 +331,10 @@ async def retry_async(
 
             await asyncio.sleep(delay)
 
+    last_exc = last_exception or Exception("Unknown error")
     raise RetryExhausted(
         "Retry exhausted",
         attempts=config.max_retries + 1,
-        last_exception=last_exception,
+        last_exception=last_exc,
         total_delay=total_delay
     )
