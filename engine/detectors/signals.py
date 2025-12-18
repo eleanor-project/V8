@@ -22,7 +22,7 @@ def _severity_label(score: float) -> str:
     return "S3"
 
 
-class SeverityLevel(str):
+class SeverityLevel(float):
     """
     Severity wrapper that compares like a float but renders like S0-S3.
 
@@ -32,21 +32,18 @@ class SeverityLevel(str):
 
     def __new__(cls, score: float):
         normalized = max(0.0, min(1.0, float(score)))
-        label = _severity_label(normalized)
-        obj = super().__new__(cls, label)
-        obj.score = normalized
-        return obj
+        return float.__new__(cls, normalized)
 
     @property
     def label(self) -> str:
-        return _severity_label(self.score)
+        return _severity_label(float(self))
 
     def __float__(self) -> float:  # pragma: no cover - trivial
-        return self.score
+        return float.__float__(self)
 
     def _compare_value(self, other: object) -> float:
         if isinstance(other, SeverityLevel):
-            return other.score
+            return float(other)
         if isinstance(other, str):
             # Allow comparisons against "S0"-"S3"
             try:
@@ -62,24 +59,24 @@ class SeverityLevel(str):
         if isinstance(other, str):
             return str(self) == other
         try:
-            return self.score == float(other)  # type: ignore[arg-type]
+            return float(self) == float(other)  # type: ignore[arg-type]
         except Exception:
             return False
 
     def __lt__(self, other: object) -> bool:  # pragma: no cover - simple overload
-        return self.score < self._compare_value(other)
+        return float(self) < self._compare_value(other)
 
     def __le__(self, other: object) -> bool:  # pragma: no cover - simple overload
-        return self.score <= self._compare_value(other)
+        return float(self) <= self._compare_value(other)
 
     def __gt__(self, other: object) -> bool:  # pragma: no cover - simple overload
-        return self.score > self._compare_value(other)
+        return float(self) > self._compare_value(other)
 
     def __ge__(self, other: object) -> bool:  # pragma: no cover - simple overload
-        return self.score >= self._compare_value(other)
+        return float(self) >= self._compare_value(other)
 
     def __repr__(self) -> str:  # pragma: no cover - trivial
-        return f"SeverityLevel(score={self.score:.2f}, label={self.label})"
+        return f"SeverityLevel(score={float(self):.2f}, label={self.label})"
 
     def __str__(self) -> str:  # pragma: no cover - trivial
         return self.label
