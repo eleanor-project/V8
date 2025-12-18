@@ -17,8 +17,9 @@ Backends:
 """
 
 import json
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Sequence, cast
+
 import requests
-from typing import List, Callable
 
 
 # ============================================================
@@ -36,19 +37,19 @@ class BaseEmbeddingAdapter:
 #  OpenAI GPT Embeddings
 # ============================================================
 
-try:
-    from openai import OpenAI
-except:
-    OpenAI = None
+if TYPE_CHECKING:
+    from openai import OpenAI as OpenAIClient
+else:
+    OpenAIClient = None  # type: ignore[assignment]
 
 
 class GPTEmbeddingAdapter(BaseEmbeddingAdapter):
     """Uses ADA or text-embedding-3-large."""
 
-    def __init__(self, model="text-embedding-3-large", api_key=None):
-        if OpenAI is None:
+    def __init__(self, model: str = "text-embedding-3-large", api_key: Optional[str] = None):
+        if OpenAIClient is None:
             raise ImportError("OpenAI SDK not installed")
-        self.client = OpenAI(api_key=api_key)
+        self.client = OpenAIClient(api_key=api_key)
         self.model = model
 
     def embed(self, text: str) -> List[float]:
@@ -56,7 +57,8 @@ class GPTEmbeddingAdapter(BaseEmbeddingAdapter):
             model=self.model,
             input=text
         )
-        return resp.data[0].embedding
+        embedding: Sequence[float] = resp.data[0].embedding
+        return list(embedding)
 
 
 # ============================================================
@@ -65,8 +67,8 @@ class GPTEmbeddingAdapter(BaseEmbeddingAdapter):
 
 try:
     import anthropic
-except:
-    anthropic = None
+except Exception:
+    anthropic = None  # type: ignore[assignment]
 
 
 class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
@@ -75,8 +77,12 @@ class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
     a sentence-transformer fallback when Voyage is unavailable.
     """
 
-    def __init__(self, model: str = "voyage-large-2", api_key: str = None,
-                 fallback_to_local: bool = True):
+    def __init__(
+        self,
+        model: str = "voyage-large-2",
+        api_key: Optional[str] = None,
+        fallback_to_local: bool = True,
+    ):
         """
         Initialize Claude embedding adapter.
 
@@ -128,7 +134,8 @@ class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
                     model=self.model,
                     input_type="document"
                 )
-                return result.embeddings[0]
+                vec: Sequence[float] = result.embeddings[0]  # type: ignore[index]
+                return list(vec)
             except Exception as e:
                 if not self.fallback_to_local:
                     raise RuntimeError(f"Voyage AI embedding failed: {e}")
@@ -161,8 +168,9 @@ class GrokEmbeddingAdapter(BaseEmbeddingAdapter):
         payload = {"model": self.model, "input": text}
 
         resp = requests.post(url, headers=headers, json=payload)
-        data = resp.json()
-        return data["data"][0]["embedding"]
+        data: Any = resp.json()
+        embedding = data["data"][0]["embedding"]
+        return list(embedding)
 
 
 # ============================================================
@@ -185,7 +193,7 @@ class HFEmbeddingAdapter(BaseEmbeddingAdapter):
 
     def embed(self, text: str) -> List[float]:
         vec = self.model.encode(text)
-        return vec.tolist()
+        return cast(List[float], vec.tolist())
 
 
 # ============================================================
@@ -203,8 +211,9 @@ class OllamaEmbeddingAdapter(BaseEmbeddingAdapter):
             "http://localhost:11434/api/embeddings",
             json={"model": self.model, "prompt": text}
         )
-        data = resp.json()
-        return data["embedding"]
+        data: Any = resp.json()
+        embedding = data["embedding"]
+        return list(embedding)
 
 
 # ============================================================
