@@ -26,7 +26,7 @@ Usage:
 
 import yaml
 import json
-from typing import Dict, Any, Optional, Callable
+from typing import Any, Callable, Dict, Optional
 from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
@@ -49,7 +49,7 @@ class ModelConfig:
     max_tokens: int = 4096
     timeout: float = 30.0
     cost_per_1k_tokens: float = 0.0  # For cost tracking
-    metadata: Dict[str, Any] = None
+    metadata: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if self.metadata is None:
@@ -94,10 +94,10 @@ class ModelRegistry:
         }
 
         # Routing strategies
-        self.routing_strategy: Optional[Callable] = None
+        self.routing_strategy: Optional[Callable[[str, Dict[str, Any], "ModelRegistry"], Optional[str]]] = None
 
         # Metrics/monitoring hooks
-        self.metrics_callback: Optional[Callable] = None
+        self.metrics_callback: Optional[Callable[[str, Dict[str, Any]], None]] = None
 
         # Initialize default configs
         self._init_default_configs()
@@ -207,7 +207,7 @@ class ModelRegistry:
             model_id = self.routing_strategy(critic_name, context, self)
             if model_id:
                 self._record_assignment(critic_name, model_id, "routing_strategy")
-                return model_id
+                return str(model_id)
 
         # 2. Explicit assignment
         if critic_name in self.critic_models:
@@ -331,7 +331,10 @@ class ModelRegistry:
         with open(config_path, 'w') as f:
             yaml.dump(self.to_dict(), f, default_flow_style=False)
 
-    def set_routing_strategy(self, strategy: Callable):
+    def set_routing_strategy(
+        self,
+        strategy: Callable[[str, Dict[str, Any], "ModelRegistry"], Optional[str]],
+    ) -> None:
         """
         Set a custom routing strategy function.
 
@@ -350,7 +353,7 @@ class ModelRegistry:
         """
         self.routing_strategy = strategy
 
-    def set_metrics_callback(self, callback: Callable):
+    def set_metrics_callback(self, callback: Callable[[str, Dict[str, Any]], None]) -> None:
         """
         Set callback for metrics/monitoring.
 
