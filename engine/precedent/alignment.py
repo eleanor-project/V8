@@ -75,7 +75,7 @@ class PrecedentAlignmentEngineV8:
         self,
         critics: Dict[str, Dict[str, Any]],
         precedent_cases: List[Dict[str, Any]],
-        query_embedding: List[float]
+        query_embedding: List[float],
     ) -> Dict[str, Any]:
         """
         Returns full structured precedent analysis.
@@ -126,7 +126,7 @@ class PrecedentAlignmentEngineV8:
     # ----------------------------------------------------------
     # NOVEL CASE HANDLER
     # ----------------------------------------------------------
-    def _novel_case(self):
+    def _novel_case(self) -> Dict[str, Any]:
         return {
             "alignment_score": 0.0,
             "support_strength": 0.0,
@@ -140,7 +140,7 @@ class PrecedentAlignmentEngineV8:
     # ----------------------------------------------------------
     # STEP 1: Precedent alignment computation
     # ----------------------------------------------------------
-    def _compute_alignment(self, similarities, cases):
+    def _compute_alignment(self, similarities: List[float], cases: List[Dict[str, Any]]) -> float:
         """
         alignment_score = weighted agreement between similar cases
         Returns a value in [-1, 1]:

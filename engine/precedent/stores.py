@@ -27,7 +27,7 @@ import re
 import psycopg2
 from psycopg2 import sql
 import weaviate
-from typing import List, Dict, Any
+from typing import Any, Callable, Dict, List
 
 
 # Valid table name pattern (alphanumeric and underscore only)
@@ -41,7 +41,7 @@ TABLE_NAME_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 class Embedder:
     """LLM-based embedding generator for precedent search."""
 
-    def __init__(self, embed_fn):
+    def __init__(self, embed_fn: Callable[[str], List[float]]):
         self.embed_fn = embed_fn
 
     def embed(self, text: str) -> List[float]:
@@ -62,10 +62,10 @@ class WeaviatePrecedentStore:
         embedding = self.embedder.embed(query_text)
 
         result = (
-            self.client.query
-            .get(self.class_name, ["text", "metadata"])
-            .with_near_vector({"vector": embedding})
-            .with_limit(top_k)
+            self.client.query  # type: ignore[attr-defined]
+            .get(self.class_name, ["text", "metadata"])  # type: ignore[attr-defined]
+            .with_near_vector({"vector": embedding})  # type: ignore[attr-defined]
+            .with_limit(top_k)  # type: ignore[attr-defined]
             .do()
         )
 
