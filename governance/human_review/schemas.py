@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional
+from datetime import datetime
 from enum import Enum
 
 
@@ -33,7 +34,7 @@ class HumanReviewRecord(BaseModel):
     review_id: str
     case_id: str
     reviewer_role: str
-    timestamp: str
+    timestamp: datetime
 
     coverage_issues: List[CoverageIssue]
     severity_assessment: SeverityAssessment

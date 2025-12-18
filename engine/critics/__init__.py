@@ -17,17 +17,19 @@ Each critic implements the BaseCriticV8 interface and produces evidence packages
 for the aggregator to synthesize into constitutional decisions.
 """
 
-from .base import BaseCriticV8
+from .base import BaseCriticV8, ConstitutionalCritic
 from .rights import RightsCriticV8, RightsCritic
 from .fairness import FairnessCriticV8, FairnessCritic
 from .truth import TruthCriticV8, TruthCritic
 from .risk import RiskCriticV8, RiskCritic
 from .pragmatics import PragmaticsCriticV8, PragmaticsCritic
 from .autonomy import AutonomyCriticV8
+from .privacy import PrivacyIdentityCritic
 
 __all__ = [
     # Base class
     "BaseCriticV8",
+    "ConstitutionalCritic",
 
     # V8 Critics (preferred)
     "RightsCriticV8",
@@ -36,6 +38,7 @@ __all__ = [
     "RiskCriticV8",
     "PragmaticsCriticV8",
     "AutonomyCriticV8",
+    "PrivacyIdentityCritic",
 
     # Backward compatibility aliases
     "RightsCritic",
@@ -80,6 +83,7 @@ def get_critic_by_name(name: str):
         "rights": RightsCriticV8,
         "fairness": FairnessCriticV8,
         "autonomy": AutonomyCriticV8,
+        "privacy_identity": PrivacyIdentityCritic,
         "truth": TruthCriticV8,
         "risk": RiskCriticV8,
         "pragmatics": PragmaticsCriticV8,

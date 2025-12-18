@@ -81,3 +81,24 @@ def test_wrong_action_type_rejected(
             aggregation_result=aggregation,
             human_action=valid_tier2_human_action,
         )
+
+
+def test_missing_escalation_link_rejected(
+    critic_eval_tier2,
+    valid_tier2_human_action,
+):
+    aggregation = resolve_escalation(
+        critic_evaluations=[critic_eval_tier2],
+        synthesis="Consent issue",
+    )
+
+    # Remove linkage to force failure
+    human_action_missing_links = valid_tier2_human_action.model_copy(
+        update={"linked_escalations": []}
+    )
+
+    with pytest.raises(ValueError):
+        enforce_human_review(
+            aggregation_result=aggregation,
+            human_action=human_action_missing_links,
+        )
