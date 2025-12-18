@@ -7,9 +7,15 @@ These policies enforce Eleanor's constitutional governance at deployment/runtime
 - Tier 2 escalations require the canonical human acknowledgment statement and linkage to all triggering escalation signals.
 - Tier 3 escalations require the canonical human determination statement and linkage to all triggering escalation signals.
 - If no escalation is present, execution may proceed.
+- Route hardening for `/decision/execute` (prototype/gateway defense-in-depth).
+- Critic output validation (clause-aware escalation, tier validity, critic_id match).
 
 ## Files
-- `policies/constitutional.rego` — main policy package `eleanor.governance`.
+- `policies/constitutional.rego` — legacy governance package `eleanor.governance`.
+- `policies/execution.rego` — execution gate (`eleanor.execution`).
+- `policies/api_routes.rego` — route guard (`eleanor.api`).
+- `policies/critic_validation.rego` — critic payload validation (`eleanor.critics`).
+- `tests/` — OPA regression tests for execution and critic validation.
 
 ## How to use
 Feed an input shaped like:
@@ -44,6 +50,11 @@ Feed an input shaped like:
 
 If policy denies, return a clear error such as:
 `CONSTITUTIONAL_POLICY_VIOLATION: execution denied because required human determination for Tier 3 escalation is missing or invalid.`
+
+## Run OPA tests locally
+```
+opa test opa/ -v
+```
 
 ## Suggested integration points
 - Kubernetes admission via Gatekeeper to block workloads that bypass governance.

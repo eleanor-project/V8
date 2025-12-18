@@ -47,7 +47,7 @@ class OPAClientV8:
     # ----------------------------------------------------------
     # Policy Evaluation (Primary Method)
     # ----------------------------------------------------------
-    def evaluate(self, evidence_payload: Dict[str, Any]) -> Dict[str, Any]:
+    def evaluate(self, evidence_payload: Dict[str, Any], policy_path: str | None = None) -> Dict[str, Any]:
         """
         Executes OPA policy evaluation.
 
@@ -61,7 +61,8 @@ class OPAClientV8:
         }
         """
 
-        url = f"{self.base_url}/{self.policy_path}"
+        path = policy_path.strip("/") if policy_path else self.policy_path
+        url = f"{self.base_url}/{path}"
 
         try:
             resp = requests.post(url, json={"input": evidence_payload})
