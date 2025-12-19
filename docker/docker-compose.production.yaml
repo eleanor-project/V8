@@ -1,0 +1,212 @@
+version: "3.9"
+
+# ELEANOR V8 — Production Docker Compose Configuration
+# =====================================================
+# This configuration includes production security best practices
+#
+# USAGE:
+#   docker-compose -f docker-compose.production.yaml up -d
+#
+# PREREQUISITES:
+# 1. Create .env file with production secrets (use ../scripts/generate_secrets.sh)
+# 2. Run validation: ../scripts/validate_env.sh
+# 3. Ensure all required directories exist: mkdir -p audit weaviate_data pg_data
+
+services:
+
+  # ==============================
+  # ELEANOR V8 ENGINE
+  # ==============================
+  eleanor:
+    build: .
+    container_name: eleanor_v8
+    env_file:
+      - ../.env
+    environment:
+      PRECEDENT_BACKEND: "${PRECEDENT_BACKEND:-weaviate}"
+      OPENAI_KEY: "${OPENAI_KEY}"
+      ANTHROPIC_KEY: "${ANTHROPIC_KEY}"
+      XAI_KEY: "${XAI_KEY}"
+      GEMINI_KEY: "${GEMINI_KEY}"
+      OPA_URL: "http://opa:8181"
+      OPA_POLICY_PATH: "v1/data/eleanor/decision"
+      OPA_FAIL_STRATEGY: "${OPA_FAIL_STRATEGY:-escalate}"
+      PG_CONN_STRING: "${PG_CONN_STRING}"
+      WEAVIATE_URL: "${WEAVIATE_URL:-http://weaviate:8080}"
+      ENABLE_PROMETHEUS_MIDDLEWARE: "${ENABLE_PROMETHEUS_MIDDLEWARE:-1}"
+      ENABLE_OTEL: "${ENABLE_OTEL:-0}"
+      JWT_SECRET: "${JWT_SECRET}"
+      CORS_ORIGINS: "${CORS_ORIGINS}"
+      MAX_REQUEST_BYTES: "${MAX_REQUEST_BYTES:-1048576}"
+    depends_on:
+      - opa
+      - weaviate
+      - pgvector
+      - prometheus
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./audit:/app/audit
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==============================
+  # OPA (Open Policy Agent)
+  # ==============================
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: opa
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "/policies"
+    volumes:
+      - ./governance/policies:/policies
+    ports:
+      - "8181:8181"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ==============================
+  # WEAVIATE (Vector database)
+  # ==============================
+  weaviate:
+    image: semitechnologies/weaviate:latest
+    container_name: weaviate
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      # PRODUCTION: Anonymous access disabled for security
+      # Configure API key authentication - see Weaviate docs
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "${WEAVIATE_ANONYMOUS_ACCESS:-false}"
+      AUTHENTICATION_APIKEY_ENABLED: "${WEAVIATE_API_KEY_ENABLED:-true}"
+      AUTHENTICATION_APIKEY_ALLOWED_KEYS: "${WEAVIATE_API_KEY:-}"
+      AUTHENTICATION_APIKEY_USERS: "admin"
+      PERSISTENCE_DATA_PATH: "./data"
+      # Resource limits for production
+      LIMIT_RESOURCES: "true"
+      GOMEMLIMIT: "4GiB"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./weaviate_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==============================
+  # PGVECTOR (Postgres + pgvector)
+  # ==============================
+  pgvector:
+    image: ankane/pgvector
+    container_name: pgvector
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"  # Required from .env
+      POSTGRES_DB: eleanor
+      # Performance tuning for production
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
+  # ==============================
+  # Prometheus
+  # ==============================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    ports:
+      - "9090:9090"
+    depends_on:
+      - eleanor
+      - opa
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ==============================
+  # Grafana
+  # ==============================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      # Admin credentials from .env (REQUIRED)
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      # Security settings for production
+      GF_SERVER_ROOT_URL: "${GRAFANA_ROOT_URL:-http://localhost:3000}"
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_STRICT_TRANSPORT_SECURITY: "true"
+      GF_SECURITY_CONTENT_SECURITY_POLICY: "true"
+      # Disable anonymous access
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Session settings
+      GF_SESSION_COOKIE_SECURE: "true"
+      GF_SESSION_COOKIE_SAMESITE: "lax"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+# Named volumes for data persistence
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+# Production network with driver options
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: eleanor_prod

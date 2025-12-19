@@ -32,6 +32,7 @@ from api.cli.review import list_reviews, replay_case
 
 API_BASE = "http://localhost:8000"
 WS_URL = "ws://localhost:8000/ws/deliberate"
+TIMEOUT_SECONDS = 30  # Timeout for HTTP requests to prevent DoS vulnerabilities
 
 
 # --------------------------------------------------------------
@@ -73,7 +74,7 @@ def cmd_version():
 
 def cmd_deliberate(text):
     payload = {"input": text}
-    r = requests.post(f"{API_BASE}/deliberate", json=payload)
+    r = requests.post(f"{API_BASE}/deliberate", json=payload, timeout=TIMEOUT_SECONDS)
 
     if r.status_code != 200:
         print("ERROR:", r.text)
@@ -118,7 +119,7 @@ async def cmd_stream(text):
 # --------------------------------------------------------------
 
 def cmd_trace(trace_id):
-    r = requests.get(f"{API_BASE}/trace/{trace_id}")
+    r = requests.get(f"{API_BASE}/trace/{trace_id}", timeout=TIMEOUT_SECONDS)
 
     if r.status_code != 200:
         print("ERROR:", r.text)
@@ -139,7 +140,7 @@ def cmd_governance_preview(file_path):
         print("Failed to load JSON:", str(e))
         sys.exit(1)
 
-    r = requests.post(f"{API_BASE}/governance/preview", json=payload)
+    r = requests.post(f"{API_BASE}/governance/preview", json=payload, timeout=TIMEOUT_SECONDS)
 
     if r.status_code != 200:
         print("ERROR:", r.text)
