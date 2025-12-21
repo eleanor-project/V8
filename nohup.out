@@ -81,3 +81,8 @@ INFO:     127.0.0.1:54397 - "POST /deliberate HTTP/1.1" 200 OK
 INFO:     127.0.0.1:54410 - "WebSocket /ws/deliberate" [accepted]
 INFO:     connection open
 INFO:     connection closed
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+[2m2025-12-20T16:13:34.683189Z[0m [[32m[1minfo     [0m] [1mShutting down ELEANOR V8 API server...[0m [[0m[1m[34mapi.rest.main[0m][0m
+INFO:     Application shutdown complete.
+INFO:     Finished server process [66543]
