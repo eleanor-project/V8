@@ -10,8 +10,17 @@ Responsible for:
 """
 
 import json
+import os
 import requests
 from typing import Any, Dict
+
+
+def _get_timeout() -> float:
+    raw = os.getenv("OPA_TIMEOUT_SECONDS", "5")
+    try:
+        return float(raw)
+    except ValueError:
+        return 5.0
 
 
 class OPAClientV8:
@@ -38,8 +47,9 @@ class OPAClientV8:
     # Health Check
     # ----------------------------------------------------------
     def health(self) -> bool:
+        timeout = _get_timeout()
         try:
-            resp = requests.get(f"{self.base_url}/health")
+            resp = requests.get(f"{self.base_url}/health", timeout=timeout)
             return resp.status_code == 200
         except Exception:
             return False
@@ -64,8 +74,9 @@ class OPAClientV8:
         path = policy_path.strip("/") if policy_path else self.policy_path
         url = f"{self.base_url}/{path}"
 
+        timeout = _get_timeout()
         try:
-            resp = requests.post(url, json={"input": evidence_payload})
+            resp = requests.post(url, json={"input": evidence_payload}, timeout=timeout)
         except Exception as e:
             return {
                 "allow": False,

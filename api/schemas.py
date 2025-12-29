@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field, validator
 import re
 
+from engine.schemas.escalation import HumanAction
 
 # Input sanitization pattern - remove potential injection attempts
 SANITIZE_PATTERN = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')
@@ -30,6 +31,10 @@ class DeliberationRequest(BaseModel):
     trace_id: Optional[str] = Field(
         None,
         description="Optional trace ID for correlation"
+    )
+    human_action: Optional[HumanAction] = Field(
+        None,
+        description="Optional human action to satisfy escalation gate"
     )
 
     @validator('input')
@@ -58,7 +63,7 @@ class DeliberationRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "input": "Should I approve this loan application?",
-                "context": {"user_id": "12345", "category": "finance"}
+                "context": {"user_id": "12345", "category": "finance"},
             }
         }
 
@@ -127,6 +132,7 @@ class DeliberationResponse(BaseModel):
     uncertainty: Dict[str, Any]
     aggregator_output: Dict[str, Any]
     opa_governance: Dict[str, Any]
+    execution_decision: Optional[Dict[str, Any]] = None
 
     class Config:
         json_schema_extra = {

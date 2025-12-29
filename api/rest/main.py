@@ -46,9 +46,8 @@ from api.schemas import (
     HealthResponse,
     ErrorResponse,
 )
-from api.middleware.auth import verify_token, get_current_user, TokenPayload, get_auth_config
+from api.middleware.auth import verify_token, get_current_user, TokenPayload, get_auth_config, require_role
 from api.middleware.rate_limit import (
-    check_rate_limit,
     RateLimitMiddleware,
     get_rate_limiter,
     RateLimitConfig,
@@ -69,6 +68,8 @@ from engine.router.adapters import GPTAdapter, ClaudeAdapter, GrokAdapter, Llama
 from api.websocket.websocket_server import ws_router
 from pydantic import BaseModel
 from pathlib import Path
+from engine.execution.human_review import enforce_human_review
+from engine.schemas.escalation import AggregationResult, HumanAction, ExecutableDecision
 
 # Initialize logging
 configure_logging()
@@ -101,6 +102,8 @@ except Exception:
     OPA_CALLS = None
     generate_latest = None
     CONTENT_TYPE_LATEST = None
+
+ADMIN_ROLE = os.getenv("ADMIN_ROLE", "admin")
 
 
 # ---------------------------------------------
@@ -319,6 +322,27 @@ def normalize_engine_result(result_obj: Any, input_text: str, trace_id: str, con
     return normalized
 
 
+def resolve_execution_decision(
+    aggregated: Dict[str, Any],
+    human_action: Optional[HumanAction],
+) -> Optional[ExecutableDecision]:
+    aggregation_payload = aggregated.get("aggregation_result") if isinstance(aggregated, dict) else None
+    if not aggregation_payload:
+        return None
+    try:
+        aggregation_result = AggregationResult.model_validate(aggregation_payload)
+    except Exception as exc:
+        logger.error("Invalid aggregation_result payload", error=str(exc))
+        raise RuntimeError("Invalid aggregation_result payload") from exc
+    return enforce_human_review(aggregation_result=aggregation_result, human_action=human_action)
+
+
+def apply_execution_gate(final_decision: str, execution_decision: Optional[ExecutableDecision]) -> str:
+    if execution_decision and not execution_decision.executable and final_decision != "deny":
+        return "escalate"
+    return final_decision
+
+
 # Lifespan context manager for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -531,7 +555,6 @@ async def deliberate(
     request: Request,
     payload: DeliberationRequest,
     user: Optional[str] = Depends(get_current_user),
-    _rate_limit: None = Depends(check_rate_limit),
     _size_guard: None = Depends(check_content_length),
 ):
     """
@@ -600,6 +623,14 @@ async def deliberate(
 
         final_decision = resolve_final_decision(aggregated.get("decision"), governance_result)
 
+        execution_decision = None
+        try:
+            execution_decision = resolve_execution_decision(aggregated, payload.human_action)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+        final_decision = apply_execution_gate(final_decision, execution_decision)
+
         duration_ms = (time.time() - start_time) * 1000
         if DELIB_LATENCY:
             DELIB_LATENCY.observe(duration_ms / 1000.0)
@@ -629,6 +660,7 @@ async def deliberate(
             "opa_governance": governance_result,
             "governance": governance_result,
             "final_decision": final_decision,
+            "execution_decision": execution_decision.model_dump(mode="json") if execution_decision else None,
         }
 
         # persist replay record
@@ -785,12 +817,19 @@ async def replay_trace(
     }
     governance_result = await evaluate_opa(getattr(engine, "opa_callback", None), governance_payload)
     final_decision = resolve_final_decision(normalized["aggregator_output"].get("decision"), governance_result)
+    execution_decision = None
+    try:
+        execution_decision = resolve_execution_decision(normalized["aggregator_output"], None)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    final_decision = apply_execution_gate(final_decision, execution_decision)
 
     rerun_payload = {
         **normalized,
         "opa_governance": governance_result,
         "governance": governance_result,
         "final_decision": final_decision,
+        "execution_decision": execution_decision.model_dump(mode="json") if execution_decision else None,
         "replay_of": trace_id,
     }
 
@@ -951,7 +990,8 @@ async def metrics():
 # ---------------------------------------------
 
 @app.get("/admin/router/health", tags=["Admin"])
-async def router_health(user: Optional[str] = Depends(get_current_user)):
+@require_role(ADMIN_ROLE)
+async def router_health():
     if engine is None or not getattr(engine, "router", None):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Router not available")
     router = engine.router
@@ -961,7 +1001,8 @@ async def router_health(user: Optional[str] = Depends(get_current_user)):
 
 
 @app.post("/admin/router/reset_breakers", tags=["Admin"])
-async def reset_breakers(user: Optional[str] = Depends(get_current_user)):
+@require_role(ADMIN_ROLE)
+async def reset_breakers():
     if engine is None or not getattr(engine, "router", None):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Router not available")
     router = engine.router
@@ -971,7 +1012,8 @@ async def reset_breakers(user: Optional[str] = Depends(get_current_user)):
 
 
 @app.get("/admin/critics/bindings", tags=["Admin"])
-async def get_critic_bindings(user: Optional[str] = Depends(get_current_user)):
+@require_role(ADMIN_ROLE)
+async def get_critic_bindings():
     if engine is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not initialized")
     router = getattr(engine, "router", None)
@@ -989,7 +1031,8 @@ class CriticBinding(BaseModel):
 
 
 @app.post("/admin/critics/bindings", tags=["Admin"])
-async def set_critic_binding(binding: CriticBinding, user: Optional[str] = Depends(get_current_user)):
+@require_role(ADMIN_ROLE)
+async def set_critic_binding(binding: CriticBinding):
     if engine is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not initialized")
     router = getattr(engine, "router", None)
@@ -1010,7 +1053,8 @@ class AdapterRegistration(BaseModel):
 
 
 @app.post("/admin/router/adapters", tags=["Admin"])
-async def register_adapter(adapter: AdapterRegistration, user: Optional[str] = Depends(get_current_user)):
+@require_role(ADMIN_ROLE)
+async def register_adapter(adapter: AdapterRegistration):
     if engine is None or not getattr(engine, "router", None):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Router not available")
 
@@ -1024,11 +1068,14 @@ async def register_adapter(adapter: AdapterRegistration, user: Optional[str] = D
         elif factory == "hf":
             adapters[adapter.name] = LlamaHFAdapter(model_path=adapter.model or adapter.name, device=adapter.device or "cpu")
         elif factory == "openai":
-            adapters[adapter.name] = GPTAdapter(model=adapter.model or "gpt-4o-mini", api_key=adapter.api_key or os.getenv("OPENAI_API_KEY"))
+            api_key = adapter.api_key or os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY")
+            adapters[adapter.name] = GPTAdapter(model=adapter.model or "gpt-4o-mini", api_key=api_key)
         elif factory == "claude":
-            adapters[adapter.name] = ClaudeAdapter(model=adapter.model or "claude-3-5-sonnet-20241022", api_key=adapter.api_key or os.getenv("ANTHROPIC_API_KEY"))
+            api_key = adapter.api_key or os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_KEY")
+            adapters[adapter.name] = ClaudeAdapter(model=adapter.model or "claude-3-5-sonnet-20241022", api_key=api_key)
         elif factory == "grok":
-            adapters[adapter.name] = GrokAdapter(model=adapter.model or "grok-beta", api_key=adapter.api_key or os.getenv("XAI_API_KEY"))
+            api_key = adapter.api_key or os.getenv("XAI_API_KEY") or os.getenv("XAI_KEY")
+            adapters[adapter.name] = GrokAdapter(model=adapter.model or "grok-beta", api_key=api_key)
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown adapter type '{adapter.type}'")
     except Exception as exc:
