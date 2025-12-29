@@ -12,6 +12,7 @@ from engine.schemas.escalation import (
     EscalationTier,
     AuditRecord,
 )
+from engine.execution.audit_store import store_audit_record
 
 
 # ---------------------------------------------------------
@@ -188,7 +189,6 @@ def _create_audit_record(
         created_at=datetime.utcnow(),
     )
 
-    # Persist here (DB / append-only log / WORM storage)
-    # persist_audit_record(record)
+    store_audit_record(record)
 
     return record

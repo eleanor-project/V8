@@ -6,7 +6,7 @@ Tests engine/router/adapters.py
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from engine.router.adapters import (
     BaseLLMAdapter,
     AdapterRegistry,
@@ -215,23 +215,27 @@ def test_grok_adapter_initialization():
     assert adapter.api_key == "test_key"
 
 
-@patch('engine.router.adapters.requests.post')
-def test_grok_adapter_call(mock_post):
+@patch('engine.router.adapters.httpx.AsyncClient')
+@pytest.mark.asyncio
+async def test_grok_adapter_call(mock_post):
     """Test GrokAdapter __call__ method."""
     # Setup mock
     mock_response = Mock()
     mock_response.json.return_value = {
         "choices": [{"message": {"content": "Grok response"}}]
     }
-    mock_post.return_value = mock_response
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_post.return_value = mock_client
 
     # Test
     adapter = GrokAdapter(api_key="test_key")
-    result = adapter("Hello Grok")
+    result = await adapter("Hello Grok")
 
     assert result == "Grok response"
-    mock_post.assert_called_once()
-    call_args = mock_post.call_args
+    mock_client.post.assert_awaited_once()
+    call_args = mock_client.post.call_args
     assert call_args[1]["json"]["messages"][0]["content"] == "Hello Grok"
 
 
@@ -246,38 +250,46 @@ def test_ollama_adapter_initialization():
     assert adapter.model == "llama3"
 
 
-@patch('engine.router.adapters.requests.post')
-def test_ollama_adapter_call(mock_post):
+@patch('engine.router.adapters.httpx.AsyncClient')
+@pytest.mark.asyncio
+async def test_ollama_adapter_call(mock_post):
     """Test OllamaAdapter __call__ method."""
     # Setup mock
     mock_response = Mock()
     mock_response.json.return_value = {
         "response": "Ollama response"
     }
-    mock_post.return_value = mock_response
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_post.return_value = mock_client
 
     # Test
     adapter = OllamaAdapter(model="llama3")
-    result = adapter("Hello Ollama")
+    result = await adapter("Hello Ollama")
 
     assert result == "Ollama response"
-    mock_post.assert_called_once()
-    call_args = mock_post.call_args
+    mock_client.post.assert_awaited_once()
+    call_args = mock_client.post.call_args
     assert "http://localhost:11434/api/generate" in call_args[0]
     assert call_args[1]["json"]["prompt"] == "Hello Ollama"
 
 
-@patch('engine.router.adapters.requests.post')
-def test_ollama_adapter_call_empty_response(mock_post):
+@patch('engine.router.adapters.httpx.AsyncClient')
+@pytest.mark.asyncio
+async def test_ollama_adapter_call_empty_response(mock_post):
     """Test OllamaAdapter handles missing response field."""
     # Setup mock
     mock_response = Mock()
     mock_response.json.return_value = {}  # No "response" key
-    mock_post.return_value = mock_response
+    mock_client = AsyncMock()
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_post.return_value = mock_client
 
     # Test
     adapter = OllamaAdapter()
-    result = adapter("test")
+    result = await adapter("test")
 
     assert result == ""
 

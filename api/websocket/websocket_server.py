@@ -18,6 +18,7 @@ And receive JSON messages during pipeline execution.
 
 import asyncio
 import json
+import os
 import uuid
 from typing import Any, Dict, Optional
 
@@ -74,10 +75,21 @@ async def require_ws_auth(ws: WebSocket) -> bool:
 
     token = auth_header.split(" ", 1)[1].strip()
     try:
-        decode_token(token, config)
+        payload = decode_token(token, config)
     except Exception as exc:
         detail = getattr(exc, "detail", "Unauthorized")
         await ws_send(ws, "error", {"message": str(detail)})
+        await ws.close(code=1008)
+        return False
+
+    required_role = os.getenv("WS_REQUIRED_ROLE")
+    required_scope = os.getenv("WS_REQUIRED_SCOPE")
+    if required_role and not payload.has_role(required_role):
+        await ws_send(ws, "error", {"message": f"Role '{required_role}' required"})
+        await ws.close(code=1008)
+        return False
+    if required_scope and not payload.has_scope(required_scope):
+        await ws_send(ws, "error", {"message": f"Scope '{required_scope}' required"})
         await ws.close(code=1008)
         return False
 

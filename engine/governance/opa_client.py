@@ -11,8 +11,9 @@ Responsible for:
 
 import json
 import os
-import requests
 from typing import Any, Dict
+
+import httpx
 
 
 def _get_timeout() -> float:
@@ -49,15 +50,16 @@ class OPAClientV8:
     def health(self) -> bool:
         timeout = _get_timeout()
         try:
-            resp = requests.get(f"{self.base_url}/health", timeout=timeout)
+            with httpx.Client(timeout=timeout) as client:
+                resp = client.get(f"{self.base_url}/health")
             return resp.status_code == 200
-        except Exception:
+        except httpx.RequestError:
             return False
 
     # ----------------------------------------------------------
     # Policy Evaluation (Primary Method)
     # ----------------------------------------------------------
-    def evaluate(self, evidence_payload: Dict[str, Any], policy_path: str | None = None) -> Dict[str, Any]:
+    async def evaluate(self, evidence_payload: Dict[str, Any], policy_path: str | None = None) -> Dict[str, Any]:
         """
         Executes OPA policy evaluation.
 
@@ -76,8 +78,9 @@ class OPAClientV8:
 
         timeout = _get_timeout()
         try:
-            resp = requests.post(url, json={"input": evidence_payload}, timeout=timeout)
-        except Exception as e:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(url, json={"input": evidence_payload})
+        except httpx.RequestError as e:
             return {
                 "allow": False,
                 "escalate": True,

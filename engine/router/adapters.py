@@ -24,8 +24,9 @@ You may add new adapters without modifying the engine.
 import os
 import json
 import logging
-import requests
 from typing import Any, Callable, Optional
+
+import httpx
 
 logger = logging.getLogger(__name__)
 def _get_timeout() -> float:
@@ -37,6 +38,14 @@ def _get_timeout() -> float:
 
 
 DEFAULT_HTTP_TIMEOUT = _get_timeout()
+
+
+async def _post_json(url: str, payload: dict, headers: Optional[dict] = None) -> Any:
+    timeout = DEFAULT_HTTP_TIMEOUT
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+        return resp.json()
 
 # Optional imports (only load if available)
 from typing import TYPE_CHECKING
@@ -124,7 +133,7 @@ class GrokAdapter(BaseLLMAdapter):
         self.model = model
         self.api_key = api_key
 
-    def __call__(self, prompt: str) -> str:
+    async def __call__(self, prompt: str) -> str:
         url = "https://api.x.ai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {self.api_key}"}
 
@@ -133,9 +142,7 @@ class GrokAdapter(BaseLLMAdapter):
             "messages": [{"role": "user", "content": prompt}]
         }
 
-        resp = requests.post(url, headers=headers, json=payload, timeout=DEFAULT_HTTP_TIMEOUT)
-        resp.raise_for_status()
-        data: Any = resp.json()
+        data: Any = await _post_json(url, payload, headers=headers)
         return str(data["choices"][0]["message"]["content"]).strip()
 
 
@@ -171,14 +178,11 @@ class OllamaAdapter(BaseLLMAdapter):
     def __init__(self, model: str = "llama3"):
         self.model = model
 
-    def __call__(self, prompt: str) -> str:
-        response = requests.post(
+    async def __call__(self, prompt: str) -> str:
+        data: Any = await _post_json(
             "http://localhost:11434/api/generate",
-            json={"model": self.model, "prompt": prompt, "stream": False},
-            timeout=DEFAULT_HTTP_TIMEOUT,
+            {"model": self.model, "prompt": prompt, "stream": False},
         )
-        response.raise_for_status()
-        data: Any = response.json()
         return str(data.get("response", "")).strip()
 
 

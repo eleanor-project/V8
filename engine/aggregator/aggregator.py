@@ -90,13 +90,26 @@ class AggregatorV8:
         # 7. Escalation resolution (doctrine-compliant)
         critic_evals: List[CriticEvaluation] = []
         for name, data in adjusted.items():
+            severity_score = 0.0
+            if data.get("severity") is not None:
+                try:
+                    severity_score = float(data.get("severity", 0.0)) / 3.0
+                except (TypeError, ValueError):
+                    severity_score = 0.0
+            elif data.get("score") is not None:
+                try:
+                    severity_score = float(data.get("score", 0.0))
+                except (TypeError, ValueError):
+                    severity_score = 0.0
+            severity_score = max(0.0, min(1.0, severity_score))
+
             critic_evals.append(
                 CriticEvaluation(
                     critic_id=name,
                     charter_version=str(data.get("charter_version", "")),
                     concerns=[],
                     escalation=data.get("escalation"),
-                    severity_score=float(data.get("severity", 0.0)),
+                    severity_score=severity_score,
                     citations=data.get("precedent_refs", []) or [],
                     uncertainty=data.get("uncertainty"),
                 )

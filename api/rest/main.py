@@ -219,6 +219,26 @@ def run_readiness_checks() -> Dict[str, str]:
         results["rate_limit"] = f"error:{exc}"
         issues.append(f"rate_limit_error:{exc}")
 
+    # CORS configuration
+    try:
+        cors_origins = get_cors_origins()
+        results["cors"] = "configured" if cors_origins else "missing"
+        if env != "development" and not cors_origins:
+            issues.append("cors_not_configured")
+    except Exception as exc:
+        results["cors"] = f"error:{exc}"
+        issues.append(f"cors_error:{exc}")
+
+    # Precedent backend
+    try:
+        precedent_backend = os.getenv("PRECEDENT_BACKEND", "memory").lower()
+        results["precedent_backend"] = precedent_backend
+        if env != "development" and precedent_backend == "memory":
+            issues.append("precedent_backend_memory")
+    except Exception as exc:
+        results["precedent_backend"] = f"error:{exc}"
+        issues.append(f"precedent_backend_error:{exc}")
+
     # Storage write checks for governance audit
     try:
         # replay_store has per-instance log path; packet/review dirs are module-level constants
@@ -227,6 +247,8 @@ def run_readiness_checks() -> Dict[str, str]:
         _ensure_writable_path(replay_store.path.parent)
         _ensure_writable_path(REVIEW_PACKET_DIR)
         _ensure_writable_path(REVIEW_RECORD_DIR)
+        exec_audit_path = Path(os.getenv("ELEANOR_EXEC_AUDIT_PATH", "logs/execution_audit.jsonl"))
+        _ensure_writable_path(exec_audit_path.parent)
         results["storage"] = "ok"
     except Exception as exc:
         results["storage"] = f"error:{exc}"
