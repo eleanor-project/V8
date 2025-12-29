@@ -228,15 +228,15 @@ class TestRiskCritic:
 
 
 # ============================================================
-# Pragmatics Critic Tests
+# Operations Critic Tests
 # ============================================================
 
-class TestPragmaticsCritic:
+class TestOperationsCritic:
 
     @pytest.fixture
     def critic(self):
-        from engine.critics.pragmatics import PragmaticsCriticV8
-        return PragmaticsCriticV8()
+        from engine.critics import OperationsCriticV8
+        return OperationsCriticV8()
 
     @pytest.fixture
     def mock_model(self):
@@ -321,12 +321,15 @@ class TestCriticIntegration:
         """Test factory function for getting critics by name."""
         from engine.critics import get_critic_by_name
 
-        critic_names = ["rights", "fairness", "truth", "risk", "pragmatics"]
+        critic_names = ["rights", "autonomy", "fairness", "truth", "risk", "operations"]
 
         for name in critic_names:
             critic = get_critic_by_name(name)
             assert critic is not None
             assert critic.name == name
+
+        legacy = get_critic_by_name("pragmatics")
+        assert legacy.name == "operations"
 
     @pytest.mark.asyncio
     async def test_invalid_critic_name_raises(self):

@@ -26,6 +26,7 @@ from engine.critics.fairness import FairnessCriticV8
 from engine.critics.pragmatics import PragmaticsCriticV8
 from engine.critics.truth import TruthCriticV8
 from engine.critics.autonomy import AutonomyCriticV8
+from engine.utils.critic_names import canonicalize_critic_map
 
 # Detector Engine
 from engine.detectors.engine import DetectorEngineV8
@@ -197,14 +198,15 @@ class EleanorEngineV8:
                 self.router = router_backend
 
         # Critics
-        self.critics = critics or {
+        default_critics = {
             "rights": RightsCriticV8,
             "autonomy": AutonomyCriticV8,
-            "risk": RiskCriticV8,
             "fairness": FairnessCriticV8,
-            "pragmatics": PragmaticsCriticV8,
             "truth": TruthCriticV8,
+            "risk": RiskCriticV8,
+            "operations": PragmaticsCriticV8,
         }
+        self.critics = canonicalize_critic_map(critics or default_critics)
         self.critic_models = critic_models or {}
 
         # Detector Engine

@@ -31,6 +31,8 @@ from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
 
+from engine.utils.critic_names import canonical_critic_name
+
 
 class ModelTier(Enum):
     """Model performance/cost tiers."""
@@ -150,7 +152,8 @@ class ModelRegistry:
             critic_name: Name of the critic
             model_id: Model identifier to use
         """
-        self.critic_models[critic_name] = model_id
+        critic_key = canonical_critic_name(critic_name)
+        self.critic_models[critic_key] = model_id
 
     def assign_tier(self, critic_name: str, tier: ModelTier) -> None:
         """
@@ -160,7 +163,8 @@ class ModelRegistry:
             critic_name: Name of the critic
             tier: Performance tier (PREMIUM, STANDARD, ECONOMY)
         """
-        self.critic_tiers[critic_name] = tier
+        critic_key = canonical_critic_name(critic_name)
+        self.critic_tiers[critic_key] = tier
 
     def set_tier_model(self, tier: ModelTier, model_id: str) -> None:
         """
@@ -193,6 +197,7 @@ class ModelRegistry:
         Returns:
             Model identifier string
         """
+        critic_name = canonical_critic_name(critic_name)
         context = context or {}
 
         # Hook for metrics/monitoring
@@ -262,7 +267,7 @@ class ModelRegistry:
                 tier: premium
               truth:
                 model: claude-sonnet-4.5
-              pragmatics:
+              operations:
                 tier: economy
 
             tiers:
@@ -290,11 +295,12 @@ class ModelRegistry:
         # Load critic assignments
         if "critics" in config:
             for critic_name, critic_config in config["critics"].items():
+                critic_key = canonical_critic_name(critic_name)
                 if "model" in critic_config:
-                    registry.assign_model(critic_name, critic_config["model"])
+                    registry.assign_model(critic_key, critic_config["model"])
                 elif "tier" in critic_config:
                     tier = ModelTier(critic_config["tier"])
-                    registry.assign_tier(critic_name, tier)
+                    registry.assign_tier(critic_key, tier)
 
         return registry
 

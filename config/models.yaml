@@ -33,7 +33,7 @@ critics:
   risk:
     tier: standard
 
-  pragmatics:
+  operations:
     tier: standard
 
   # Fast critics can use economy models

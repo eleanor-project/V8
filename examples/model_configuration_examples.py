@@ -101,7 +101,7 @@ async def example_registry_tiers():
     registry.assign_tier("fairness", ModelTier.PREMIUM)
     registry.assign_tier("truth", ModelTier.PREMIUM)
     registry.assign_tier("risk", ModelTier.STANDARD)
-    registry.assign_tier("pragmatics", ModelTier.STANDARD)
+    registry.assign_tier("operations", ModelTier.STANDARD)
 
     print("✓ Configured tier-based routing:")
     print(f"  Premium tier: {registry.tier_models[ModelTier.PREMIUM]}")
@@ -110,7 +110,7 @@ async def example_registry_tiers():
     print()
 
     # Get models for critics
-    for critic_name in ["rights", "fairness", "truth", "risk", "pragmatics"]:
+    for critic_name in ["rights", "fairness", "truth", "risk", "operations"]:
         model_id = registry.get_model_for_critic(critic_name)
         tier = registry.critic_tiers.get(critic_name, "default")
         print(f"  {critic_name}: {model_id} (tier: {tier.value if hasattr(tier, 'value') else tier})")
@@ -163,7 +163,7 @@ async def example_custom_routing():
     print()
 
     # Test routing
-    test_critics = ["rights", "fairness", "truth", "risk", "pragmatics"]
+    test_critics = ["rights", "fairness", "truth", "risk", "operations"]
     for critic_name in test_critics:
         model_id = registry.get_model_for_critic(critic_name)
         print(f"  {critic_name}: {model_id}")
@@ -278,7 +278,7 @@ async def example_cost_estimation():
     print()
 
     # Total cost for all critics
-    all_critics = ["rights", "fairness", "truth", "risk", "pragmatics"]
+    all_critics = ["rights", "fairness", "truth", "risk", "operations"]
     total_cost = sum(
         registry.get_cost_estimate(c, 1000) for c in all_critics
     )

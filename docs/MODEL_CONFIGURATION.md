@@ -110,7 +110,7 @@ registry.set_tier_model(ModelTier.ECONOMY, "claude-haiku-4.0")
 # Assign critics to tiers
 registry.assign_tier("rights", ModelTier.PREMIUM)    # High accuracy
 registry.assign_tier("fairness", ModelTier.PREMIUM)  # High accuracy
-registry.assign_tier("pragmatics", ModelTier.ECONOMY)  # Fast, cheap
+registry.assign_tier("operations", ModelTier.ECONOMY)  # Fast, cheap
 ```
 
 ---
@@ -187,7 +187,7 @@ cost = registry.get_cost_estimate("rights", estimated_tokens=1000)
 print(f"Rights critic: ${cost:.4f} per 1k tokens")
 
 # Estimate total cost for all critics
-all_critics = ["rights", "fairness", "truth", "risk", "pragmatics"]
+all_critics = ["rights", "fairness", "truth", "risk", "operations"]
 total_cost = sum(registry.get_cost_estimate(c, 1000) for c in all_critics)
 print(f"Total: ${total_cost:.4f}")
 
@@ -253,7 +253,7 @@ critics:
   risk:
     tier: standard
 
-  pragmatics:
+  operations:
     tier: economy
 
   # No configuration = uses default_model
@@ -315,7 +315,7 @@ for critic in ["rights", "fairness", "truth"]:
     registry.assign_tier(critic, ModelTier.PREMIUM)
 
 # Standard critics → Standard
-for critic in ["risk", "pragmatics"]:
+for critic in ["risk", "operations"]:
     registry.assign_tier(critic, ModelTier.STANDARD)
 
 # Fast checks → Economy

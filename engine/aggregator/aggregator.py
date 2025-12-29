@@ -20,6 +20,7 @@ from typing import Dict, Any, List
 import statistics
 
 from engine.schemas.escalation import CriticEvaluation
+from engine.utils.critic_names import canonicalize_critic_map
 from engine.aggregator.escalation import resolve_escalation
 
 
@@ -29,10 +30,11 @@ from engine.aggregator.escalation import resolve_escalation
 
 PRIORITY_ORDER = [
     "rights",
+    "autonomy",
     "fairness",
     "truth",
     "risk",
-    "pragmatics"
+    "operations",
 ]
 
 # Severity scale:
@@ -151,6 +153,7 @@ class AggregatorV8:
         """
 
         normalized = {}
+        critics = canonicalize_critic_map(critics)
         for name, data in critics.items():
             try:
                 severity = float(data.get("severity", 0.0))
