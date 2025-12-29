@@ -46,3 +46,18 @@ def test_admin_bindings_requires_engine():
     with TestClient(app) as client:
         res = client.get("/admin/critics/bindings")
         assert res.status_code == 503
+
+
+def test_evaluate_requires_engine():
+    app = get_app_without_startup()
+    payload = {
+        "request_id": "req_test_001",
+        "timestamp": "2025-01-01T00:00:00Z",
+        "policy_profile": "default",
+        "model_output": "Test output",
+        "proposed_action": {"type": "generate_advice", "params": {}},
+        "context": {"domain": "test"},
+    }
+    with TestClient(app) as client:
+        res = client.post("/evaluate", json=payload)
+        assert res.status_code == 503
