@@ -53,6 +53,19 @@ def resolve_final_decision(aggregator_decision: Optional[str], opa_result: Dict[
     return aggregator_decision or "allow"
 
 
+def map_assessment_label(decision: Optional[str]) -> str:
+    if not decision:
+        return "requires_human_review"
+    mapping = {
+        "allow": "aligned",
+        "constrained_allow": "aligned_with_constraints",
+        "deny": "misaligned",
+        "escalate": "requires_human_review",
+    }
+    normalized = str(decision).lower()
+    return mapping.get(normalized, normalized)
+
+
 # -------------------------------------
 # Utility: Send JSON safely
 # -------------------------------------
@@ -198,6 +211,7 @@ async def ws_deliberate(ws: WebSocket):
             await ws.close()
             return
         final_decision = apply_execution_gate(final_decision, execution_decision)
+        final_assessment = map_assessment_label(final_decision)
 
         final = {
             "trace_id": trace_id,
@@ -209,7 +223,7 @@ async def ws_deliberate(ws: WebSocket):
             "uncertainty": uncertainty_data,
             "precedent": precedent_data,
             "governance": governance_result,
-            "final_decision": final_decision,
+            "final_decision": final_assessment,
             "execution_decision": execution_decision.model_dump(mode="json") if execution_decision else None,
         }
 

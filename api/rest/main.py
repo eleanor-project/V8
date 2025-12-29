@@ -312,6 +312,22 @@ def resolve_final_decision(aggregator_decision: Optional[str], opa_result: Dict[
     return aggregator_decision or "allow"
 
 
+def map_assessment_label(decision: Optional[str]) -> str:
+    """
+    Map internal decision labels to non-coercive assessment language.
+    """
+    if not decision:
+        return "requires_human_review"
+    mapping = {
+        "allow": "aligned",
+        "constrained_allow": "aligned_with_constraints",
+        "deny": "misaligned",
+        "escalate": "requires_human_review",
+    }
+    normalized = str(decision).lower()
+    return mapping.get(normalized, normalized)
+
+
 def normalize_engine_result(result_obj: Any, input_text: str, trace_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
     """
     Normalize EngineResult or dict into a common shape used by the API.
@@ -877,12 +893,13 @@ async def deliberate(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
         final_decision = apply_execution_gate(final_decision, execution_decision)
+        final_assessment = map_assessment_label(final_decision)
 
         duration_ms = (time.time() - start_time) * 1000
         if DELIB_LATENCY:
             DELIB_LATENCY.observe(duration_ms / 1000.0)
         if DELIB_REQUESTS:
-            DELIB_REQUESTS.labels(outcome=final_decision).inc()
+            DELIB_REQUESTS.labels(outcome=final_assessment).inc()
         if OPA_CALLS:
             opa_outcome = (
                 "deny" if not governance_result.get("allow", True) else
@@ -895,18 +912,19 @@ async def deliberate(
         log_deliberation(
             logger,
             trace_id=normalized.get("trace_id", trace_id),
-            decision=final_decision,
+            decision=final_assessment,
             model_used=model_used or "unknown",
             duration_ms=duration_ms,
             uncertainty=(uncertainty or {}).get("overall_uncertainty"),
-            escalated=final_decision == "escalate",
+            escalated=final_assessment == "requires_human_review",
+            raw_decision=final_decision,
         )
 
         response_payload = {
             **normalized,
             "opa_governance": governance_result,
             "governance": governance_result,
-            "final_decision": final_decision,
+            "final_decision": final_assessment,
             "execution_decision": execution_decision.model_dump(mode="json") if execution_decision else None,
         }
 
@@ -1245,12 +1263,13 @@ async def replay_trace(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     final_decision = apply_execution_gate(final_decision, execution_decision)
+    final_assessment = map_assessment_label(final_decision)
 
     rerun_payload = {
         **normalized,
         "opa_governance": governance_result,
         "governance": governance_result,
-        "final_decision": final_decision,
+        "final_decision": final_assessment,
         "execution_decision": execution_decision.model_dump(mode="json") if execution_decision else None,
         "replay_of": trace_id,
     }
