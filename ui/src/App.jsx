@@ -194,7 +194,7 @@ const SimpleConsole = () => {
         {!showRaw && (
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
             <div className="metric">
-              <div className="label">Decision</div>
+              <div className="label">Assessment</div>
               <div className="value">{finalData?.final_decision || "—"}</div>
             </div>
             <div className="metric">

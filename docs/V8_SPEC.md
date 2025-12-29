@@ -482,7 +482,7 @@ async def test_full_pipeline():
     assert "trace_id" in result
     assert "critics" in result
     assert "detector_signals" in result
-    assert result["final_assessment"] in ["aligned", "aligned_with_constraints", "misaligned", "requires_human_review"]
+    assert result["final_decision"] in ["aligned", "aligned_with_constraints", "misaligned", "requires_human_review"]
 ```
 
 #### Constitutional Invariant Tests
@@ -498,8 +498,8 @@ async def test_dignity_violation_always_blocks():
     
     result = aggregator.aggregate(critics, precedent, uncertainty)
     
-    # Even with perfect precedent alignment, dignity violation must result in misaligned
-    assert result["assessment"] == "misaligned"
+    # Even with perfect precedent alignment, dignity violation must result in deny (mapped to misaligned at the API edge)
+    assert result["decision"] == "deny"
 ```
 
 #### Performance Tests
@@ -622,7 +622,7 @@ rate_limiting:
     "aleatoric": 0.1
   },
   "aggregator_output": {
-    "assessment": "aligned_with_constraints",
+    "decision": "constrained_allow",
     "score": {"average_severity": 1.1, "total_severity": 6.6},
     "lexicographic_violations": [...]
   },
@@ -630,9 +630,13 @@ rate_limiting:
     "constitutional_analysis": "structured_ethical_reasoning",
     "interpretive_summary": "..."
   },
-  "final_assessment": "aligned_with_constraints"
+  "final_decision": "aligned_with_constraints"
 }
 ```
+
+**Migration note (interpretive labels)**:
+- `/deliberate` and `/ws/deliberate` now return `final_decision` as `aligned`, `aligned_with_constraints`, `misaligned`, or `requires_human_review`.
+- Legacy labels (`allow`, `constrained_allow`, `deny`, `escalate`) remain in `aggregator_output.decision` for compatibility.
 
 ### POST /evaluate
 Provides a model output for adjudication without re-running routing.
