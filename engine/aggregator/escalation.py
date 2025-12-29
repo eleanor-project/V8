@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 from typing import List
-from datetime import datetime
 
 from engine.schemas.escalation import (
     CriticEvaluation,
@@ -201,14 +200,24 @@ def _compute_audit_hash(
     Produces a stable, content-addressable audit hash.
     """
 
+    def _strip_timestamps(value):
+        if isinstance(value, dict):
+            return {
+                k: _strip_timestamps(v)
+                for k, v in value.items()
+                if k not in ("timestamp", "created_at")
+            }
+        if isinstance(value, list):
+            return [_strip_timestamps(v) for v in value]
+        return value
+
     payload = {
         "synthesis": synthesis,
-        "critics": [
+        "critics": _strip_timestamps([
             ev.model_dump(mode="json")
             for ev in critic_evaluations
-        ],
-        "escalation": escalation_summary.model_dump(mode="json"),
-        "timestamp": datetime.utcnow().isoformat(),
+        ]),
+        "escalation": _strip_timestamps(escalation_summary.model_dump(mode="json")),
     }
 
     raw = json.dumps(payload, sort_keys=True).encode("utf-8")
