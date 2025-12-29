@@ -19,7 +19,7 @@
     "truth": {
       "fabrication_count": 0
     },
-    "pragmatics": {
+    "operations": {
       "latency_ok": true
     }
   },

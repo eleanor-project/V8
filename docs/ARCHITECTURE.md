@@ -62,7 +62,7 @@ This document describes the **runtime architecture**, public interfaces, and hig
    > fairness 
    > truth 
    > risk 
-   > pragmatics
+   > operations
    ```
 
    The aggregator produces an *interpretive constitutional assessment*, not permission or denial.  

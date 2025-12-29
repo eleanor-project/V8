@@ -94,7 +94,7 @@ values:
         description: "User data used without consent or legitimate necessity."
       - id: au-002
         description: "Manipulative framing detected."
-    critic_mapping: ["rights", "truth", "pragmatics"]
+    critic_mapping: ["rights", "truth", "operations"]
     evidence_required: ["pii_scan", "data_lineage"]
     uncertainty:
       escalation_threshold: 0.25
@@ -184,7 +184,7 @@ values:
       - minimal_intervention
     acceptance_criteria:
       - "Prefer reversible options when multiple exist."
-    critic_mapping: ["risk", "pragmatics"]
+    critic_mapping: ["risk", "operations"]
     evidence_required: ["reversibility_score"]
     uncertainty:
       escalation_threshold: 0.15
@@ -204,7 +204,7 @@ values:
       - operational_feasibility
     acceptance_criteria:
       - "Selected action is practicable within given constraints."
-    critic_mapping: ["pragmatics"]
+    critic_mapping: ["operations"]
     evidence_required: ["cost_estimate", "latency_profile"]
     uncertainty:
       escalation_threshold: 0.40
@@ -316,4 +316,3 @@ opa_hooks:
 
   - name: safety_gate
     input: ["risk_score", "reversibility_score"]
-

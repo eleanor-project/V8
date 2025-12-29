@@ -231,7 +231,7 @@ class PragmaticsCriticV8(BaseCriticV8):
     """
 
     def __init__(self):
-        super().__init__(name="pragmatics", version="8.0")
+        super().__init__(name="operations", version="8.0")
         self._compile_patterns()
 
     def _compile_patterns(self):
@@ -322,7 +322,7 @@ class PragmaticsCriticV8(BaseCriticV8):
         return self.build_evidence(
             score=normalized_score,
             rationale=rationale,
-            principle="Pragmatic feasibility (UNESCO AI Ethics; sustainable implementation)",
+            principle="Operational feasibility (UNESCO AI Ethics; sustainable implementation)",
             evidence={
                 "output_excerpt": output[:500],
                 "concerns": all_concerns[:10],

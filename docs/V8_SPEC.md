@@ -23,7 +23,7 @@ This distinction is foundational:
 2. **Interpretation, Not Control**: ELEANOR provides constitutional analysis, not behavioral enforcement
 3. **Transparency as Foundation**: Every decision includes full reasoning, evidence, and uncertainty
 4. **Lexicographic Priority**: Rights > Autonomy > Fairness > Truth > Risk > Pragmatics (immutable)
-5. **Constitutional Supremacy**: No component (precedent, uncertainty, pragmatics) can override fundamental rights
+5. **Constitutional Supremacy**: No component (precedent, uncertainty, operations) can override fundamental rights
 
 ### Framework Purpose
 
@@ -67,9 +67,9 @@ Input → Router → [Detectors] → Critics → Precedent → Alignment → Unc
   - Fairness: disparate_impact, embedding_bias, omission
   - Truth: hallucination, factual_accuracy, evidence_grounding, contradiction
   - Risk: physical_safety, psychological_harm, irreversible_harm, cascading_failure, operational_risk
-  - Pragmatics: feasibility, resource_burden, time_constraints, environmental_impact, cascading_pragmatic_failure
+  - Operations: feasibility, resource_burden, time_constraints, environmental_impact, cascading_pragmatic_failure
 
-- **Critics**: parallel execution of Rights, Autonomy & Agency, Fairness, Truth, Risk, Pragmatics. Each critic emits severity (0–3), violations, justification, evidence bundle, and flags. Critics may optionally incorporate detector signals from context for enhanced analysis via `context["detector_signals"]`.
+- **Critics**: parallel execution of Rights, Autonomy & Agency, Fairness, Truth, Risk, Operations. Each critic emits severity (0–3), violations, justification, evidence bundle, and flags. Critics may optionally incorporate detector signals from context for enhanced analysis via `context["detector_signals"]`.
 
 - **Precedent**: optional retrieval via `PrecedentRetrievalV8` and alignment via `PrecedentAlignmentEngineV8` (conflict, drift, support strength). Novel cases return neutral alignment. 
   - **Constitutional Supremacy**: Precedent contributes context and interpretive support, but **precedent may never override rights, autonomy, or dignity**. Even unanimous precedents cannot supersede constitutional invariants or the lexicographic ordering of critics.
@@ -82,7 +82,7 @@ Input → Router → [Detectors] → Critics → Precedent → Alignment → Unc
 
 - **Uncertainty**: `UncertaintyEngineV8` computes epistemic/aleatoric uncertainty (critic divergence, precedent conflict, model stability) and escalation flags.
 
-- **Aggregator** (Interpretive Fusion Layer): lexicographic fusion with priority order `[rights, autonomy, fairness, truth, risk, pragmatics]`, applying precedent and uncertainty weighting. Outputs interpretive constitutional assessment, scores, and final output text.
+- **Aggregator** (Interpretive Fusion Layer): lexicographic fusion with priority order `[rights, autonomy, fairness, truth, risk, operations]`, applying precedent and uncertainty weighting. Outputs interpretive constitutional assessment, scores, and final output text.
   - **Decision Labels**: To avoid implying command-and-control or behavior gating, assessment labels use non-coercive language:
     - `aligned`: Output aligns with constitutional principles
     - `aligned_with_constraints`: Mostly aligned but with caveats
@@ -209,7 +209,7 @@ critics:
   fairness:
     tier: standard
     model: claude-sonnet-4.5
-  pragmatics:
+  operations:
     tier: economy
     model: claude-haiku-4.0
 
@@ -231,7 +231,7 @@ from engine.models.registry import ModelRegistry
 
 registry = ModelRegistry()
 registry.assign_tier("rights", ModelTier.PREMIUM)
-registry.assign_tier("pragmatics", ModelTier.ECONOMY)
+registry.assign_tier("operations", ModelTier.ECONOMY)
 
 # Automatic cost tracking
 cost = registry.get_total_cost()

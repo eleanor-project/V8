@@ -11,7 +11,7 @@ Critics follow a lexicographic priority ordering:
 3. Fairness (equity, non-discrimination)
 4. Truth (accuracy, honesty, transparency)
 5. Risk (safety, reversibility, precaution)
-6. Pragmatics (feasibility, sustainability) - Lowest priority
+6. Operations (feasibility, sustainability) - Lowest priority
 
 Each critic implements the BaseCriticV8 interface and produces evidence packages
 for the aggregator to synthesize into constitutional decisions.
@@ -25,6 +25,10 @@ from .risk import RiskCriticV8, RiskCritic
 from .pragmatics import PragmaticsCriticV8, PragmaticsCritic
 from .autonomy import AutonomyCriticV8
 from .privacy import PrivacyIdentityCritic
+from engine.utils.critic_names import canonical_critic_name
+
+OperationsCriticV8 = PragmaticsCriticV8
+OperationsCritic = PragmaticsCritic
 
 __all__ = [
     # Base class
@@ -37,6 +41,7 @@ __all__ = [
     "TruthCriticV8",
     "RiskCriticV8",
     "PragmaticsCriticV8",
+    "OperationsCriticV8",
     "AutonomyCriticV8",
     "PrivacyIdentityCritic",
 
@@ -46,6 +51,7 @@ __all__ = [
     "TruthCritic",
     "RiskCritic",
     "PragmaticsCritic",
+    "OperationsCritic",
 ]
 
 
@@ -58,11 +64,11 @@ def get_all_critics():
     """
     return [
         RightsCriticV8(),
-        FairnessCriticV8(),
         AutonomyCriticV8(),
+        FairnessCriticV8(),
         TruthCriticV8(),
         RiskCriticV8(),
-        PragmaticsCriticV8(),
+        OperationsCriticV8(),
     ]
 
 
@@ -71,7 +77,7 @@ def get_critic_by_name(name: str):
     Get a critic instance by name.
 
     Args:
-        name: Critic name (rights, fairness, truth, risk, pragmatics)
+        name: Critic name (rights, autonomy, fairness, truth, risk, operations)
 
     Returns:
         Instantiated critic object.
@@ -86,10 +92,12 @@ def get_critic_by_name(name: str):
         "privacy_identity": PrivacyIdentityCritic,
         "truth": TruthCriticV8,
         "risk": RiskCriticV8,
-        "pragmatics": PragmaticsCriticV8,
+        "operations": OperationsCriticV8,
     }
 
-    if name.lower() not in critics:
-        raise ValueError(f"Unknown critic: {name}. Available: {list(critics.keys())}")
+    name_key = canonical_critic_name(name)
+    if name_key not in critics:
+        available = sorted(set(list(critics.keys()) + ["pragmatics"]))
+        raise ValueError(f"Unknown critic: {name}. Available: {available}")
 
-    return critics[name.lower()]()
+    return critics[name_key]()

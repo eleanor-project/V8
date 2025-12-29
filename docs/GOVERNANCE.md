@@ -123,7 +123,7 @@ requires_human_review
 
 No external system may alter Eleanor’s lexicographic priority:
 
-rights > autonomy & agency > fairness > truth > risk > pragmatics
+rights > autonomy & agency > fairness > truth > risk > operations
 
 6. Optional Governance
 
@@ -170,5 +170,4 @@ Behavioral restrictions
 Alignment-like control logic
 
 Eleanor governs interpretation, not users or systems.
-
 

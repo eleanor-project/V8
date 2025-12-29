@@ -115,7 +115,7 @@ critics:
   risk:
     fidelity: medium
 
-  pragmatics:
+  operations:
     fidelity: light
 
 Notes
@@ -174,7 +174,7 @@ await engine.run(
     user_input,
     context={
         "interpretive_override": {
-            "pragmatics": {
+            "operations": {
                 "fidelity": "medium"
             }
         }

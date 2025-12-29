@@ -247,7 +247,7 @@ class TestRoutingStrategies:
         assert config.tier == ModelTier.PREMIUM
 
         # Other critics
-        model = registry.get_model_for_critic("pragmatics")
+        model = registry.get_model_for_critic("operations")
         config = registry.get_model_config(model)
         assert config.tier == ModelTier.ECONOMY
 

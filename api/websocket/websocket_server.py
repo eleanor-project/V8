@@ -29,6 +29,7 @@ from api.middleware.auth import decode_token, get_auth_config
 from engine.logging_config import get_logger
 from engine.execution.human_review import enforce_human_review
 from engine.schemas.escalation import AggregationResult, HumanAction, ExecutableDecision
+from engine.utils.critic_names import canonicalize_critic_map
 
 engine = build_engine()
 logger = get_logger(__name__)
@@ -170,6 +171,8 @@ async def ws_deliberate(ws: WebSocket):
             elif event_type == "aggregation":
                 aggregated = payload.get("data") or {}
                 critic_outputs = aggregated.get("critics", critic_outputs)
+
+        critic_outputs = canonicalize_critic_map(critic_outputs)
 
         governance_payload = {
             "critics": critic_outputs,

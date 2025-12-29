@@ -70,6 +70,7 @@ from pydantic import BaseModel
 from pathlib import Path
 from engine.execution.human_review import enforce_human_review
 from engine.schemas.escalation import AggregationResult, HumanAction, ExecutableDecision
+from engine.utils.critic_names import canonical_critic_name, canonicalize_critic_map
 
 # Initialize logging
 configure_logging()
@@ -321,6 +322,7 @@ def normalize_engine_result(result_obj: Any, input_text: str, trace_id: str, con
         k: (v.model_dump() if hasattr(v, "model_dump") else v)
         for k, v in critic_findings.items()
     }
+    critic_outputs = canonicalize_critic_map(critic_outputs)
 
     precedent_alignment = result.get("precedent_alignment") or result.get("precedent") or {}
     uncertainty = result.get("uncertainty") or {}
@@ -1062,8 +1064,9 @@ async def set_critic_binding(binding: CriticBinding):
     adapter_fn = adapters.get(binding.adapter)
     if adapter_fn is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Adapter '{binding.adapter}' not registered")
-    engine.critic_models[binding.critic] = adapter_fn
-    return {"status": "ok", "binding": {binding.critic: binding.adapter}}
+    critic_key = canonical_critic_name(binding.critic)
+    engine.critic_models[critic_key] = adapter_fn
+    return {"status": "ok", "binding": {critic_key: binding.adapter}}
 
 
 class AdapterRegistration(BaseModel):

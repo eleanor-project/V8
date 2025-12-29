@@ -22,6 +22,7 @@ import yaml
 
 from engine.core import build_eleanor_engine_v8
 from engine.logging_config import get_logger
+from engine.utils.critic_names import canonicalize_critic_map
 
 logger = get_logger(__name__)
 GOVERNANCE_SCHEMA_VERSION = "v1"
@@ -98,6 +99,8 @@ def bind_critic_models(engine, bindings: Optional[Dict[str, str]] = None) -> Non
             mapping = {critic: default_adapter for critic in critics.keys()}
         else:
             return
+
+    mapping = canonicalize_critic_map(mapping)
 
     router = getattr(engine, "router", None)
     adapters = getattr(router, "adapters", {}) if router else {}
