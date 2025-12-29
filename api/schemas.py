@@ -126,7 +126,7 @@ class DeliberationResponse(BaseModel):
     timestamp: float
     model_used: str
     final_decision: str = Field(
-        description="One of: allow, constrained_allow, deny, escalate"
+        description="One of: aligned, aligned_with_constraints, misaligned, requires_human_review"
     )
     critics: Dict[str, Any]
     precedent_alignment: Dict[str, Any]
