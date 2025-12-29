@@ -634,6 +634,103 @@ rate_limiting:
 }
 ```
 
+### POST /evaluate
+Provides a model output for adjudication without re-running routing.
+
+**curl**:
+```bash
+curl -X POST http://localhost:8000/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "request_id": "req_2025-01-01T00:00:00Z_demo",
+    "timestamp": "2025-01-01T00:00:00Z",
+    "policy_profile": "public-services/benefits-v1",
+    "model_output": {
+      "draft_message": "Please upload proof of residency.",
+      "recommended_action": "send_message"
+    },
+    "proposed_action": {
+      "type": "send_message",
+      "params": {"channel": "email"}
+    },
+    "context": {
+      "domain": "public_services",
+      "jurisdiction": "US-CA",
+      "sensitivity": "confidential",
+      "user_intent": "Request missing documentation"
+    },
+    "evidence_inputs": {
+      "precedent_keys": ["PS-PRIVACY-12"]
+    },
+    "model_metadata": {
+      "model_id": "gpt-5.x",
+      "temperature": 0.2
+    }
+  }'
+```
+
+**Response**:
+```json
+{
+  "request_id": "req_2025-01-01T00:00:00Z_demo",
+  "engine_version": "8.0.0",
+  "decision": "ALLOW_WITH_CONSTRAINTS",
+  "confidence": 0.82,
+  "uncertainty": {
+    "level": "LOW",
+    "reasons": []
+  },
+  "constraints": {
+    "advisories": [
+      {
+        "critic": "rights",
+        "severity": 1.0,
+        "note": "Apply privacy redactions before sending."
+      }
+    ]
+  },
+  "routing": {
+    "next_step": "policy_gate_required",
+    "notes": null
+  },
+  "evidence_bundle": {
+    "summary": "Decision ALLOW_WITH_CONSTRAINTS with confidence 0.82.",
+    "critic_outputs": [
+      {
+        "critic": "rights",
+        "verdict": "WARN",
+        "score": 0.33,
+        "rationale": "Privacy constraints apply to outgoing requests.",
+        "precedents": ["PS-PRIVACY-12"],
+        "policy_rules": [],
+        "signals": {}
+      }
+    ],
+    "precedent_trace": [
+      {
+        "id": "PS-PRIVACY-12",
+        "type": "internal_precedent",
+        "applied_as": "supporting",
+        "note": null
+      }
+    ],
+    "policy_trace": [],
+    "provenance": {
+      "inputs": {
+        "model_output_hash": "sha256:...",
+        "context_hash": "sha256:...",
+        "proposed_action_hash": "sha256:...",
+        "policy_profile": "public-services/benefits-v1"
+      }
+    },
+    "integrity": {
+      "hash": "sha256:..."
+    }
+  },
+  "errors": []
+}
+```
+
 ### GET /health
 See Resilience Infrastructure section for response format.
 

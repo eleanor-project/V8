@@ -6,3 +6,4 @@ evidence.jsonl
 engine/detectors/.DS_Store
 governance/.DS_Store
 nohup.out
+logs/execution_audit.jsonl
