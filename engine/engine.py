@@ -10,6 +10,7 @@ Forensic Detail-Level Output Mode
 import asyncio
 import importlib
 import inspect
+import json
 import logging
 import uuid
 from typing import Any, Dict, List, Optional, AsyncGenerator
@@ -331,7 +332,7 @@ class EleanorEngineV8:
             critic = critic_ref if not inspect.isclass(critic_ref) else critic_ref()
 
             # Choose model for this critic: explicit binding overrides router output
-            bound_adapter = self.critic_models.get(name)
+            bound_adapter = None if context.get("force_model_output") else self.critic_models.get(name)
             model_adapter: Any = None
 
             if bound_adapter is None:
@@ -416,7 +417,9 @@ class EleanorEngineV8:
         trace_id: str,
         input_text: Optional[str] = None,
     ):
-        input_text = input_text or ""
+        input_text = context.get("input_text_override") or input_text or ""
+        if not isinstance(input_text, str):
+            input_text = str(input_text)
         tasks = [
             asyncio.create_task(
                 self._run_single_critic(name, critic_ref, model_response, input_text, context, trace_id)
@@ -673,10 +676,28 @@ class EleanorEngineV8:
         if detector_payload:
             context = {**context, "detectors": detector_payload}
 
-        # Step 1: Model Routing
-        router_data = await self._select_model(text, context)
-        model_info = router_data["model_info"]
-        model_response = router_data["response_text"]
+        # Step 1: Model Routing (or model_output override)
+        if context.get("skip_router"):
+            raw_output = context.get("model_output")
+            if raw_output is None:
+                raise ValueError("model_output is required when skip_router is true")
+            if isinstance(raw_output, str):
+                model_response = raw_output
+            else:
+                model_response = json.dumps(raw_output, ensure_ascii=True, default=str)
+            meta = context.get("model_metadata") or {}
+            model_info = {
+                "model_name": meta.get("model_id") or meta.get("model_name") or "external",
+                "model_version": meta.get("model_version") or "",
+                "router_selection_reason": "model_output_override",
+                "health_score": None,
+                "cost_estimate": None,
+            }
+            self.router_diagnostics = {"skipped": True, "reason": "model_output_override"}
+        else:
+            router_data = await self._select_model(text, context)
+            model_info = router_data["model_info"]
+            model_response = router_data["response_text"]
 
         # Step 2: Critics (parallel)
         critic_results = await self._run_critics_parallel(
@@ -823,17 +844,35 @@ class EleanorEngineV8:
                 "data": {"summary": {k: v for k, v in detector_payload.items() if k != "signals"}},
             }
 
-        # Step 1: Model Routing
-        router_data = await self._select_model(text, context)
+        # Step 1: Model Routing (or model_output override)
+        if context.get("skip_router"):
+            raw_output = context.get("model_output")
+            if raw_output is None:
+                raise ValueError("model_output is required when skip_router is true")
+            if isinstance(raw_output, str):
+                model_response = raw_output
+            else:
+                model_response = json.dumps(raw_output, ensure_ascii=True, default=str)
+            meta = context.get("model_metadata") or {}
+            model_info = {
+                "model_name": meta.get("model_id") or meta.get("model_name") or "external",
+                "model_version": meta.get("model_version") or "",
+                "router_selection_reason": "model_output_override",
+                "health_score": None,
+                "cost_estimate": None,
+            }
+            self.router_diagnostics = {"skipped": True, "reason": "model_output_override"}
+        else:
+            router_data = await self._select_model(text, context)
+            model_info = router_data["model_info"]
+            model_response = router_data["response_text"]
 
         yield {
             "event": "router_selected",
             "trace_id": trace_id,
-            "model_info": router_data["model_info"],
+            "model_info": model_info,
             "timings": {"router_selection_ms": self.timings.get("router_selection_ms")},
         }
-
-        model_response = router_data["response_text"]
 
         yield {
             "event": "model_response",
@@ -850,8 +889,12 @@ class EleanorEngineV8:
 
         critic_results = {}
 
+        critic_input_text = context.get("input_text_override") or text
+        if not isinstance(critic_input_text, str):
+            critic_input_text = str(critic_input_text)
+
         async def _run_and_return(name, critic_ref):
-            return await self._run_single_critic(name, critic_ref, model_response, text, context, trace_id)
+            return await self._run_single_critic(name, critic_ref, model_response, critic_input_text, context, trace_id)
 
         tasks = [
             asyncio.create_task(_run_and_return(name, critic_ref))
@@ -892,7 +935,7 @@ class EleanorEngineV8:
             uncertainty_data = await self._run_uncertainty_engine(
                 precedent_alignment=precedent_data,
                 critic_results=critic_results,
-                model_name=router_data["model_info"].get("model_name") or "unknown-model",
+                model_name=model_info.get("model_name") or "unknown-model",
             )
             yield {
                 "event": "uncertainty",

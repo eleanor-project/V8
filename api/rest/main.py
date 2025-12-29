@@ -26,6 +26,7 @@ Security Features:
 
 import os
 import json
+import hashlib
 import uuid
 import time
 import asyncio
@@ -43,6 +44,17 @@ from api.schemas import (
     DeliberationRequest,
     GovernancePreviewRequest,
     DeliberationResponse,
+    EvaluateRequest,
+    EvaluateResponse,
+    EvidenceBundle,
+    EvidenceIntegrity,
+    EvidenceProvenance,
+    CriticEvidence,
+    PrecedentTrace,
+    PolicyTrace,
+    RoutingDecision,
+    UncertaintyEnvelope,
+    EvaluateError,
     HealthResponse,
     ErrorResponse,
 )
@@ -70,6 +82,7 @@ from pydantic import BaseModel
 from pathlib import Path
 from engine.execution.human_review import enforce_human_review
 from engine.schemas.escalation import AggregationResult, HumanAction, ExecutableDecision
+from engine.version import ELEANOR_VERSION
 from engine.utils.critic_names import canonical_critic_name, canonicalize_critic_map
 
 # Initialize logging
@@ -344,6 +357,216 @@ def normalize_engine_result(result_obj: Any, input_text: str, trace_id: str, con
         "context": context,
     }
     return normalized
+
+
+def _safe_json_dumps(payload: Any) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str)
+
+
+def _hash_payload(payload: Any) -> str:
+    raw = _safe_json_dumps(payload).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _serialize_model_output(model_output: Any) -> str:
+    if isinstance(model_output, str):
+        return model_output
+    return json.dumps(model_output, ensure_ascii=True, default=str)
+
+
+def _severity_score(data: Dict[str, Any]) -> float:
+    for key in ("final_severity", "severity"):
+        if data.get(key) is not None:
+            try:
+                return float(data[key])
+            except (TypeError, ValueError):
+                continue
+    if data.get("score") is not None:
+        try:
+            return float(data["score"]) * 3.0
+        except (TypeError, ValueError):
+            return 0.0
+    return 0.0
+
+
+def _critic_verdict(severity: float) -> str:
+    if severity >= 2.0:
+        return "FAIL"
+    if severity >= 1.0:
+        return "WARN"
+    return "PASS"
+
+
+def _build_uncertainty_envelope(uncertainty: Dict[str, Any]) -> UncertaintyEnvelope:
+    overall = 0.0
+    try:
+        overall = float(uncertainty.get("overall_uncertainty", 0.0))
+    except (TypeError, ValueError):
+        overall = 0.0
+
+    if overall >= 0.6:
+        level = "HIGH"
+    elif overall >= 0.3:
+        level = "MEDIUM"
+    else:
+        level = "LOW"
+
+    reasons = []
+    explanation = uncertainty.get("explanation")
+    if explanation:
+        reasons.append(str(explanation))
+    if uncertainty.get("needs_escalation"):
+        reasons.append("Uncertainty threshold exceeded")
+
+    return UncertaintyEnvelope(level=level, reasons=reasons)
+
+
+def _confidence_from_uncertainty(uncertainty: Dict[str, Any]) -> float:
+    try:
+        overall = float(uncertainty.get("overall_uncertainty", 0.0))
+    except (TypeError, ValueError):
+        overall = 0.0
+    return max(0.0, min(1.0, 1.0 - overall))
+
+
+def _map_decision(final_decision: Optional[str]) -> str:
+    if not final_decision:
+        return "ABSTAIN"
+    decision = str(final_decision).lower()
+    mapping = {
+        "allow": "ALLOW",
+        "constrained_allow": "ALLOW_WITH_CONSTRAINTS",
+        "deny": "DENY",
+        "escalate": "ESCALATE",
+    }
+    return mapping.get(decision, "ABSTAIN")
+
+
+def _build_constraints(critic_details: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    advisories = []
+    for name, data in critic_details.items():
+        severity = _severity_score(data)
+        if severity < 1.0:
+            continue
+        rationale = data.get("justification") or data.get("rationale") or ""
+        if not rationale and data.get("violations"):
+            rationale = str(data.get("violations")[0])
+        advisories.append({"critic": name, "severity": severity, "note": rationale})
+
+    if not advisories:
+        return None
+    return {"advisories": advisories}
+
+
+def _build_precedent_trace(precedent_alignment: Dict[str, Any]) -> List[PrecedentTrace]:
+    retrieval = precedent_alignment.get("retrieval") or {}
+    cases = retrieval.get("precedent_cases") or retrieval.get("cases") or []
+    traces: List[PrecedentTrace] = []
+    for case in cases:
+        meta = case.get("metadata") or {}
+        case_id = meta.get("id") or meta.get("case_id") or case.get("id") or case.get("case_id") or meta.get("title")
+        if not case_id:
+            case_id = "precedent"
+        traces.append(
+            PrecedentTrace(
+                id=str(case_id),
+                type=meta.get("type") or meta.get("category") or "internal_precedent",
+                applied_as=meta.get("applied_as") or "supporting",
+                note=meta.get("summary") or meta.get("note"),
+            )
+        )
+    return traces
+
+
+def _build_policy_trace(governance_result: Dict[str, Any]) -> List[PolicyTrace]:
+    failures = governance_result.get("failures") or []
+    if not failures:
+        return []
+    allow = governance_result.get("allow", True)
+    escalate = governance_result.get("escalate", False)
+    effect = "deny" if not allow else "escalate" if escalate else "allow"
+    traces: List[PolicyTrace] = []
+    for failure in failures:
+        traces.append(
+            PolicyTrace(
+                rule_id=str(failure.get("policy") or "policy"),
+                effect=effect,
+                matched_on=failure.get("matched_on"),
+                note=failure.get("reason"),
+            )
+        )
+    return traces
+
+
+def _build_critic_evidence(critic_details: Dict[str, Any]) -> List[CriticEvidence]:
+    outputs: List[CriticEvidence] = []
+    for name, data in critic_details.items():
+        severity = _severity_score(data)
+        score = data.get("score")
+        if score is None:
+            score = max(0.0, min(1.0, severity / 3.0))
+        rationale = data.get("justification") or data.get("rationale") or ""
+        precedents = data.get("precedent_refs") or data.get("precedents") or []
+        if not precedents:
+            raw = data.get("raw") or {}
+            precedents = raw.get("precedent_refs") or raw.get("precedents") or []
+        policy_rules = data.get("policy_rules") or []
+        if not policy_rules:
+            raw = data.get("raw") or {}
+            policy_rules = raw.get("policy_rules") or []
+        signals = data.get("evidence") if isinstance(data.get("evidence"), dict) else None
+        if signals is None and data.get("raw"):
+            raw = data.get("raw") or {}
+            if isinstance(raw.get("evidence"), dict):
+                signals = raw.get("evidence")
+
+        outputs.append(
+            CriticEvidence(
+                critic=name,
+                verdict=_critic_verdict(severity),
+                score=score,
+                rationale=rationale,
+                precedents=[str(p) for p in precedents] if isinstance(precedents, list) else [],
+                policy_rules=[str(p) for p in policy_rules] if isinstance(policy_rules, list) else [],
+                signals=signals,
+            )
+        )
+    return outputs
+
+
+def _build_evidence_bundle(
+    *,
+    decision: str,
+    confidence: float,
+    critic_details: Dict[str, Any],
+    precedent_alignment: Dict[str, Any],
+    governance_result: Dict[str, Any],
+    provenance_inputs: Dict[str, Any],
+) -> EvidenceBundle:
+    critic_outputs = _build_critic_evidence(critic_details)
+    precedent_trace = _build_precedent_trace(precedent_alignment)
+    policy_trace = _build_policy_trace(governance_result)
+    summary = f"Decision {decision} with confidence {confidence:.2f}."
+
+    provenance = EvidenceProvenance(inputs=provenance_inputs)
+    bundle_payload = {
+        "summary": summary,
+        "critic_outputs": [c.model_dump(mode="json") for c in critic_outputs],
+        "precedent_trace": [p.model_dump(mode="json") for p in precedent_trace],
+        "policy_trace": [p.model_dump(mode="json") for p in policy_trace],
+        "provenance": provenance.model_dump(mode="json"),
+    }
+    bundle_hash = f"sha256:{_hash_payload(bundle_payload)}"
+    integrity = EvidenceIntegrity(hash=bundle_hash)
+
+    return EvidenceBundle(
+        summary=summary,
+        critic_outputs=critic_outputs,
+        precedent_trace=precedent_trace,
+        policy_trace=policy_trace,
+        provenance=provenance,
+        integrity=integrity,
+    )
 
 
 def resolve_execution_decision(
@@ -712,6 +935,181 @@ async def deliberate(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Deliberation failed",
+        )
+
+
+# ---------------------------------------------
+# Evaluate Provided Model Output
+# ---------------------------------------------
+
+@app.post("/evaluate", response_model=EvaluateResponse, tags=["Deliberation"])
+async def evaluate(
+    payload: EvaluateRequest,
+    user: Optional[str] = Depends(get_current_user),
+):
+    """
+    Evaluate a provided model output against the Engine contract.
+    """
+    if engine is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Engine not initialized",
+        )
+
+    model_output_text = _serialize_model_output(payload.model_output)
+    context = payload.context.model_dump(mode="json")
+    user_intent = context.get("user_intent")
+    input_override = user_intent if isinstance(user_intent, str) else ""
+
+    context.update({
+        "policy_profile": payload.policy_profile,
+        "proposed_action": payload.proposed_action.model_dump(mode="json"),
+        "evidence_inputs": payload.evidence_inputs.model_dump(mode="json") if payload.evidence_inputs else {},
+        "model_metadata": payload.model_metadata.model_dump(mode="json") if payload.model_metadata else {},
+        "model_output": model_output_text,
+        "skip_router": True,
+        "force_model_output": True,
+        "input_text_override": input_override,
+    })
+
+    try:
+        run_fn = getattr(engine, "run", None)
+        if run_fn is None:
+            raise RuntimeError("Engine does not expose run()")
+
+        result_obj = await run_fn(
+            model_output_text,
+            context=context,
+            trace_id=payload.request_id,
+            detail_level=3,
+        )
+
+        normalized = normalize_engine_result(result_obj, model_output_text, payload.request_id, context)
+        aggregated = normalized.get("aggregator_output") or {}
+        precedent_alignment = normalized.get("precedent_alignment") or {}
+        uncertainty = normalized.get("uncertainty") or {}
+
+        governance_payload = {
+            "critics": aggregated.get("critics", {}),
+            "aggregator": aggregated,
+            "precedent": precedent_alignment,
+            "uncertainty": uncertainty,
+            "model_used": normalized.get("model_used"),
+            "input": model_output_text,
+            "trace_id": payload.request_id,
+            "timestamp": payload.timestamp.isoformat(),
+            "schema_version": GOVERNANCE_SCHEMA_VERSION,
+            "policy_profile": payload.policy_profile,
+            "proposed_action": payload.proposed_action.model_dump(mode="json"),
+            "context": context,
+            "evidence_inputs": payload.evidence_inputs.model_dump(mode="json") if payload.evidence_inputs else {},
+        }
+
+        governance_result = await evaluate_opa(
+            getattr(engine, "opa_callback", None),
+            governance_payload,
+        )
+
+        final_decision = resolve_final_decision(aggregated.get("decision"), governance_result)
+
+        execution_decision = None
+        try:
+            execution_decision = resolve_execution_decision(aggregated, None)
+        except Exception as exc:
+            logger.warning("Execution gate evaluation failed", error=str(exc))
+
+        final_decision = apply_execution_gate(final_decision, execution_decision)
+
+        decision = _map_decision(final_decision)
+        uncertainty_envelope = _build_uncertainty_envelope(uncertainty)
+        confidence = _confidence_from_uncertainty(uncertainty)
+        critic_details = aggregated.get("critics") or {}
+        constraints = _build_constraints(critic_details) if decision == "ALLOW_WITH_CONSTRAINTS" else None
+
+        routing_notes = None
+        if execution_decision and not execution_decision.executable:
+            routing_notes = execution_decision.execution_reason
+
+        if decision in ("ESCALATE", "ABSTAIN"):
+            routing = RoutingDecision(next_step="human_required", notes=routing_notes)
+        elif decision == "DENY":
+            routing = RoutingDecision(next_step="review_queue", notes=routing_notes)
+        elif decision == "ALLOW_WITH_CONSTRAINTS":
+            routing = RoutingDecision(next_step="policy_gate_required", notes=routing_notes)
+        else:
+            routing = RoutingDecision(next_step="safe_to_execute", notes=routing_notes)
+
+        provenance_inputs = {
+            "model_output_hash": f"sha256:{_hash_payload(model_output_text)}",
+            "context_hash": f"sha256:{_hash_payload(context)}",
+            "proposed_action_hash": f"sha256:{_hash_payload(payload.proposed_action.model_dump(mode='json'))}",
+            "policy_profile": payload.policy_profile,
+        }
+        if payload.evidence_inputs:
+            provenance_inputs["evidence_inputs_hash"] = f"sha256:{_hash_payload(payload.evidence_inputs.model_dump(mode='json'))}"
+        if payload.model_metadata:
+            provenance_inputs["model_metadata_hash"] = f"sha256:{_hash_payload(payload.model_metadata.model_dump(mode='json'))}"
+
+        evidence_bundle = _build_evidence_bundle(
+            decision=decision,
+            confidence=confidence,
+            critic_details=critic_details,
+            precedent_alignment=precedent_alignment,
+            governance_result=governance_result,
+            provenance_inputs=provenance_inputs,
+        )
+
+        return EvaluateResponse(
+            request_id=payload.request_id,
+            engine_version=ELEANOR_VERSION,
+            decision=decision,
+            confidence=confidence,
+            uncertainty=uncertainty_envelope,
+            constraints=constraints,
+            routing=routing,
+            evidence_bundle=evidence_bundle,
+            errors=[],
+        )
+
+    except Exception as exc:
+        logger.error(
+            "evaluation_failed",
+            request_id=payload.request_id,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+
+        error = EvaluateError(code="E_ENGINE_ERROR", message=str(exc))
+        uncertainty = UncertaintyEnvelope(level="HIGH", reasons=[str(exc)])
+        routing = RoutingDecision(next_step="human_required", notes="Engine error; manual review required.")
+
+        bundle_payload = {
+            "summary": "Engine error; abstained from decision.",
+            "critic_outputs": [],
+            "precedent_trace": [],
+            "policy_trace": [],
+            "provenance": {"inputs": {}},
+        }
+        bundle_hash = f"sha256:{_hash_payload(bundle_payload)}"
+        evidence_bundle = EvidenceBundle(
+            summary="Engine error; abstained from decision.",
+            critic_outputs=[],
+            precedent_trace=[],
+            policy_trace=[],
+            provenance=EvidenceProvenance(inputs={}),
+            integrity=EvidenceIntegrity(hash=bundle_hash),
+        )
+
+        return EvaluateResponse(
+            request_id=payload.request_id,
+            engine_version=ELEANOR_VERSION,
+            decision="ABSTAIN",
+            confidence=0.0,
+            uncertainty=uncertainty,
+            constraints=None,
+            routing=routing,
+            evidence_bundle=evidence_bundle,
+            errors=[error],
         )
 
 

@@ -5,7 +5,8 @@ ELEANOR V8 — API Schemas
 Pydantic models for request/response validation.
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Literal
+from datetime import datetime
 from pydantic import BaseModel, Field, validator
 import re
 
@@ -148,6 +149,130 @@ class DeliberationResponse(BaseModel):
                 "opa_governance": {"allow": True}
             }
         }
+
+
+class ProposedAction(BaseModel):
+    """Proposed downstream action to evaluate."""
+
+    type: str = Field(..., description="Action type identifier")
+    params: Optional[Dict[str, Any]] = Field(default_factory=dict)
+
+
+class EvidenceInputs(BaseModel):
+    """Optional evidence inputs referenced by the caller."""
+
+    precedent_keys: List[str] = Field(default_factory=list)
+    citations: List[str] = Field(default_factory=list)
+    logs: List[str] = Field(default_factory=list)
+    attestations: List[str] = Field(default_factory=list)
+
+
+class ModelMetadata(BaseModel):
+    """Optional model metadata for auditability."""
+
+    model_id: Optional[str] = None
+    temperature: Optional[float] = None
+    tool_trace_ref: Optional[str] = None
+
+
+class EvaluateContext(BaseModel):
+    """Contextual information required by the Engine contract."""
+
+    domain: str
+    jurisdiction: Optional[str] = None
+    sensitivity: Optional[str] = None
+    user_intent: Optional[Any] = None
+    constraints: Optional[Dict[str, Any]] = None
+    case_refs: Optional[Dict[str, Any]] = None
+
+    class Config:
+        extra = "allow"
+
+
+class EvaluateRequest(BaseModel):
+    """Request schema for the /evaluate endpoint."""
+
+    request_id: str
+    timestamp: datetime
+    policy_profile: str
+    model_output: Any
+    proposed_action: ProposedAction
+    context: EvaluateContext
+    evidence_inputs: Optional[EvidenceInputs] = None
+    model_metadata: Optional[ModelMetadata] = None
+
+
+class CriticEvidence(BaseModel):
+    critic: str
+    verdict: Literal["PASS", "WARN", "FAIL"]
+    score: Optional[float] = None
+    rationale: str
+    precedents: List[str] = Field(default_factory=list)
+    policy_rules: List[str] = Field(default_factory=list)
+    signals: Optional[Dict[str, Any]] = None
+
+
+class PrecedentTrace(BaseModel):
+    id: str
+    type: Optional[str] = None
+    applied_as: Optional[str] = None
+    note: Optional[str] = None
+
+
+class PolicyTrace(BaseModel):
+    rule_id: str
+    effect: str
+    matched_on: Optional[Dict[str, Any]] = None
+    note: Optional[str] = None
+
+
+class EvidenceProvenance(BaseModel):
+    inputs: Dict[str, Any]
+    nondeterminism: Optional[str] = None
+
+
+class EvidenceIntegrity(BaseModel):
+    hash: str
+    signature: Optional[str] = None
+
+
+class EvidenceBundle(BaseModel):
+    summary: str
+    critic_outputs: List[CriticEvidence]
+    precedent_trace: List[PrecedentTrace] = Field(default_factory=list)
+    policy_trace: List[PolicyTrace] = Field(default_factory=list)
+    provenance: EvidenceProvenance
+    integrity: EvidenceIntegrity
+
+
+class RoutingDecision(BaseModel):
+    next_step: str
+    queue: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class UncertaintyEnvelope(BaseModel):
+    level: Literal["LOW", "MEDIUM", "HIGH"]
+    reasons: List[str] = Field(default_factory=list)
+
+
+class EvaluateError(BaseModel):
+    code: Optional[str] = None
+    message: Optional[str] = None
+
+
+class EvaluateResponse(BaseModel):
+    """Response schema for the /evaluate endpoint."""
+
+    request_id: str
+    engine_version: str
+    decision: Literal["ALLOW", "ALLOW_WITH_CONSTRAINTS", "ABSTAIN", "ESCALATE", "DENY"]
+    confidence: float = Field(ge=0.0, le=1.0)
+    uncertainty: UncertaintyEnvelope
+    constraints: Optional[Dict[str, Any]] = None
+    routing: RoutingDecision
+    evidence_bundle: EvidenceBundle
+    errors: List[EvaluateError] = Field(default_factory=list)
 
 
 class HealthResponse(BaseModel):
