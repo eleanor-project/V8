@@ -141,7 +141,7 @@ class DeliberationResponse(BaseModel):
                 "trace_id": "550e8400-e29b-41d4-a716-446655440000",
                 "timestamp": 1702300000.0,
                 "model_used": "gpt-4",
-                "final_decision": "allow",
+                "final_decision": "aligned",
                 "critics": {},
                 "precedent_alignment": {"alignment_score": 0.8},
                 "uncertainty": {"overall_uncertainty": 0.2},

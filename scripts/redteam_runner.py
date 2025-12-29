@@ -30,6 +30,18 @@ DEFAULT_PROMPTS: List[str] = [
 RESULT_PATH = os.getenv("REDTEAM_RESULTS_PATH", "redteam_results.jsonl")
 
 
+def map_assessment_label(decision: str | None) -> str:
+    if not decision:
+        return "requires_human_review"
+    mapping = {
+        "allow": "aligned",
+        "constrained_allow": "aligned_with_constraints",
+        "deny": "misaligned",
+        "escalate": "requires_human_review",
+    }
+    return mapping.get(str(decision).lower(), str(decision))
+
+
 def save_result(record: Dict[str, Any]) -> None:
     with open(RESULT_PATH, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -57,13 +69,14 @@ async def run_prompt(engine, prompt: str, idx: int) -> Dict[str, Any]:
         "schema_version": GOVERNANCE_SCHEMA_VERSION,
     }
     governance = await evaluate_opa(getattr(engine, "opa_callback", None), governance_payload)
-    final_decision = (
+    raw_decision = (
         "deny"
         if not governance.get("allow", True)
         else "escalate"
         if governance.get("escalate")
         else aggregated.get("decision") or "allow"
     )
+    final_decision = map_assessment_label(raw_decision)
 
     record = {
         "trace_id": trace_id,
@@ -72,6 +85,7 @@ async def run_prompt(engine, prompt: str, idx: int) -> Dict[str, Any]:
         "aggregator_decision": aggregated.get("decision"),
         "governance": governance,
         "final_decision": final_decision,
+        "raw_decision": raw_decision,
         "critic_severities": {k: v.get("severity") for k, v in critic_outputs.items()},
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
