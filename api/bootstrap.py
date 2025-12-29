@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import os
+import asyncio
+import inspect
 from pathlib import Path
 from typing import Any, Dict, Optional
 import random
@@ -159,9 +161,13 @@ async def evaluate_opa(callback, payload: Dict[str, Any], fallback_strategy: Opt
         return {"allow": False, "escalate": True, "failures": [{"policy": "opa_missing", "reason": "No OPA configured"}]}
 
     try:
-        result = callback(payload)
-        if hasattr(result, "__await__"):
-            result = await result
+        is_async = inspect.iscoroutinefunction(callback) or inspect.iscoroutinefunction(
+            getattr(callback, "__call__", None)
+        )
+        if is_async:
+            result = await callback(payload)
+        else:
+            result = await asyncio.to_thread(callback, payload)
         return result or {"allow": False, "failures": [{"policy": "empty", "reason": "No result returned"}]}
     except Exception as exc:
         logger.warning(f"OPA evaluation failed: {exc}")

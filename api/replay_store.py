@@ -17,6 +17,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 from uuid import uuid4
 
+try:
+    import fcntl  # type: ignore
+except Exception:  # pragma: no cover - platform specific
+    fcntl = None
+
 
 REVIEW_PACKET_DIR = "logs/review_packets"
 REVIEW_RECORD_DIR = "logs/reviews"
@@ -66,7 +71,11 @@ class ReplayStore:
         text = json.dumps(record, ensure_ascii=False)
         with self._lock:
             with self.path.open("a", encoding="utf-8") as f:
+                if fcntl is not None:
+                    fcntl.flock(f, fcntl.LOCK_EX)
                 f.write(text + "\n")
+                if fcntl is not None:
+                    fcntl.flock(f, fcntl.LOCK_UN)
             self._cache[trace_id] = record
             # prune cache if oversized
             if len(self._cache) > self.max_cache:
@@ -84,6 +93,8 @@ class ReplayStore:
         with self._lock:
             try:
                 with self.path.open("r", encoding="utf-8") as f:
+                    if fcntl is not None:
+                        fcntl.flock(f, fcntl.LOCK_SH)
                     for line in f:
                         try:
                             item = cast(Dict[str, Any], json.loads(line))
@@ -91,7 +102,11 @@ class ReplayStore:
                             continue
                         if item.get("trace_id") == trace_id:
                             self._cache[trace_id] = item
+                            if fcntl is not None:
+                                fcntl.flock(f, fcntl.LOCK_UN)
                             return item
+                    if fcntl is not None:
+                        fcntl.flock(f, fcntl.LOCK_UN)
             except FileNotFoundError:
                 return None
         return None

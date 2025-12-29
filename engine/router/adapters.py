@@ -28,6 +28,15 @@ import requests
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
+def _get_timeout() -> float:
+    raw = os.getenv("ELEANOR_HTTP_TIMEOUT", "10")
+    try:
+        return float(raw)
+    except ValueError:
+        return 10.0
+
+
+DEFAULT_HTTP_TIMEOUT = _get_timeout()
 
 # Optional imports (only load if available)
 from typing import TYPE_CHECKING
@@ -124,7 +133,8 @@ class GrokAdapter(BaseLLMAdapter):
             "messages": [{"role": "user", "content": prompt}]
         }
 
-        resp = requests.post(url, headers=headers, json=payload)
+        resp = requests.post(url, headers=headers, json=payload, timeout=DEFAULT_HTTP_TIMEOUT)
+        resp.raise_for_status()
         data: Any = resp.json()
         return str(data["choices"][0]["message"]["content"]).strip()
 
@@ -164,8 +174,10 @@ class OllamaAdapter(BaseLLMAdapter):
     def __call__(self, prompt: str) -> str:
         response = requests.post(
             "http://localhost:11434/api/generate",
-            json={"model": self.model, "prompt": prompt}
+            json={"model": self.model, "prompt": prompt, "stream": False},
+            timeout=DEFAULT_HTTP_TIMEOUT,
         )
+        response.raise_for_status()
         data: Any = response.json()
         return str(data.get("response", "")).strip()
 

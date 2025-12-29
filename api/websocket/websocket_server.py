@@ -24,7 +24,10 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from api.bootstrap import build_engine, evaluate_opa
+from api.middleware.auth import decode_token, get_auth_config
 from engine.logging_config import get_logger
+from engine.execution.human_review import enforce_human_review
+from engine.schemas.escalation import AggregationResult, HumanAction, ExecutableDecision
 
 engine = build_engine()
 logger = get_logger(__name__)
@@ -58,12 +61,54 @@ async def ws_send(ws: WebSocket, event_type: str, payload: dict):
     }))
 
 
+async def require_ws_auth(ws: WebSocket) -> bool:
+    config = get_auth_config()
+    if not config.enabled:
+        return True
+
+    auth_header = ws.headers.get("authorization")
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        await ws_send(ws, "error", {"message": "Authorization header required"})
+        await ws.close(code=1008)
+        return False
+
+    token = auth_header.split(" ", 1)[1].strip()
+    try:
+        decode_token(token, config)
+    except Exception as exc:
+        detail = getattr(exc, "detail", "Unauthorized")
+        await ws_send(ws, "error", {"message": str(detail)})
+        await ws.close(code=1008)
+        return False
+
+    return True
+
+
+def resolve_execution_decision(
+    aggregated: Dict[str, Any],
+    human_action: Optional[HumanAction],
+) -> Optional[ExecutableDecision]:
+    aggregation_payload = aggregated.get("aggregation_result") if isinstance(aggregated, dict) else None
+    if not aggregation_payload:
+        return None
+    aggregation_result = AggregationResult.model_validate(aggregation_payload)
+    return enforce_human_review(aggregation_result=aggregation_result, human_action=human_action)
+
+
+def apply_execution_gate(final_decision: str, execution_decision: Optional[ExecutableDecision]) -> str:
+    if execution_decision and not execution_decision.executable and final_decision != "deny":
+        return "escalate"
+    return final_decision
+
+
 # -------------------------------------
 # WebSocket Endpoint
 # -------------------------------------
 @ws_router.websocket("/ws/deliberate")
 async def ws_deliberate(ws: WebSocket):
     await ws.accept()
+    if not await require_ws_auth(ws):
+        return
     await ws_send(ws, "connection", {"status": "connected"})
 
     try:
@@ -73,6 +118,13 @@ async def ws_deliberate(ws: WebSocket):
         user_text = incoming_json.get("input")
         context = incoming_json.get("context") or {}
         trace_id = incoming_json.get("trace_id") or str(uuid.uuid4())
+        human_action = incoming_json.get("human_action")
+        try:
+            human_action_payload = HumanAction.model_validate(human_action) if human_action else None
+        except Exception as exc:
+            await ws_send(ws, "error", {"message": str(exc)})
+            await ws.close()
+            return
 
         if not user_text:
             await ws_send(ws, "error", {"message": "Missing 'input' field"})
@@ -123,6 +175,14 @@ async def ws_deliberate(ws: WebSocket):
         )
 
         final_decision = resolve_final_decision(aggregated.get("decision"), governance_result)
+        execution_decision = None
+        try:
+            execution_decision = resolve_execution_decision(aggregated, human_action_payload)
+        except Exception as exc:
+            await ws_send(ws, "error", {"message": str(exc)})
+            await ws.close()
+            return
+        final_decision = apply_execution_gate(final_decision, execution_decision)
 
         final = {
             "trace_id": trace_id,
@@ -135,6 +195,7 @@ async def ws_deliberate(ws: WebSocket):
             "precedent": precedent_data,
             "governance": governance_result,
             "final_decision": final_decision,
+            "execution_decision": execution_decision.model_dump(mode="json") if execution_decision else None,
         }
 
         await ws_send(ws, "governance", governance_result)

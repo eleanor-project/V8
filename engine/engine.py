@@ -267,6 +267,25 @@ class EleanorEngineV8:
     # -----------------------------------------------------
     # MODEL ROUTING
     # -----------------------------------------------------
+    async def _run_detectors(self, text: str, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not self.detector_engine:
+            return None
+
+        start = asyncio.get_event_loop().time()
+        signals = await self.detector_engine.detect_all(text, context)
+        summary = self.detector_engine.aggregate_signals(signals)
+        end = asyncio.get_event_loop().time()
+        self.timings["detectors_ms"] = (end - start) * 1000
+
+        converted_signals = {
+            name: (sig.model_dump() if hasattr(sig, "model_dump") else sig)
+            for name, sig in signals.items()
+        }
+        return {
+            **summary,
+            "signals": converted_signals,
+        }
+
     async def _select_model(self, text: str, context: dict) -> Dict[str, Any]:
         start = asyncio.get_event_loop().time()
 
@@ -648,6 +667,10 @@ class EleanorEngineV8:
 
         pipeline_start = asyncio.get_event_loop().time()
 
+        detector_payload = await self._run_detectors(text, context)
+        if detector_payload:
+            context = {**context, "detectors": detector_payload}
+
         # Step 1: Model Routing
         router_data = await self._select_model(text, context)
         model_info = router_data["model_info"]
@@ -753,7 +776,7 @@ class EleanorEngineV8:
             forensic_buffer = buffer[-200:] if buffer else []
 
             forensic_data = EngineForensicData(
-                detector_metadata=aggregated.get("critic_details", {}) if isinstance(aggregated.get("critic_details"), dict) else {},
+                detector_metadata=detector_payload or {},
                 uncertainty_graph=uncertainty_data or {},
                 precedent_alignment=precedent_data or {},
                 router_diagnostics=self.router_diagnostics,
@@ -788,6 +811,15 @@ class EleanorEngineV8:
         level = detail_level or self.config.detail_level
 
         pipeline_start = asyncio.get_event_loop().time()
+
+        detector_payload = await self._run_detectors(text, context)
+        if detector_payload:
+            context = {**context, "detectors": detector_payload}
+            yield {
+                "event": "detectors_complete",
+                "trace_id": trace_id,
+                "data": {"summary": {k: v for k, v in detector_payload.items() if k != "signals"}},
+            }
 
         # Step 1: Model Routing
         router_data = await self._select_model(text, context)

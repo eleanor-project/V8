@@ -177,6 +177,35 @@ class RouterV8:
     # Core model call logic (safe execution with circuit breaker)
     # ---------------------------------------------------------------
 
+    async def _invoke_adapter(
+        self,
+        adapter: Callable,
+        input_text: str,
+        context: Optional[Dict[str, Any]],
+    ) -> Any:
+        is_async = inspect.iscoroutinefunction(adapter) or inspect.iscoroutinefunction(
+            getattr(adapter, "__call__", None)
+        )
+        try:
+            sig = inspect.signature(adapter)
+            wants_context = "context" in sig.parameters and len(sig.parameters) >= 2
+        except (TypeError, ValueError):
+            wants_context = False
+
+        if is_async:
+            if wants_context:
+                return await adapter(input_text, context=context)
+            return await adapter(input_text)
+
+        if wants_context:
+            response = await asyncio.to_thread(adapter, input_text, context=context)
+        else:
+            response = await asyncio.to_thread(adapter, input_text)
+
+        if inspect.isawaitable(response):
+            response = await response
+        return response
+
     async def _call_adapter(self, adapter_name: str, input_text: str, context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         adapter = self.adapters.get(adapter_name)
 
@@ -190,10 +219,7 @@ class RouterV8:
             breaker = self._get_circuit_breaker(adapter_name)
 
             try:
-                # Wrap adapter call in circuit breaker (synchronous adapters only)
-                response = breaker.call_sync(adapter, input_text)
-                if inspect.isawaitable(response):
-                    response = await response
+                response = await breaker.call(self._invoke_adapter, adapter, input_text, context)
 
                 normalized = self._normalize_output(adapter_name, response)
                 duration_ms = (time.time() - start_time) * 1000
@@ -234,18 +260,7 @@ class RouterV8:
 
         # Fallback without circuit breaker
         try:
-            if inspect.iscoroutinefunction(adapter):
-                response = await adapter(input_text, context=context)
-            else:
-                sig = inspect.signature(adapter)
-                if "context" in sig.parameters and len(sig.parameters) >= 2:
-                    response = adapter(input_text, context=context)
-                else:
-                    response = adapter(input_text)
-
-                if inspect.isawaitable(response):
-                    response = await response
-
+            response = await self._invoke_adapter(adapter, input_text, context)
             normalized = self._normalize_output(adapter_name, response)
             duration_ms = (time.time() - start_time) * 1000
             return {

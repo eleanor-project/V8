@@ -212,9 +212,9 @@ def build_eleanor_engine_v8(
     local development can run with minimal configuration.
     """
 
-    openai_key = os.getenv("OPENAI_KEY")
-    anthropic_key = os.getenv("ANTHROPIC_KEY")
-    xai_key = os.getenv("XAI_KEY")
+    openai_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_KEY")
+    xai_key = os.getenv("XAI_API_KEY") or os.getenv("XAI_KEY")
     embedding_backend = os.getenv("EMBEDDING_BACKEND", "gpt")
 
     adapters = router_adapters or {}

@@ -120,6 +120,7 @@ class AggregatorV8:
             "execution_gate": escalation_result.execution_gate.model_dump(),
             "dissent_present": escalation_result.dissent_present,
             "audit_hash": escalation_result.audit_hash,
+            "aggregation_result": escalation_result.model_dump(mode="json"),
         }
 
     # ----------------------------------------------------------

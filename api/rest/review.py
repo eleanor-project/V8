@@ -7,6 +7,7 @@ This fits into the existing API structure without creating a new server.
 
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List
+import os
 import uuid
 
 from governance.human_review.schemas import HumanReviewRecord
@@ -14,13 +15,16 @@ from governance.human_review.service import submit_review, get_review, get_revie
 from governance.human_review.audit import get_review_stats, validate_review_chain
 from governance.stewardship import get_pending_reviews, resolve_review
 from precedent.promotion_router import PromotionRouter
+from api.middleware.auth import require_role
 
 
 router = APIRouter(prefix="/review", tags=["human-review"])
 promotion_router = PromotionRouter()
+REVIEWER_ROLE = os.getenv("REVIEWER_ROLE", "reviewer")
 
 
 @router.post("/submit")
+@require_role(REVIEWER_ROLE)
 def submit_review_endpoint(review: HumanReviewRecord):
     """
     Submit a human review record.
@@ -48,6 +52,7 @@ def submit_review_endpoint(review: HumanReviewRecord):
 
 
 @router.get("/get/{review_id}")
+@require_role(REVIEWER_ROLE)
 def get_review_endpoint(review_id: str):
     """
     Get a specific review by ID.
@@ -70,6 +75,7 @@ def get_review_endpoint(review_id: str):
 
 
 @router.get("/case/{case_id}")
+@require_role(REVIEWER_ROLE)
 def get_case_reviews_endpoint(case_id: str):
     """
     Get all reviews for a specific case.
@@ -85,6 +91,7 @@ def get_case_reviews_endpoint(case_id: str):
 
 
 @router.get("/pending")
+@require_role(REVIEWER_ROLE)
 def get_pending_reviews_endpoint():
     """
     Get all pending review packets awaiting human review.
@@ -97,6 +104,7 @@ def get_pending_reviews_endpoint():
 
 
 @router.get("/stats")
+@require_role(REVIEWER_ROLE)
 def get_stats_endpoint(case_id: Optional[str] = Query(None)):
     """
     Get review statistics.
@@ -112,6 +120,7 @@ def get_stats_endpoint(case_id: Optional[str] = Query(None)):
 
 
 @router.get("/validate/{case_id}")
+@require_role(REVIEWER_ROLE)
 def validate_case_endpoint(case_id: str):
     """
     Validate the review chain for a case.
@@ -129,6 +138,7 @@ def validate_case_endpoint(case_id: str):
 
 
 @router.get("/lane/{lane_name}")
+@require_role(REVIEWER_ROLE)
 def get_lane_contents_endpoint(lane_name: str):
     """
     Get all cases in a specific promotion lane.
