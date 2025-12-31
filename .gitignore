@@ -2,8 +2,60 @@ __pycache__/
 *.pyc
 .DS_Store
 .coverage
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+secrets/
+
+# Logs and evidence
 evidence.jsonl
-engine/detectors/.DS_Store
-governance/.DS_Store
 nohup.out
-logs/execution_audit.jsonl
+*.log
+logs/
+*.jsonl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Monitoring
+prometheus/
+grafana/
