@@ -4,6 +4,9 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+*.py[cod]
+*$py.class
+*.so
 
 # Build artifacts
 build/
@@ -11,6 +14,17 @@ dist/
 *.egg-info/
 eleanor_v8.egg-info/
 .eggs/
+develop-eggs/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+.installed.cfg
+*.egg
+MANIFEST
 
 # Testing
 .coverage
@@ -18,11 +32,16 @@ eleanor_v8.egg-info/
 htmlcov/
 .pytest_cache/
 .hypothesis/
+coverage.xml
 
 # Runtime artifacts
 nohup.out
+*.log
 replay_log.jsonl
+replay_store.py
 safety_report.json
+*_report.json
+bandit-report.json
 evidence.jsonl
 logs/*.jsonl
 logs/*.log
@@ -33,6 +52,7 @@ logs/*.log
 .venv/
 venv/
 ENV/
+env/
 
 # IDE
 .vscode/
