@@ -1,9 +1,62 @@
+# Python
 __pycache__/
 *.pyc
-.DS_Store
+*.pyo
+*.pyd
+.Python
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+eleanor_v8.egg-info/
+.eggs/
+
+# Testing
 .coverage
-evidence.jsonl
-engine/detectors/.DS_Store
-governance/.DS_Store
+.coverage.*
+htmlcov/
+.pytest_cache/
+.hypothesis/
+
+# Runtime artifacts
 nohup.out
-logs/execution_audit.jsonl
+replay_log.jsonl
+safety_report.json
+evidence.jsonl
+logs/*.jsonl
+logs/*.log
+
+# Environment
+.env
+.env.local
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Type checking
+.mypy_cache/
+.pytype/
+.dmypy.json
+dmypy.json
+
+# Profiling
+*.prof
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS files
+Thumbs.db
+
+# Keep empty log directories
+!logs/.gitkeep
