@@ -76,6 +76,7 @@ class ConfigManager:
         """Get current settings."""
         if self._settings is None:
             self.reload()
+        assert self._settings is not None
         return self._settings
     
     def get(self, key: str, default: Any = None) -> Any:

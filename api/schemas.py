@@ -155,7 +155,7 @@ class ProposedAction(BaseModel):
     """Proposed downstream action to evaluate."""
 
     type: str = Field(..., description="Action type identifier")
-    params: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    params: Dict[str, Any] = Field(default_factory=dict)
 
 
 class EvidenceInputs(BaseModel):

@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict
+from typing import Any, Dict, cast
 
 import requests
 
@@ -22,10 +22,10 @@ class LlamaClient(LLMClient):
         self.model = model or os.getenv("OLLAMA_MODEL") or os.getenv("LLAMA_MODEL")
         if not self.model:
             raise RuntimeError("OLLAMA_MODEL or LLAMA_MODEL is required for the Llama backend.")
-        self.host = host or os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        self.host: str = host or os.getenv("OLLAMA_HOST") or "http://localhost:11434"
         self.url = f"{self.host.rstrip('/')}/api/generate"
 
-    def invoke(self, system_prompt: str, user_prompt: str) -> Dict:
+    def invoke(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         prompt = f"{system_prompt}\n\n{user_prompt}"
         payload = {
             "model": self.model,
@@ -40,6 +40,6 @@ class LlamaClient(LLMClient):
         content = data.get("response") or ""
 
         try:
-            return json.loads(content)
+            return cast(Dict[str, Any], json.loads(content))
         except json.JSONDecodeError as exc:
             raise RuntimeError("Llama/Ollama response was not valid JSON") from exc

@@ -82,6 +82,9 @@ class SeverityLevel(float):
         return self.label
 
 
+SeverityInput = SeverityLevel | float | str
+
+
 class DetectorSignal(BaseModel):
     """
     Standard output format for all detectors.
@@ -94,7 +97,7 @@ class DetectorSignal(BaseModel):
         flags: Flags for escalation/routing to critics
     """
     detector_name: str
-    severity: SeverityLevel = Field(default_factory=lambda: SeverityLevel(0.0))
+    severity: SeverityInput = Field(default_factory=lambda: SeverityLevel(0.0))
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     description: str | None = None
     violations: List[str] = Field(default_factory=list)  # List of violation categories
@@ -124,7 +127,7 @@ class DetectorSignal(BaseModel):
     @property
     def severity_label(self) -> str:
         """S0-S3 label mapped from severity score."""
-        return self.severity.label
+        return self._coerce_severity(self.severity).label
 
     @property
     def metadata(self) -> Dict[str, Any]:

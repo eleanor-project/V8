@@ -8,6 +8,7 @@ from typing import Optional
 
 from engine.schemas.escalation import AuditRecord
 
+_fcntl: Optional[ModuleType]
 try:
     import fcntl as _fcntl  # type: ignore
 except Exception:  # pragma: no cover - platform specific

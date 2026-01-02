@@ -368,7 +368,7 @@ class RouterV8:
             },
         }
         raise RouterSelectionError(
-            failure_payload["reason"],
+            str(failure_payload["reason"]),
             details=failure_payload,
         )
 
