@@ -232,3 +232,93 @@ class SecretsSanitizer:
             "sensitive_key_added",
             extra={"key": key}
         )
+
+
+class CredentialSanitizer:
+    """
+    Lightweight static sanitizer used by logging and validation helpers.
+
+    Uses explicit redaction markers for credential-like tokens.
+    """
+
+    DEFAULT_PATTERNS = [
+        (r"sk-[a-zA-Z0-9]{20,}", "[OPENAI_API_KEY_REDACTED]"),
+        (r"sk-proj-[a-zA-Z0-9_-]{48,}", "[OPENAI_PROJECT_KEY_REDACTED]"),
+        (r"sk-ant-[a-zA-Z0-9_-]{95,}", "[ANTHROPIC_API_KEY_REDACTED]"),
+        (r"AIza[0-9A-Za-z\\-_]{35}", "[GOOGLE_API_KEY_REDACTED]"),
+        (r"AKIA[0-9A-Z]{16}", "[AWS_ACCESS_KEY_REDACTED]"),
+        (r"(?i)aws[_-]?secret[_-]?access[_-]?key[\\s:=]+['\"]?([a-zA-Z0-9/+=]{40})['\"]?", "[AWS_SECRET_KEY_REDACTED]"),
+        (r"Bearer [a-zA-Z0-9._~+/=-]*", "[BEARER_TOKEN_REDACTED]"),
+        (r"ghp_[a-zA-Z0-9]{36}", "[GITHUB_TOKEN_REDACTED]"),
+        (r"gho_[a-zA-Z0-9]{36}", "[GITHUB_OAUTH_TOKEN_REDACTED]"),
+        (r"github_pat_[a-zA-Z0-9_]{82}", "[GITHUB_PAT_REDACTED]"),
+        (r"(?i)password[\\s:=]+['\"]?([^'\"\\s,]+)['\"]?", "password=[REDACTED]"),
+        (r"(?i)api[_-]?key[\\s:=]+['\"]?([^'\"\\s,]+)['\"]?", "api_key=[REDACTED]"),
+        (r"(?i)token[\\s:=]+['\"]?([^'\"\\s,]+)['\"]?", "token=[REDACTED]"),
+        (r"(?i)secret[\\s:=]+['\"]?([^'\"\\s,]+)['\"]?", "secret=[REDACTED]"),
+        (r"eyJ[a-zA-Z0-9_-]*\\.eyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*", "[JWT_TOKEN_REDACTED]"),
+        (r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\\s\\S]+?-----END [A-Z ]+ PRIVATE KEY-----", "[PRIVATE_KEY_REDACTED]"),
+    ]
+
+    SENSITIVE_KEYS = SecretsSanitizer.SENSITIVE_KEYS
+
+    _compiled_patterns = [
+        (re.compile(pattern, re.IGNORECASE | re.MULTILINE), replacement)
+        for pattern, replacement in DEFAULT_PATTERNS
+    ]
+
+    @classmethod
+    def sanitize_text(cls, text: str) -> str:
+        if not isinstance(text, str):
+            return text
+        result = text
+        for pattern, replacement in cls._compiled_patterns:
+            result = pattern.sub(replacement, result)
+        return result
+
+    @classmethod
+    def sanitize_dict(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(data, dict):
+            return data
+
+        sanitized = {}
+        for key, value in data.items():
+            key_lower = key.lower()
+            if any(sensitive in key_lower for sensitive in cls.SENSITIVE_KEYS):
+                sanitized[key] = "[REDACTED]"
+            elif isinstance(value, dict):
+                sanitized[key] = cls.sanitize_dict(value)
+            elif isinstance(value, list):
+                sanitized[key] = cls.sanitize_list(value)
+            elif isinstance(value, str):
+                sanitized[key] = cls.sanitize_text(value)
+            else:
+                sanitized[key] = value
+        return sanitized
+
+    @classmethod
+    def sanitize_list(cls, data: List[Any]) -> List[Any]:
+        if not isinstance(data, list):
+            return data
+
+        sanitized_list = []
+        for item in data:
+            if isinstance(item, dict):
+                sanitized_list.append(cls.sanitize_dict(item))
+            elif isinstance(item, list):
+                sanitized_list.append(cls.sanitize_list(item))
+            elif isinstance(item, str):
+                sanitized_list.append(cls.sanitize_text(item))
+            else:
+                sanitized_list.append(item)
+        return sanitized_list
+
+    @classmethod
+    def sanitize_value(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            return cls.sanitize_dict(value)
+        if isinstance(value, list):
+            return cls.sanitize_list(value)
+        if isinstance(value, str):
+            return cls.sanitize_text(value)
+        return value
