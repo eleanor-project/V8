@@ -537,7 +537,11 @@ class TestPrecedentAlignmentEngineV8:
         assert result["support_strength"] == 0.0
         assert result["conflict_level"] == 0.0
         assert result["drift_score"] == 0.0
-        assert result["clusters"] == []
+        assert result["clusters"] == {
+            "supportive": [],
+            "neutral": [],
+            "contradictory": [],
+        }
         assert "analysis" in result
 
     def test_analyze_with_precedents(self):

@@ -112,3 +112,105 @@ class TimeoutError(EleanorV8Exception):
     """Raised when an operation exceeds configured timeout."""
 
     pass
+
+
+class ConstitutionalSignal(EleanorV8Exception):
+    """Base class for constitutional signals (not failures)."""
+
+    pass
+
+
+class EscalationRequired(ConstitutionalSignal):
+    """Signal that mandatory human escalation is required."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        critic: str,
+        clause: str,
+        tier: int,
+        severity: float,
+        rationale: str,
+        trace_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            message,
+            details,
+            critic=critic,
+            clause=clause,
+            tier=tier,
+            severity=severity,
+            rationale=rationale,
+            trace_id=trace_id,
+            **kwargs,
+        )
+        self.critic = critic
+        self.clause = clause
+        self.tier = tier
+        self.severity = severity
+        self.rationale = rationale
+        self.trace_id = trace_id
+
+
+class UncertaintyBoundaryExceeded(ConstitutionalSignal):
+    """Signal that uncertainty exceeded a competence boundary."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        uncertainty_score: float,
+        sources: list[str],
+        recommendation: str,
+        trace_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            message,
+            details,
+            uncertainty_score=uncertainty_score,
+            sources=sources,
+            recommendation=recommendation,
+            trace_id=trace_id,
+            **kwargs,
+        )
+        self.uncertainty_score = uncertainty_score
+        self.sources = sources
+        self.recommendation = recommendation
+        self.trace_id = trace_id
+
+
+class DissentPreservationRequired(ConstitutionalSignal):
+    """Signal that dissent preservation is required."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        critic: Optional[str] = None,
+        severity: Optional[float] = None,
+        trace_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            message,
+            details,
+            critic=critic,
+            severity=severity,
+            trace_id=trace_id,
+            **kwargs,
+        )
+        self.critic = critic
+        self.severity = severity
+        self.trace_id = trace_id
+
+
+def is_constitutional_signal(exc: BaseException) -> bool:
+    """Return True when the exception represents a constitutional signal."""
+
+    return isinstance(exc, ConstitutionalSignal)

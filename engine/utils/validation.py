@@ -207,7 +207,8 @@ def validate_trace_id(trace_id: Optional[str]) -> str:
         raise InputValidationError(f"trace_id must be a string, got {type(trace_id).__name__}")
     
     # Validate UUID format if it looks like a UUID
-    if len(trace_id) == 36 and '-' in trace_id:
+    uuid_like = trace_id.count("-") >= 4 or (len(trace_id) == 36 and "-" in trace_id)
+    if uuid_like:
         try:
             uuid.UUID(trace_id)
         except ValueError:

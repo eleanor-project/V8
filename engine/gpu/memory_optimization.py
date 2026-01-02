@@ -11,7 +11,7 @@ Provides techniques for reducing GPU memory footprint:
 import logging
 import torch
 import torch.nn as nn
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, cast
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
@@ -127,7 +127,7 @@ class MemoryOptimizer:
                 dtype=torch.qint8
             )
             logger.info("Applied 8-bit dynamic quantization")
-            return quantized_model
+            return cast(nn.Module, quantized_model)
         except Exception as e:
             logger.warning(f"8-bit quantization failed: {e}, using original model")
             return model
@@ -137,7 +137,7 @@ class MemoryOptimizer:
         Apply 4-bit quantization using bitsandbytes (if available).
         """
         try:
-            import bitsandbytes as bnb
+            import bitsandbytes as bnb  # type: ignore[import-not-found]
             
             # Replace linear layers with 4-bit versions
             for name, module in model.named_children():

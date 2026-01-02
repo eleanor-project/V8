@@ -11,15 +11,18 @@ Components:
 
 Usage:
     from engine.gpu import GPUManager, AsyncGPUExecutor
-    
+
     gpu_manager = GPUManager()
     if gpu_manager.device.type == "cuda":
         executor = AsyncGPUExecutor(gpu_manager.device)
         result = await executor.execute_async(model_forward, inputs)
 """
 
-from engine.gpu.manager import GPUManager, GPUConfig
-from engine.gpu.async_ops import AsyncGPUExecutor
+from .manager import GPUManager, GPUConfig, GPUMemoryStats
+from .async_ops import AsyncGPUExecutor
+from .embeddings import GPUEmbeddingCache
+from .batch_processor import GPUBatchProcessor
+from .parallelization import MultiGPURouter as MultiGPUManager
 
 __all__ = [
     "GPUManager",

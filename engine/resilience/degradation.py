@@ -28,13 +28,14 @@ class DegradationStrategy:
         
         Returns empty precedent data indicating novelty.
         """
-        logger.warning(
-            "precedent_retrieval_failed",
-            error=str(error),
-            error_type=type(error).__name__,
-            fallback="no_precedents",
-            extra=context or {}
-        )
+        payload = {
+            "error": str(error),
+            "error_type": type(error).__name__,
+            "fallback": "no_precedents",
+        }
+        if context:
+            payload.update(context)
+        logger.warning("precedent_retrieval_failed", extra=payload)
         
         return {
             "cases": [],
@@ -55,13 +56,14 @@ class DegradationStrategy:
         
         Returns conservative high uncertainty estimate.
         """
-        logger.warning(
-            "uncertainty_engine_failed",
-            error=str(error),
-            error_type=type(error).__name__,
-            fallback="high_uncertainty",
-            extra=context or {}
-        )
+        payload = {
+            "error": str(error),
+            "error_type": type(error).__name__,
+            "fallback": "high_uncertainty",
+        }
+        if context:
+            payload.update(context)
+        logger.warning("uncertainty_engine_failed", extra=payload)
         
         return {
             "overall_uncertainty": 0.8,  # Conservative estimate
@@ -83,14 +85,15 @@ class DegradationStrategy:
         
         Returns default model selection.
         """
-        logger.warning(
-            "router_failed",
-            error=str(error),
-            error_type=type(error).__name__,
-            fallback="default_model",
-            default_model=default_model,
-            extra=context or {}
-        )
+        payload = {
+            "error": str(error),
+            "error_type": type(error).__name__,
+            "fallback": "default_model",
+            "default_model": default_model,
+        }
+        if context:
+            payload.update(context)
+        logger.warning("router_failed", extra=payload)
         
         return {
             "model_name": default_model,
@@ -112,14 +115,15 @@ class DegradationStrategy:
         
         Returns empty critic result indicating failure.
         """
-        logger.warning(
-            "critic_failed",
-            critic=critic_name,
-            error=str(error),
-            error_type=type(error).__name__,
-            fallback="empty_result",
-            extra=context or {}
-        )
+        payload = {
+            "critic": critic_name,
+            "error": str(error),
+            "error_type": type(error).__name__,
+            "fallback": "empty_result",
+        }
+        if context:
+            payload.update(context)
+        logger.warning("critic_failed", extra=payload)
         
         return {
             "critic_name": critic_name,
@@ -142,14 +146,15 @@ class DegradationStrategy:
         
         Returns empty signals indicating no detection.
         """
-        logger.warning(
-            "detector_failed",
-            detector=detector_name,
-            error=str(error),
-            error_type=type(error).__name__,
-            fallback="no_signals",
-            extra=context or {}
-        )
+        payload = {
+            "detector": detector_name,
+            "error": str(error),
+            "error_type": type(error).__name__,
+            "fallback": "no_signals",
+        }
+        if context:
+            payload.update(context)
+        logger.warning("detector_failed", extra=payload)
         
         return {
             "detector_name": detector_name,
