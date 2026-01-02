@@ -5,7 +5,7 @@ Defines protocol interfaces for all major engine components to enable
 dependency injection, testing with mocks, and loose coupling.
 """
 
-from typing import Protocol, Any, Dict, List, Optional, runtime_checkable
+from typing import Awaitable, Protocol, Any, Dict, List, Optional, runtime_checkable
 from abc import abstractmethod
 
 from engine.schemas.pipeline_types import (
@@ -21,7 +21,11 @@ class RouterProtocol(Protocol):
     """Protocol for model router implementations."""
 
     @abstractmethod
-    def route(self, text: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    def route(
+        self,
+        text: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any] | Awaitable[Dict[str, Any]]:
         """Route request to appropriate model and return response.
         
         Args:
@@ -128,7 +132,7 @@ class EvidenceRecorderProtocol(Protocol):
         context: Dict[str, Any],
         raw_text: str,
         trace_id: str,
-    ) -> None:
+    ) -> Any:
         """Record evaluation evidence.
         
         Args:

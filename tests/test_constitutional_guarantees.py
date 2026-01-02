@@ -16,6 +16,7 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from hypothesis import given, strategies as st
+from pydantic import ValidationError
 
 from engine.exceptions import (
     EscalationRequired,
@@ -112,7 +113,7 @@ class TestCriticEpistemicIsolation:
         )
         
         # INVARIANT: Evaluations are immutable once sealed
-        with pytest.raises((TypeError, AttributeError)):
+        with pytest.raises((TypeError, AttributeError, ValidationError)):
             evaluation.severity = 0.1  # Should fail - frozen object
 
 
@@ -237,7 +238,7 @@ class TestUnilateralEscalationAuthority:
         assert signal.human_review_required is True
         
         # INVARIANT: Escalation cannot be disabled
-        with pytest.raises((TypeError, AttributeError)):
+        with pytest.raises((TypeError, AttributeError, ValidationError)):
             signal.human_review_required = False
     
     async def test_escalation_gates_execution(self):
@@ -389,7 +390,7 @@ class TestEvidenceImmutability:
         )
         
         # INVARIANT: Evidence is immutable
-        with pytest.raises((TypeError, AttributeError)):
+        with pytest.raises((TypeError, AttributeError, ValidationError)):
             record.severity = 0.1
     
     async def test_critic_evaluation_is_frozen(self):
@@ -406,7 +407,7 @@ class TestEvidenceImmutability:
         )
         
         # INVARIANT: Evaluations are frozen
-        with pytest.raises((TypeError, AttributeError)):
+        with pytest.raises((TypeError, AttributeError, ValidationError)):
             evaluation.violations.append({"new": "violation"})
 
 

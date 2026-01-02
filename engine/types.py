@@ -59,6 +59,7 @@ class EscalationSignal(BaseModel):
     
     class Config:
         frozen = False  # Allows human review fields to be set once
+        validate_assignment = True
 
 
 # ============================================================================

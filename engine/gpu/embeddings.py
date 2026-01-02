@@ -2,11 +2,17 @@
 GPU-Accelerated Embeddings - Fast similarity search on GPU
 """
 
+import logging
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+
+import hashlib
+
+import numpy as np
 import torch
 import torch.nn.functional as F
-from typing import List, Dict, Optional, Tuple
-import logging
-import numpy as np
+
+if TYPE_CHECKING:
+    from .manager import GPUManager
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +39,7 @@ class GPUEmbeddingCache:
         self,
         device: torch.device,
         max_cache_size: int = 10000,
-        embedding_dim: int = 768
+        embedding_dim: int = 768,
     ):
         """
         Initialize GPU embedding cache.
@@ -54,14 +60,15 @@ class GPUEmbeddingCache:
         
         logger.info(
             "gpu_embedding_cache_initialized",
-            device=str(device),
-            max_cache_size=max_cache_size,
-            embedding_dim=embedding_dim
+            extra={
+                "device": str(device),
+                "max_cache_size": max_cache_size,
+                "embedding_dim": embedding_dim,
+            },
         )
     
     def _get_cache_key(self, text: str) -> str:
         """Generate cache key from text."""
-        import hashlib
         return hashlib.sha256(text.encode()).hexdigest()[:16]
     
     def get_cached_embedding(self, text: str) -> Optional[torch.Tensor]:
@@ -83,7 +90,7 @@ class GPUEmbeddingCache:
         self.cache_misses += 1
         return None
     
-    def cache_embedding(self, text: str, embedding: torch.Tensor):
+    def cache_embedding(self, text: str, embedding: torch.Tensor) -> None:
         """
         Cache an embedding on GPU.
         
@@ -96,7 +103,7 @@ class GPUEmbeddingCache:
             # Simple FIFO eviction
             oldest_key = next(iter(self.cache))
             del self.cache[oldest_key]
-            logger.debug(f"Evicted embedding from cache (size: {len(self.cache)})")
+            logger.debug("Evicted embedding from cache (size: %d)", len(self.cache))
         
         key = self._get_cache_key(text)
         # Ensure embedding is on GPU
@@ -105,15 +112,15 @@ class GPUEmbeddingCache:
     def compute_embedding(
         self,
         text: str,
-        model,
-        use_cache: bool = True
+        model: Any,
+        use_cache: bool = True,
     ) -> torch.Tensor:
         """
         Compute embedding on GPU with caching.
         
         Args:
             text: Input text
-            model: Embedding model (should have .encode() method)
+            model: Embedding model (should have .encode() or .forward())
             use_cache: Whether to use cache
             
         Returns:
@@ -126,15 +133,14 @@ class GPUEmbeddingCache:
                 return cached
         
         # Compute embedding
-        # Assume model has .encode() method or similar
-        if hasattr(model, 'encode'):
+        if hasattr(model, "encode"):
             embedding = model.encode(text, convert_to_tensor=True)
-        elif hasattr(model, 'forward'):
+        elif hasattr(model, "forward"):
             # For PyTorch models
             with torch.no_grad():
                 embedding = model(text)
         else:
-            raise ValueError(f"Model must have 'encode' or 'forward' method")
+            raise ValueError("Model must have 'encode' or 'forward' method")
         
         # Move to GPU if not already there
         embedding = embedding.to(self.device)
@@ -148,8 +154,8 @@ class GPUEmbeddingCache:
     def batch_compute_embeddings(
         self,
         texts: List[str],
-        model,
-        batch_size: int = 32
+        model: Any,
+        batch_size: int = 32,
     ) -> torch.Tensor:
         """
         Compute embeddings for multiple texts in batches on GPU.
@@ -162,19 +168,23 @@ class GPUEmbeddingCache:
         Returns:
             Tensor of shape (len(texts), embedding_dim) on GPU
         """
-        embeddings = []
+        embeddings: List[torch.Tensor] = []
         
         for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
+            batch = texts[i : i + batch_size]
             
             # Compute batch embeddings
-            if hasattr(model, 'encode'):
-                batch_embs = model.encode(batch, convert_to_tensor=True, batch_size=len(batch))
+            if hasattr(model, "encode"):
+                batch_embs = model.encode(
+                    batch,
+                    convert_to_tensor=True,
+                    batch_size=len(batch),
+                )
             else:
                 # Fallback: compute one by one
-                batch_embs = torch.stack([
-                    self.compute_embedding(text, model) for text in batch
-                ])
+                batch_embs = torch.stack(
+                    [self.compute_embedding(text, model) for text in batch]
+                )
             
             # Move to GPU
             batch_embs = batch_embs.to(self.device)
@@ -186,7 +196,7 @@ class GPUEmbeddingCache:
     def cosine_similarity(
         self,
         query_embedding: torch.Tensor,
-        candidate_embeddings: torch.Tensor
+        candidate_embeddings: torch.Tensor,
     ) -> torch.Tensor:
         """
         Compute cosine similarity on GPU (vectorized).
@@ -203,7 +213,10 @@ class GPUEmbeddingCache:
         candidate_embeddings = candidate_embeddings.to(self.device)
         
         # Normalize embeddings
-        query_norm = F.normalize(query_embedding.unsqueeze(0) if query_embedding.dim() == 1 else query_embedding, p=2, dim=1)
+        if query_embedding.dim() == 1:
+            query_embedding = query_embedding.unsqueeze(0)
+        
+        query_norm = F.normalize(query_embedding, p=2, dim=1)
         candidate_norm = F.normalize(candidate_embeddings, p=2, dim=1)
         
         # Compute cosine similarity
@@ -215,7 +228,7 @@ class GPUEmbeddingCache:
         self,
         query_embedding: torch.Tensor,
         candidate_embeddings: torch.Tensor,
-        k: int = 10
+        k: int = 10,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Find top-k most similar embeddings.
@@ -230,13 +243,13 @@ class GPUEmbeddingCache:
         """
         similarities = self.cosine_similarity(query_embedding, candidate_embeddings)
         
-        # Get top-k
+        # Ensure k does not exceed number of candidates
         k = min(k, similarities.size(0))
         top_scores, top_indices = torch.topk(similarities, k, largest=True)
         
         return top_scores, top_indices
     
-    def cache_stats(self) -> Dict[str, any]:
+    def cache_stats(self) -> Dict[str, Any]:
         """
         Get cache statistics.
         
@@ -244,7 +257,9 @@ class GPUEmbeddingCache:
             Dictionary with cache performance metrics
         """
         total_requests = self.cache_hits + self.cache_misses
-        hit_rate = (self.cache_hits / total_requests * 100) if total_requests > 0 else 0
+        hit_rate = (
+            self.cache_hits / total_requests * 100 if total_requests > 0 else 0.0
+        )
         
         return {
             "cache_size": len(self.cache),
@@ -252,10 +267,10 @@ class GPUEmbeddingCache:
             "cache_hits": self.cache_hits,
             "cache_misses": self.cache_misses,
             "hit_rate_pct": round(hit_rate, 2),
-            "total_requests": total_requests
+            "total_requests": total_requests,
         }
     
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """Clear all cached embeddings."""
         self.cache.clear()
         logger.info("GPU embedding cache cleared")

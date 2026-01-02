@@ -5,7 +5,7 @@ ELEANOR V8 - Retry Logic with Exponential Backoff
 import asyncio
 import random
 import logging
-from typing import Callable, TypeVar, Optional, Type, Tuple
+from typing import Awaitable, Callable, TypeVar, Optional, Type, Tuple
 from dataclasses import dataclass
 from functools import wraps
 
@@ -28,7 +28,7 @@ class RetryPolicy:
 def retry_with_backoff(
     policy: Optional[RetryPolicy] = None,
     **policy_kwargs
-):
+) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]:
     """
     Decorator for retrying async functions with exponential backoff.
     
@@ -40,7 +40,7 @@ def retry_with_backoff(
     if policy is None:
         policy = RetryPolicy(**policy_kwargs)
     
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+    def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
         @wraps(func)
         async def wrapper(*args, **kwargs) -> T:
             last_exception: Optional[Exception] = None
@@ -84,7 +84,7 @@ def retry_with_backoff(
 
 
 async def retry_async(
-    func: Callable[..., T],
+    func: Callable[..., Awaitable[T]],
     *args,
     policy: Optional[RetryPolicy] = None,
     **kwargs

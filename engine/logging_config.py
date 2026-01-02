@@ -175,7 +175,7 @@ def log_request(
 
 
 def log_deliberation(
-    logger: logging.Logger,
+    logger: "BoundLogger | logging.Logger",
     trace_id: str,
     decision: str,
     model_used: str,

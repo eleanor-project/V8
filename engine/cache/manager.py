@@ -8,9 +8,9 @@ import asyncio
 import hashlib
 import json
 import logging
-from typing import Optional, Any, Dict, Callable
+from typing import Optional, Any, Dict, Callable, cast
 from dataclasses import dataclass
-from cachetools import TTLCache
+from cachetools import TTLCache  # type: ignore[import-untyped]
 import time
 
 logger = logging.getLogger(__name__)
@@ -48,10 +48,10 @@ class CacheStats:
     """Track cache statistics."""
     
     def __init__(self):
-        self.hits = 0
-        self.misses = 0
-        self.errors = 0
-        self.sets = 0
+        self.hits: int = 0
+        self.misses: int = 0
+        self.errors: int = 0
+        self.sets: int = 0
     
     @property
     def hit_rate(self) -> float:
@@ -258,17 +258,22 @@ class CacheManager:
     
     async def _redis_get(self, key: str) -> Optional[bytes]:
         """Get from Redis (async wrapper)."""
+        if self.redis is None:
+            return None
         if hasattr(self.redis, 'get'):
             # aioredis style
-            return await self.redis.get(key)
+            return cast(Optional[bytes], await self.redis.get(key))
         else:
             # redis-py style (sync)
-            return await asyncio.get_event_loop().run_in_executor(
-                None, self.redis.get, key
+            return cast(
+                Optional[bytes],
+                await asyncio.get_event_loop().run_in_executor(None, self.redis.get, key),
             )
     
     async def _redis_setex(self, key: str, ttl: int, value: str) -> None:
         """Set with expiration in Redis (async wrapper)."""
+        if self.redis is None:
+            return
         if hasattr(self.redis, 'setex'):
             # aioredis style
             await self.redis.setex(key, ttl, value)
