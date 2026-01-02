@@ -131,11 +131,12 @@ def _build_precedent_layer(
         xai_key=xai_key,
         device=embedding_device,
     )
-    embed_fn = None
+    embed_adapter = None
     if embed_backend in embed_registry.list():
-        embed_fn = embed_registry.get(embed_backend).embed
+        embed_adapter = embed_registry.get(embed_backend)
     elif embed_registry.list():
-        embed_fn = embed_registry.get(embed_registry.list()[0]).embed
+        embed_adapter = embed_registry.get(embed_registry.list()[0])
+    embed_fn = embed_adapter.embed if embed_adapter else None
 
     # Precedent store from env if not provided
     if store is None:
@@ -174,7 +175,7 @@ def _build_precedent_layer(
             store = MemoryStore(embed_fn=embed_fn)
 
     if store and PrecedentRetrievalV8 is not None:
-        retriever = PrecedentRetrievalV8(store_client=store)
+        retriever = PrecedentRetrievalV8(store_client=store, embedding_fn=embed_fn)
 
     return retriever
 
