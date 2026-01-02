@@ -1203,18 +1203,28 @@ class EleanorEngineV8:
             critic_input_text = str(critic_input_text)
 
         async def _run_and_return(name, critic_ref):
-            return await self._run_single_critic(name, critic_ref, model_response, critic_input_text, context, trace_id)
-
-        task_map: Dict[asyncio.Future[Any], str] = {}
-        for name, critic_ref in self.critics.items():
-            task = asyncio.create_task(_run_and_return(name, critic_ref))
-            task_map[task] = name
-
-        for future in asyncio.as_completed(task_map):
-            critic_name = task_map[future]
             try:
-                res = await future
-            except CriticEvaluationError as exc:
+                res = await self._run_single_critic(
+                    name,
+                    critic_ref,
+                    model_response,
+                    critic_input_text,
+                    context,
+                    trace_id,
+                )
+                return name, res
+            except Exception as exc:
+                return name, exc
+
+        tasks = [
+            asyncio.create_task(_run_and_return(name, critic_ref))
+            for name, critic_ref in self.critics.items()
+        ]
+
+        for future in asyncio.as_completed(tasks):
+            critic_name, res = await future
+            if isinstance(res, CriticEvaluationError):
+                exc = res
                 self._emit_error(
                     exc,
                     stage="critic",
@@ -1224,7 +1234,8 @@ class EleanorEngineV8:
                 )
                 fallback = exc.details.get("result") if isinstance(exc.details, dict) else None
                 res = fallback or self._build_critic_error_result(critic_name, exc)
-            except Exception as exc:
+            elif isinstance(res, Exception):
+                exc = res
                 critic_error = CriticEvaluationError(
                     critic_name=critic_name,
                     message=str(exc),

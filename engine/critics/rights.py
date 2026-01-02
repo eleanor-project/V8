@@ -220,6 +220,8 @@ class RightsCriticV8(BaseCriticV8):
 
         # Get model output
         output = await active_model.generate(input_text, context=context)
+        if not isinstance(output, str):
+            output = "" if output is None else str(output)
 
         # Analyze both input and output
         input_analysis = self._analyze_text(input_text, source="input")

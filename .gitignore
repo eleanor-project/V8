@@ -29,6 +29,7 @@ MANIFEST
 # Testing
 .coverage
 .pytest_cache/
+.hypothesis/
 *.egg-info/
 dist/
 build/

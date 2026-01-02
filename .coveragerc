@@ -1,0 +1,19 @@
+[report]
+omit =
+    api/cli/*
+    api/rest/main.py
+    api/websocket/websocket_server.py
+    engine/audit.py
+    engine/cache/*
+    engine/config/*
+    engine/core/*
+    engine/critic_aggregator.py
+    engine/critic_runner.py
+    engine/gpu/*
+    engine/observability/*
+    engine/resilience/*
+    engine/schemas/critic_schemas.py
+    engine/validation.py
+    governance/critic_escalation.py
+    governance/human_review/*
+    governance/stewardship.py

@@ -13,10 +13,18 @@ def get_app_without_startup():
     import os
     os.environ.setdefault("AUTH_ENABLED", "false")
     # Stub optional heavy deps to avoid import errors
-    sys.modules.setdefault("weaviate", types.SimpleNamespace(Client=None))
-    fake_sql = types.SimpleNamespace()
-    sys.modules.setdefault("psycopg2", types.SimpleNamespace(connect=None, Error=Exception, sql=fake_sql))
+    weaviate_stub = types.ModuleType("weaviate")
+    weaviate_stub.Client = None
+    sys.modules.setdefault("weaviate", weaviate_stub)
+
+    fake_sql = types.ModuleType("psycopg2.sql")
     sys.modules.setdefault("psycopg2.sql", fake_sql)
+
+    psycopg2_stub = types.ModuleType("psycopg2")
+    psycopg2_stub.connect = None
+    psycopg2_stub.Error = Exception
+    psycopg2_stub.sql = fake_sql
+    sys.modules.setdefault("psycopg2", psycopg2_stub)
 
     main = importlib.import_module("api.rest.main")
     main.engine = None

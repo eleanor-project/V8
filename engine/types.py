@@ -119,20 +119,20 @@ class CriticEvaluation(BaseModel):
     Evaluations are sealed before aggregation (epistemic isolation).
     """
     critic: str = Field(..., description="Critic identifier")
-    violations: List[CriticViolation] = Field(default_factory=list)
+    violations: tuple[CriticViolation, ...] = Field(default_factory=tuple)
     severity: float = Field(..., ge=0.0, le=1.0, description="Overall severity")
     justification: str = Field(..., description="Constitutional reasoning")
     
     # Metadata
-    evaluated_rules: List[str] = Field(default_factory=list)
+    evaluated_rules: tuple[str, ...] = Field(default_factory=tuple)
     duration_ms: float = Field(..., gt=0)
     
     # Escalation (if triggered)
     escalation: Optional[EscalationSignal] = None
     
     # Evidence trail
-    evidence_references: List[str] = Field(
-        default_factory=list,
+    evidence_references: tuple[str, ...] = Field(
+        default_factory=tuple,
         description="Evidence record IDs"
     )
     
