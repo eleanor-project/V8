@@ -12,6 +12,7 @@ def _load_app(monkeypatch, required_role: str | None = None):
     monkeypatch.setenv("AUTH_ENABLED", "true")
     monkeypatch.setenv("JWT_SECRET", "test-secret")
     monkeypatch.setenv("ELEANOR_ENV", "development")
+    monkeypatch.setenv("ELEANOR_SKIP_READINESS", "true")
     if required_role:
         monkeypatch.setenv("WS_REQUIRED_ROLE", required_role)
     else:

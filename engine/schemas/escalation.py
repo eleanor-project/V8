@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -43,7 +43,7 @@ class EscalationSignal(BaseModel):
     doctrine_ref: str
     rationale: str
     blocking: bool
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @staticmethod
     def for_tier(
@@ -82,7 +82,7 @@ class CriticEvaluation(BaseModel):
     citations: List[str] = Field(default_factory=list)
     uncertainty: Optional[str] = None
     revision: int = Field(default=0)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class EscalationSummary(BaseModel):
@@ -120,7 +120,7 @@ class HumanAction(BaseModel):
     action_type: HumanActionType
     actor_id: str
     statement: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     linked_escalations: List[EscalationSignal]
 
 
@@ -141,5 +141,5 @@ class AuditRecord(BaseModel):
     aggregation_hash: str
     escalation_signals: List[EscalationSignal]
     human_action: Optional[HumanAction]
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     immutable: bool = Field(default=True)

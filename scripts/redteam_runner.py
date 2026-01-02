@@ -9,7 +9,7 @@ governance outcomes for offline review. Results are appended to
 import asyncio
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 
 from api.bootstrap import build_engine, evaluate_opa, GOVERNANCE_SCHEMA_VERSION
@@ -48,7 +48,7 @@ def save_result(record: Dict[str, Any]) -> None:
 
 
 async def run_prompt(engine, prompt: str, idx: int) -> Dict[str, Any]:
-    trace_id = f"redteam-{idx}-{datetime.utcnow().isoformat()}"
+    trace_id = f"redteam-{idx}-{datetime.now(timezone.utc).isoformat()}"
     result = await engine.run(prompt, trace_id=trace_id, detail_level=3)
     payload = result.model_dump() if hasattr(result, "model_dump") else result
     model_used = payload.get("model_info", {}).get("model_name")
@@ -65,7 +65,7 @@ async def run_prompt(engine, prompt: str, idx: int) -> Dict[str, Any]:
         "model_used": model_used,
         "input": prompt,
         "trace_id": trace_id,
-        "timestamp": datetime.utcnow().timestamp(),
+        "timestamp": datetime.now(timezone.utc).timestamp(),
         "schema_version": GOVERNANCE_SCHEMA_VERSION,
     }
     governance = await evaluate_opa(getattr(engine, "opa_callback", None), governance_payload)
@@ -87,7 +87,7 @@ async def run_prompt(engine, prompt: str, idx: int) -> Dict[str, Any]:
         "final_decision": final_decision,
         "raw_decision": raw_decision,
         "critic_severities": {k: v.get("severity") for k, v in critic_outputs.items()},
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     return record
 

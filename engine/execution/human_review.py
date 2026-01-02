@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from engine.schemas.escalation import (
@@ -186,7 +186,7 @@ def _create_audit_record(
         aggregation_hash=aggregation_result.audit_hash,
         escalation_signals=aggregation_result.escalation_summary.triggering_signals,
         human_action=human_action,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
 
     store_audit_record(record)

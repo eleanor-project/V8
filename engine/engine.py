@@ -1437,8 +1437,6 @@ class EleanorEngineV8:
 
         pipeline_start = asyncio.get_event_loop().time()
         degraded_components: List[str] = []
-        degraded_components: List[str] = []
-        degraded_components: List[str] = []
 
         try:
             detector_payload = await self._run_detectors(text, context)
@@ -1793,6 +1791,7 @@ class EleanorEngineV8:
             }
 
         pipeline_start = asyncio.get_event_loop().time()
+        degraded_components: List[str] = []
 
         try:
             detector_payload = await self._run_detectors(text, context)

@@ -7,7 +7,7 @@ Pydantic models for request/response validation.
 
 from typing import Optional, Dict, Any, List, Literal
 from datetime import datetime
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 import re
 
 from engine.schemas.escalation import HumanAction
@@ -18,6 +18,15 @@ SANITIZE_PATTERN = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')
 
 class DeliberationRequest(BaseModel):
     """Request schema for the /deliberate endpoint."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "input": "Should I approve this loan application?",
+                "context": {"user_id": "12345", "category": "finance"},
+            }
+        }
+    )
 
     input: str = Field(
         ...,
@@ -38,13 +47,15 @@ class DeliberationRequest(BaseModel):
         description="Optional human action to satisfy escalation gate"
     )
 
-    @validator('input')
+    @field_validator("input")
+    @classmethod
     def sanitize_input(cls, v: str) -> str:
         """Remove control characters and trim whitespace."""
         v = SANITIZE_PATTERN.sub('', v)
         return v.strip()
 
-    @validator('context')
+    @field_validator("context")
+    @classmethod
     def validate_context(cls, v: Dict[str, Any]) -> Dict[str, Any]:
         """Ensure context doesn't contain overly nested structures."""
         def check_depth(obj: Any, depth: int = 0, max_depth: int = 5) -> bool:
@@ -60,17 +71,20 @@ class DeliberationRequest(BaseModel):
             raise ValueError("Context structure is too deeply nested (max depth: 10)")
         return v
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "input": "Should I approve this loan application?",
-                "context": {"user_id": "12345", "category": "finance"},
-            }
-        }
-
 
 class GovernancePreviewRequest(BaseModel):
     """Request schema for the /governance/preview endpoint."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "critics": {"rights": {"severity": 0.5}},
+                "aggregator": {"decision": "allow"},
+                "precedent": {"alignment_score": 0.8},
+                "uncertainty": {"overall_uncertainty": 0.2}
+            }
+        }
+    )
 
     critics: Dict[str, Any] = Field(
         default_factory=dict,
@@ -88,16 +102,6 @@ class GovernancePreviewRequest(BaseModel):
         default_factory=dict,
         description="Mock uncertainty data"
     )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "critics": {"rights": {"severity": 0.5}},
-                "aggregator": {"decision": "allow"},
-                "precedent": {"alignment_score": 0.8},
-                "uncertainty": {"overall_uncertainty": 0.2}
-            }
-        }
 
 
 class CriticOutput(BaseModel):
@@ -122,21 +126,8 @@ class UncertaintyOutput(BaseModel):
 class DeliberationResponse(BaseModel):
     """Response schema for the /deliberate endpoint."""
 
-    trace_id: str
-    timestamp: float
-    model_used: str
-    final_decision: str = Field(
-        description="One of: aligned, aligned_with_constraints, misaligned, requires_human_review"
-    )
-    critics: Dict[str, Any]
-    precedent_alignment: Dict[str, Any]
-    uncertainty: Dict[str, Any]
-    aggregator_output: Dict[str, Any]
-    opa_governance: Dict[str, Any]
-    execution_decision: Optional[Dict[str, Any]] = None
-
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "trace_id": "550e8400-e29b-41d4-a716-446655440000",
                 "timestamp": 1702300000.0,
@@ -149,6 +140,20 @@ class DeliberationResponse(BaseModel):
                 "opa_governance": {"allow": True}
             }
         }
+    )
+
+    trace_id: str
+    timestamp: float
+    model_used: str
+    final_decision: str = Field(
+        description="One of: aligned, aligned_with_constraints, misaligned, requires_human_review"
+    )
+    critics: Dict[str, Any]
+    precedent_alignment: Dict[str, Any]
+    uncertainty: Dict[str, Any]
+    aggregator_output: Dict[str, Any]
+    opa_governance: Dict[str, Any]
+    execution_decision: Optional[Dict[str, Any]] = None
 
 
 class ProposedAction(BaseModel):
@@ -178,15 +183,14 @@ class ModelMetadata(BaseModel):
 class EvaluateContext(BaseModel):
     """Contextual information required by the Engine contract."""
 
+    model_config = ConfigDict(extra="allow")
+
     domain: str
     jurisdiction: Optional[str] = None
     sensitivity: Optional[str] = None
     user_intent: Optional[Any] = None
     constraints: Optional[Dict[str, Any]] = None
     case_refs: Optional[Dict[str, Any]] = None
-
-    class Config:
-        extra = "allow"
 
 
 class EvaluateRequest(BaseModel):

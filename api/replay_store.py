@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import os
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 from types import ModuleType
@@ -40,6 +40,14 @@ def _atomic_write_json(path: str, record: Dict[str, Any]) -> None:
     with open(tmp_path, "w") as f:
         json.dump(record, f, indent=2, default=str)
     os.replace(tmp_path, path)
+
+
+def _as_dict(record: Any) -> Dict[str, Any]:
+    if hasattr(record, "model_dump"):
+        return record.model_dump()
+    if hasattr(record, "dict"):
+        return record.dict()
+    return dict(record)
 
 
 class ReplayStore:
@@ -121,8 +129,8 @@ def store_review_packet(packet: Any) -> Optional[str]:
     Stores immutable review packets for human adjudication.
     These are NEVER modified once written.
     """
-    record = packet.dict() if hasattr(packet, "dict") else dict(packet)
-    record["stored_at"] = datetime.utcnow().isoformat()
+    record = _as_dict(packet)
+    record["stored_at"] = datetime.now(timezone.utc).isoformat()
     record["packet_id"] = str(uuid4())
 
     case_id = record.get("case_id")
@@ -140,8 +148,8 @@ def store_human_review(review_record: Any) -> Optional[str]:
     Stores completed human reviews.
     These are append-only governance artifacts.
     """
-    record = review_record.dict() if hasattr(review_record, "dict") else dict(review_record)
-    record["stored_at"] = datetime.utcnow().isoformat()
+    record = _as_dict(review_record)
+    record["stored_at"] = datetime.now(timezone.utc).isoformat()
 
     review_id = record.get("review_id")
     if not review_id:
