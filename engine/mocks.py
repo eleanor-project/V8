@@ -73,6 +73,9 @@ class MockCritic:
 
 
 class MockDetectorEngine:
+    def __init__(self):
+        self.detectors: Dict[str, Any] = {}
+
     async def detect_all(self, text: str, context: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
