@@ -362,7 +362,11 @@ class EleanorEngineV8:
                             num_streams=gpu_config.num_streams,
                         )
 
-                    if self.gpu_embedding_cache is None and settings.gpu.embeddings.cache_on_gpu:
+                    use_gpu_embedding_cache = (
+                        settings.gpu.embeddings.cache_on_gpu
+                        or settings.gpu.precedent.cache_embeddings_on_gpu
+                    )
+                    if self.gpu_embedding_cache is None and use_gpu_embedding_cache:
                         bytes_per_value = 2 if settings.gpu.embeddings.mixed_precision else 4
                         cache_entries = _estimate_embedding_cache_entries(
                             settings.gpu.embeddings.max_cache_size_gb,
@@ -416,7 +420,10 @@ class EleanorEngineV8:
         self.aggregator = deps.aggregator
         self.review_trigger_evaluator = deps.review_trigger_evaluator
         self.error_monitor = error_monitor
-        if self.precedent_retriever and self.gpu_embedding_cache:
+        precedent_cache_enabled = True
+        if settings and getattr(settings, "gpu", None):
+            precedent_cache_enabled = settings.gpu.precedent.cache_embeddings_on_gpu
+        if precedent_cache_enabled and self.precedent_retriever and self.gpu_embedding_cache:
             if hasattr(self.precedent_retriever, "embedding_cache"):
                 self.precedent_retriever.embedding_cache = self.gpu_embedding_cache
 

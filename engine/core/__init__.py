@@ -309,9 +309,9 @@ def build_eleanor_engine_v8(
         adapters = {"primary": _wrap_llm_adapter(llm_fn)}
         router_policy = router_policy or {"primary": "primary", "fallback_order": []}
 
-    hf_device = None
-    if settings and getattr(settings, "gpu", None):
-        if settings.gpu.critics.use_gpu:
+    hf_device = os.getenv("HF_DEVICE")
+    if settings and getattr(settings, "gpu", None) and hf_device is None:
+        if settings.gpu.enabled:
             hf_device = _resolve_gpu_device_name(None)
         else:
             hf_device = "cpu"
@@ -328,6 +328,12 @@ def build_eleanor_engine_v8(
     embedding_device = None
     if settings and getattr(settings, "gpu", None):
         embedding_device = _resolve_gpu_device_name(settings.gpu.embeddings.device)
+        if (
+            embedding_device is None
+            and settings.gpu.enabled
+            and settings.gpu.precedent.gpu_similarity_search
+        ):
+            embedding_device = _resolve_gpu_device_name(None)
 
     precedent_retriever = _build_precedent_layer(
         precedent_store=precedent_store,
