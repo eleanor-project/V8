@@ -62,14 +62,8 @@ class DependencyFactory:
             return MockRouter(**kwargs)
 
         # Default: Use RouterV8
-        try:
-            from engine.router.router import RouterV8
-            return RouterV8(**kwargs)
-        except ImportError as e:
-            logger.error(f"Failed to import RouterV8: {e}")
-            raise ImportError(
-                "RouterV8 not available. Install router dependencies or provide custom router."
-            ) from e
+        from engine.router.router import RouterV8
+        return RouterV8(**kwargs)
 
     @staticmethod
     def create_detector_engine(
@@ -171,12 +165,8 @@ class DependencyFactory:
             from engine.mocks import MockPrecedentEngine
             return MockPrecedentEngine()
 
-        try:
-            from engine.precedent.alignment import PrecedentAlignmentEngineV8
-            return PrecedentAlignmentEngineV8(**kwargs)
-        except ImportError:
-            logger.warning("PrecedentAlignmentEngineV8 not available, precedent analysis disabled")
-            return None
+        from engine.precedent.alignment import PrecedentAlignmentEngineV8
+        return PrecedentAlignmentEngineV8(**kwargs)
 
     @staticmethod
     def create_precedent_retriever(
@@ -201,24 +191,20 @@ class DependencyFactory:
             from engine.mocks import MockPrecedentRetriever
             return MockPrecedentRetriever()
 
-        try:
-            from engine.precedent.retrieval import PrecedentRetrievalV8
+        from engine.precedent.retrieval import PrecedentRetrievalV8
 
-            if store_client is None:
-                # Create null store for development
-                class _NullStore:
-                    def search(self, q: str, top_k: int = 5):
-                        return []
+        if store_client is None:
+            # Create null store for development
+            class _NullStore:
+                def search(self, q: str, top_k: int = 5):
+                    return []
 
-                store_client = _NullStore()
-                logger.warning(
-                    "Using null precedent store. Configure PRECEDENT_BACKEND for production."
-                )
+            store_client = _NullStore()
+            logger.warning(
+                "Using null precedent store. Configure PRECEDENT_BACKEND for production."
+            )
 
-            return PrecedentRetrievalV8(store_client=store_client, **kwargs)
-        except ImportError:
-            logger.warning("PrecedentRetrievalV8 not available, precedent retrieval disabled")
-            return None
+        return PrecedentRetrievalV8(store_client=store_client, **kwargs)
 
     @staticmethod
     def create_uncertainty_engine(
@@ -241,12 +227,8 @@ class DependencyFactory:
             from engine.mocks import MockUncertaintyEngine
             return MockUncertaintyEngine()
 
-        try:
-            from engine.uncertainty.uncertainty import UncertaintyEngineV8
-            return UncertaintyEngineV8(**kwargs)
-        except ImportError:
-            logger.warning("UncertaintyEngineV8 not available, uncertainty analysis disabled")
-            return None
+        from engine.uncertainty.uncertainty import UncertaintyEngineV8
+        return UncertaintyEngineV8(**kwargs)
 
     @staticmethod
     def create_aggregator(
@@ -269,12 +251,8 @@ class DependencyFactory:
             from engine.mocks import MockAggregator
             return MockAggregator()
 
-        try:
-            from engine.aggregator.aggregator import AggregatorV8
-            return AggregatorV8(**kwargs)
-        except ImportError:
-            logger.error("AggregatorV8 not available")
-            raise ImportError("AggregatorV8 is required for engine operation")
+        from engine.aggregator.aggregator import AggregatorV8
+        return AggregatorV8(**kwargs)
 
     @staticmethod
     def create_review_trigger_evaluator(

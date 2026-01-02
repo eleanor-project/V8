@@ -1,110 +1,107 @@
 """
 ELEANOR V8 — Enterprise Constitutional Engine Runtime
 Dual API (run + run_stream)
-Dynamic Router Auto-Discovery
+Dependency Injection Ready
 Full Evidence Recorder Integration
 Precedent Alignment + Uncertainty Engine Hooks
 Forensic Detail-Level Output Mode
 """
 
 import asyncio
-import importlib
 import inspect
 import json
 import logging
 import uuid
-from typing import Any, Dict, List, Optional, AsyncGenerator
 from types import SimpleNamespace
+from typing import Any, Dict, List, Optional, AsyncGenerator
 
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-# Critics (V8 implementations)
-from engine.critics.rights import RightsCriticV8
-from engine.critics.risk import RiskCriticV8
-from engine.critics.fairness import FairnessCriticV8
-from engine.critics.pragmatics import PragmaticsCriticV8
-from engine.critics.truth import TruthCriticV8
-from engine.critics.autonomy import AutonomyCriticV8
+from engine.factory import DependencyFactory, EngineDependencies
+from engine.protocols import (
+    AggregatorProtocol,
+    CriticProtocol,
+    DetectorEngineProtocol,
+    EvidenceRecorderProtocol,
+    PrecedentEngineProtocol,
+    PrecedentRetrieverProtocol,
+    ReviewTriggerEvaluatorProtocol,
+    RouterProtocol,
+    UncertaintyEngineProtocol,
+)
 from engine.utils.critic_names import canonicalize_critic_map
 
-# Detector Engine
-from engine.detectors.engine import DetectorEngineV8
-
-# Evidence Recorder
-from engine.recorder.evidence_recorder import EvidenceRecorder
-
-# Precedent Engine (optional imports)
-PrecedentAlignmentEngineCls: Optional[type] = None
-PrecedentRetrievalCls: Optional[type] = None
-UncertaintyEngineCls: Optional[type] = None
-AggregatorCls: Optional[type] = None
-
-try:
-    from engine.precedent.alignment import PrecedentAlignmentEngineV8 as _PrecedentAlignmentEngineV8
-    PrecedentAlignmentEngineCls = _PrecedentAlignmentEngineV8
-except Exception:
-    PrecedentAlignmentEngineCls = None
-
-try:
-    from engine.precedent.retrieval import PrecedentRetrievalV8 as _PrecedentRetrievalV8
-    PrecedentRetrievalCls = _PrecedentRetrievalV8
-except Exception:
-    PrecedentRetrievalCls = None
-
-# Uncertainty Engine (optional)
-try:
-    from engine.uncertainty.uncertainty import UncertaintyEngineV8 as _UncertaintyEngineV8
-    UncertaintyEngineCls = _UncertaintyEngineV8
-except Exception:
-    UncertaintyEngineCls = None
-
-# Aggregator (optional)
-try:
-    from engine.aggregator.aggregator import AggregatorV8 as _AggregatorV8
-    AggregatorCls = _AggregatorV8
-except Exception:
-    AggregatorCls = None
-
 # Governance
-from governance.review_triggers import ReviewTriggerEvaluator, Case
+from governance.review_triggers import Case
 from governance.review_packets import build_review_packet
 from replay_store import store_review_packet
 
 
 # ---------------------------------------------------------
-# Dynamic Router Loader
+# Dependency Resolution
 # ---------------------------------------------------------
 
-def load_router_backend():
-    """
-    Prefer the packaged RouterV8; fall back to dynamic discovery to keep
-    backward compatibility with alternative router modules.
-    """
-    try:
-        from engine.router.router import RouterV8
-        return RouterV8
-    except Exception as exc:
-        logger.warning("Primary router import failed: %s", exc)
+def _resolve_router_backend(router_backend: Optional[Any]) -> RouterProtocol:
+    if router_backend is None:
+        return DependencyFactory.create_router()
+    if isinstance(router_backend, str):
+        return DependencyFactory.create_router(backend=router_backend)
+    if inspect.isclass(router_backend):
+        return router_backend()
+    if callable(router_backend):
+        return router_backend()
+    return router_backend
 
-    candidates = [
-        "engine.router",
-        "engine.router.router",
-        "orchestrator.router",
-        "router",
-    ]
-    for mod in candidates:
-        try:
-            module = importlib.import_module(mod)
-            for name, obj in inspect.getmembers(module):
-                lowered = name.lower()
-                if inspect.isclass(obj) and (lowered.endswith("router") or lowered.endswith("routerv8")):
-                    return obj
-        except Exception as exc:
-            logger.debug("Router candidate import failed for %s: %s", mod, exc)
-            continue
-    raise ImportError("No valid router backend found.")
+
+def _resolve_dependencies(
+    *,
+    config: "EngineConfig",
+    dependencies: Optional[EngineDependencies],
+    evidence_recorder: Optional[EvidenceRecorderProtocol],
+    detector_engine: Optional[DetectorEngineProtocol],
+    precedent_engine: Optional[PrecedentEngineProtocol],
+    precedent_retriever: Optional[PrecedentRetrieverProtocol],
+    uncertainty_engine: Optional[UncertaintyEngineProtocol],
+    aggregator: Optional[AggregatorProtocol],
+    router_backend: Optional[Any],
+    critics: Optional[Dict[str, CriticProtocol]],
+    critic_models: Optional[Dict[str, Any]],
+    review_trigger_evaluator: Optional[ReviewTriggerEvaluatorProtocol],
+) -> EngineDependencies:
+    if dependencies is not None:
+        return dependencies
+
+    router_backend_name = router_backend if isinstance(router_backend, str) else None
+
+    deps = DependencyFactory.create_all_dependencies(
+        router_backend=router_backend_name,
+        jsonl_evidence_path=config.jsonl_evidence_path,
+        critics=critics,
+        critic_models=critic_models,
+        enable_precedent=config.enable_precedent_analysis,
+        enable_uncertainty=config.enable_reflection,
+    )
+
+    if router_backend is not None and not isinstance(router_backend, str):
+        deps.router = _resolve_router_backend(router_backend)
+    if detector_engine is not None:
+        deps.detector_engine = detector_engine
+    if evidence_recorder is not None:
+        deps.evidence_recorder = evidence_recorder
+    if precedent_engine is not None:
+        deps.precedent_engine = precedent_engine
+    if precedent_retriever is not None:
+        deps.precedent_retriever = precedent_retriever
+    if uncertainty_engine is not None:
+        deps.uncertainty_engine = uncertainty_engine
+    if aggregator is not None:
+        deps.aggregator = aggregator
+    if review_trigger_evaluator is not None:
+        deps.review_trigger_evaluator = review_trigger_evaluator
+
+    return deps
 
 
 # ---------------------------------------------------------
@@ -173,89 +170,46 @@ class EleanorEngineV8:
         self,
         *,
         config: Optional[EngineConfig] = None,
-        evidence_recorder: Optional[EvidenceRecorder] = None,
-        detector_engine: Optional[DetectorEngineV8] = None,
-        precedent_engine: Optional[Any] = None,
-        precedent_retriever: Optional[Any] = None,
-        uncertainty_engine: Optional[Any] = None,
-        aggregator: Optional[Any] = None,
+        evidence_recorder: Optional[EvidenceRecorderProtocol] = None,
+        detector_engine: Optional[DetectorEngineProtocol] = None,
+        precedent_engine: Optional[PrecedentEngineProtocol] = None,
+        precedent_retriever: Optional[PrecedentRetrieverProtocol] = None,
+        uncertainty_engine: Optional[UncertaintyEngineProtocol] = None,
+        aggregator: Optional[AggregatorProtocol] = None,
         router_backend: Optional[Any] = None,
-        critics: Optional[Dict[str, Any]] = None,
+        critics: Optional[Dict[str, CriticProtocol]] = None,
         critic_models: Optional[Dict[str, Any]] = None,
+        review_trigger_evaluator: Optional[ReviewTriggerEvaluatorProtocol] = None,
+        dependencies: Optional[EngineDependencies] = None,
     ):
         self.config = config or EngineConfig()
         self.instance_id = str(uuid.uuid4())
 
-        # Router
-        if router_backend is None:
-            RouterClass = load_router_backend()
-            self.router = RouterClass()
-        else:
-            if inspect.isclass(router_backend):
-                self.router = router_backend()
-            elif callable(router_backend):
-                self.router = router_backend()
-            else:
-                self.router = router_backend
-
-        # Critics
-        default_critics = {
-            "rights": RightsCriticV8,
-            "autonomy": AutonomyCriticV8,
-            "fairness": FairnessCriticV8,
-            "truth": TruthCriticV8,
-            "risk": RiskCriticV8,
-            "operations": PragmaticsCriticV8,
-        }
-        self.critics = canonicalize_critic_map(critics or default_critics)
-        self.critic_models = critic_models or {}
-
-        # Detector Engine
-        self.detector_engine = detector_engine or DetectorEngineV8(detectors={})
-
-        # Recorder
-        self.recorder = evidence_recorder or EvidenceRecorder(
-            jsonl_path=self.config.jsonl_evidence_path
+        deps = _resolve_dependencies(
+            config=self.config,
+            dependencies=dependencies,
+            evidence_recorder=evidence_recorder,
+            detector_engine=detector_engine,
+            precedent_engine=precedent_engine,
+            precedent_retriever=precedent_retriever,
+            uncertainty_engine=uncertainty_engine,
+            aggregator=aggregator,
+            router_backend=router_backend,
+            critics=critics,
+            critic_models=critic_models,
+            review_trigger_evaluator=review_trigger_evaluator,
         )
 
-        # Precedent
-        if precedent_engine:
-            self.precedent_engine = precedent_engine
-        elif PrecedentAlignmentEngineCls is not None:
-            self.precedent_engine = PrecedentAlignmentEngineCls()
-        else:
-            self.precedent_engine = None
-
-        # Precedent Retriever (optional)
-        self.precedent_retriever = precedent_retriever
-        if self.precedent_retriever is None and PrecedentRetrievalCls is not None:
-            class _NullStore:
-                def search(self, q: str, top_k: int = 5):
-                    return []
-            self.precedent_retriever = PrecedentRetrievalCls(store_client=_NullStore())
-            logging.getLogger(__name__).warning(
-                "[ELEANOR ENGINE] Using Null precedent retriever (no store configured). "
-                "Configure PRECEDENT_BACKEND for production use."
-            )
-
-        # Uncertainty
-        if uncertainty_engine:
-            self.uncertainty_engine = uncertainty_engine
-        elif UncertaintyEngineCls is not None:
-            self.uncertainty_engine = UncertaintyEngineCls()
-        else:
-            self.uncertainty_engine = None
-
-        # Aggregator
-        if aggregator:
-            self.aggregator = aggregator
-        elif AggregatorCls is not None:
-            self.aggregator = AggregatorCls()
-        else:
-            self.aggregator = None
-
-        # Governance
-        self.review_trigger_evaluator = ReviewTriggerEvaluator()
+        self.router = deps.router
+        self.critics = canonicalize_critic_map(deps.critics or {})
+        self.critic_models = deps.critic_models or {}
+        self.detector_engine = deps.detector_engine
+        self.recorder = deps.evidence_recorder
+        self.precedent_engine = deps.precedent_engine
+        self.precedent_retriever = deps.precedent_retriever
+        self.uncertainty_engine = deps.uncertainty_engine
+        self.aggregator = deps.aggregator
+        self.review_trigger_evaluator = deps.review_trigger_evaluator
 
         # Concurrency
         self.semaphore = asyncio.Semaphore(self.config.max_concurrency)
@@ -1034,15 +988,17 @@ class EleanorEngineV8:
 def create_engine(
     config: Optional[EngineConfig] = None,
     *,
-    evidence_recorder: Optional[EvidenceRecorder] = None,
-    detector_engine: Optional[DetectorEngineV8] = None,
-    precedent_engine: Optional[Any] = None,
-    precedent_retriever: Optional[Any] = None,
-    uncertainty_engine: Optional[Any] = None,
-    aggregator: Optional[Any] = None,
+    evidence_recorder: Optional[EvidenceRecorderProtocol] = None,
+    detector_engine: Optional[DetectorEngineProtocol] = None,
+    precedent_engine: Optional[PrecedentEngineProtocol] = None,
+    precedent_retriever: Optional[PrecedentRetrieverProtocol] = None,
+    uncertainty_engine: Optional[UncertaintyEngineProtocol] = None,
+    aggregator: Optional[AggregatorProtocol] = None,
     router_backend: Optional[Any] = None,
-    critics: Optional[Dict[str, Any]] = None,
+    critics: Optional[Dict[str, CriticProtocol]] = None,
     critic_models: Optional[Dict[str, Any]] = None,
+    review_trigger_evaluator: Optional[ReviewTriggerEvaluatorProtocol] = None,
+    dependencies: Optional[EngineDependencies] = None,
 ) -> EleanorEngineV8:
 
     engine = EleanorEngineV8(
@@ -1056,6 +1012,8 @@ def create_engine(
         router_backend=router_backend,
         critics=critics,
         critic_models=critic_models,
+        review_trigger_evaluator=review_trigger_evaluator,
+        dependencies=dependencies,
     )
 
     print(f"[ELEANOR ENGINE] create_engine() → Engine instance ready: {engine.instance_id}")
