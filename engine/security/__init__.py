@@ -1,10 +1,11 @@
 """
-Security Module for ELEANOR V8
+Security module for ELEANOR V8
 
 Provides:
-- Secrets management (AWS, Vault, Environment)
-- Credential sanitization
-- Audit trail protection
+- Secrets management with multiple providers
+- Credential sanitization and redaction
+- Secure audit logging
+- Security configuration validation
 """
 
 from engine.security.secrets import (
@@ -12,15 +13,15 @@ from engine.security.secrets import (
     EnvironmentSecretsProvider,
     AWSSecretsProvider,
     VaultSecretsProvider,
-    auto_detect_secrets_provider,
 )
 from engine.security.sanitizer import SecretsSanitizer
+from engine.security.audit import SecureAuditLogger
 
 __all__ = [
     "SecretsProvider",
     "EnvironmentSecretsProvider",
     "AWSSecretsProvider",
     "VaultSecretsProvider",
-    "auto_detect_secrets_provider",
     "SecretsSanitizer",
+    "SecureAuditLogger",
 ]

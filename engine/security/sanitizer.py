@@ -1,17 +1,16 @@
 """
-Secrets Sanitizer for ELEANOR V8
+Secrets Sanitization for ELEANOR V8
 
 Prevents credential leakage in:
-- Log messages
+- Logs and debug output
+- Error messages and stack traces
 - Evidence recordings
-- Error messages
 - Audit trails
-- Debug output
 """
 
 import logging
 import re
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Set, Union
 
 logger = logging.getLogger(__name__)
 
@@ -19,190 +18,217 @@ logger = logging.getLogger(__name__)
 class SecretsSanitizer:
     """
     Sanitize logs and outputs to prevent credential leakage.
-
+    
     Features:
     - Pattern-based secret detection
     - Recursive dictionary sanitization
-    - Key-based sensitive field detection
-    - Configurable redaction
+    - Configurable sensitive key names
+    - Support for custom patterns
     """
 
-    # Regex patterns for common API keys and tokens
-    SECRET_PATTERNS = [
-        # OpenAI
+    # Patterns for common secret formats
+    DEFAULT_PATTERNS = [
+        # OpenAI API keys
         (r"sk-[a-zA-Z0-9]{48}", "[OPENAI_API_KEY]"),
         (r"sk-proj-[a-zA-Z0-9_-]{48,}", "[OPENAI_PROJECT_KEY]"),
         
-        # Anthropic
+        # Anthropic API keys
         (r"sk-ant-[a-zA-Z0-9_-]{95,}", "[ANTHROPIC_API_KEY]"),
         
-        # Google
+        # Google API keys
         (r"AIza[0-9A-Za-z\-_]{35}", "[GOOGLE_API_KEY]"),
         
-        # AWS
+        # AWS credentials
         (r"AKIA[0-9A-Z]{16}", "[AWS_ACCESS_KEY]"),
-        (r"aws_secret_access_key\s*=\s*[A-Za-z0-9/+=]{40}", "[AWS_SECRET_KEY]"),
+        (r"(?i)aws[_-]?secret[_-]?access[_-]?key[\s:=]+['\"]?([a-zA-Z0-9/+=]{40})['\"]?", "[AWS_SECRET_KEY]"),
         
-        # GitHub
+        # Bearer tokens
+        (r"Bearer [a-zA-Z0-9\-._~+/]+=*", "[BEARER_TOKEN]"),
+        
+        # GitHub tokens
         (r"ghp_[a-zA-Z0-9]{36}", "[GITHUB_TOKEN]"),
         (r"gho_[a-zA-Z0-9]{36}", "[GITHUB_OAUTH_TOKEN]"),
-        
-        # OAuth/Bearer tokens
-        (r"Bearer [a-zA-Z0-9\-._~+/]+=*", "Bearer [REDACTED]"),
+        (r"github_pat_[a-zA-Z0-9_]{82}", "[GITHUB_PAT]"),
         
         # Generic patterns
-        (r'password["\']?\s*[:=]\s*["\']?([^"\',\s]+)', 'password="[REDACTED]"'),
-        (r'api[_-]?key["\']?\s*[:=]\s*["\']?([^"\',\s]+)', 'api_key="[REDACTED]"'),
-        (r'secret["\']?\s*[:=]\s*["\']?([^"\',\s]+)', 'secret="[REDACTED]"'),
-        (r'token["\']?\s*[:=]\s*["\']?([^"\',\s]+)', 'token="[REDACTED]"'),
+        (r"(?i)password[\s:=]+['\"]?([^'\"\s,]+)['\"]?", "password=[REDACTED]"),
+        (r"(?i)api[_-]?key[\s:=]+['\"]?([^'\"\s,]+)['\"]?", "api_key=[REDACTED]"),
+        (r"(?i)token[\s:=]+['\"]?([^'\"\s,]+)['\"]?", "token=[REDACTED]"),
+        (r"(?i)secret[\s:=]+['\"]?([^'\"\s,]+)['\"]?", "secret=[REDACTED]"),
+        
+        # JWT tokens
+        (r"eyJ[a-zA-Z0-9_-]*\.eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*", "[JWT_TOKEN]"),
+        
+        # Private keys
+        (r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+ PRIVATE KEY-----", "[PRIVATE_KEY]"),
     ]
 
-    # Field names that should always be redacted
+    # Keys that should always be redacted
     SENSITIVE_KEYS = {
         "api_key",
         "apikey",
-        "api-key",
         "token",
-        "access_token",
-        "refresh_token",
-        "bearer",
         "password",
-        "passwd",
-        "pwd",
         "secret",
-        "secret_key",
-        "private_key",
         "credential",
         "credentials",
         "auth",
         "authorization",
-        "session",
-        "cookie",
+        "private_key",
+        "access_key",
+        "secret_key",
+        "session_token",
+        "bearer",
+        "oauth",
     }
 
-    @classmethod
-    def sanitize_string(cls, text: str) -> str:
+    def __init__(
+        self,
+        custom_patterns: List[tuple[str, str]] = None,
+        additional_sensitive_keys: Set[str] = None,
+    ):
+        """
+        Args:
+            custom_patterns: Additional (regex, replacement) patterns
+            additional_sensitive_keys: Additional key names to redact
+        """
+        self.patterns = self.DEFAULT_PATTERNS.copy()
+        if custom_patterns:
+            self.patterns.extend(custom_patterns)
+        
+        self.sensitive_keys = self.SENSITIVE_KEYS.copy()
+        if additional_sensitive_keys:
+            self.sensitive_keys.update(additional_sensitive_keys)
+        
+        # Compile regex patterns for performance
+        self.compiled_patterns = [
+            (re.compile(pattern, re.IGNORECASE | re.MULTILINE), replacement)
+            for pattern, replacement in self.patterns
+        ]
+        
+        logger.debug(
+            "secrets_sanitizer_initialized",
+            extra={
+                "pattern_count": len(self.compiled_patterns),
+                "sensitive_key_count": len(self.sensitive_keys),
+            }
+        )
+
+    def sanitize_string(self, text: str) -> str:
         """
         Remove secrets from string using pattern matching.
-
+        
         Args:
-            text: Input string potentially containing secrets
-
+            text: String to sanitize
+        
         Returns:
             Sanitized string with secrets replaced
         """
         if not isinstance(text, str):
             return text
+        
+        result = text
+        for pattern, replacement in self.compiled_patterns:
+            result = pattern.sub(replacement, result)
+        
+        return result
 
-        sanitized = text
-        for pattern, replacement in cls.SECRET_PATTERNS:
-            sanitized = re.sub(
-                pattern,
-                replacement,
-                sanitized,
-                flags=re.IGNORECASE,
-            )
-
-        return sanitized
-
-    @classmethod
-    def sanitize_dict(
-        cls,
-        data: Dict[str, Any],
-        sensitive_keys: Optional[Set[str]] = None,
-    ) -> Dict[str, Any]:
+    def sanitize_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Recursively sanitize dictionary, redacting sensitive fields.
-
+        Recursively sanitize dictionary, redacting sensitive keys.
+        
         Args:
             data: Dictionary to sanitize
-            sensitive_keys: Additional sensitive key names
-
+        
         Returns:
             Sanitized dictionary
         """
         if not isinstance(data, dict):
             return data
-
-        # Merge default and custom sensitive keys
-        all_sensitive_keys = cls.SENSITIVE_KEYS.copy()
-        if sensitive_keys:
-            all_sensitive_keys.update(
-                k.lower() for k in sensitive_keys
-            )
-
+        
         sanitized = {}
-
+        
         for key, value in data.items():
             # Check if key is sensitive
-            if any(
-                sensitive in key.lower()
-                for sensitive in all_sensitive_keys
-            ):
+            if self._is_sensitive_key(key):
                 sanitized[key] = "[REDACTED]"
-                continue
-
-            # Recursively sanitize based on value type
-            if isinstance(value, dict):
-                sanitized[key] = cls.sanitize_dict(value, sensitive_keys)
+            elif isinstance(value, dict):
+                sanitized[key] = self.sanitize_dict(value)
             elif isinstance(value, list):
-                sanitized[key] = cls.sanitize_list(value, sensitive_keys)
+                sanitized[key] = self.sanitize_list(value)
             elif isinstance(value, str):
-                sanitized[key] = cls.sanitize_string(value)
+                sanitized[key] = self.sanitize_string(value)
             else:
                 sanitized[key] = value
-
+        
         return sanitized
 
-    @classmethod
-    def sanitize_list(
-        cls,
-        data: List[Any],
-        sensitive_keys: Optional[Set[str]] = None,
-    ) -> List[Any]:
+    def sanitize_list(self, data: List[Any]) -> List[Any]:
         """
-        Recursively sanitize list elements.
-
+        Recursively sanitize list items.
+        
         Args:
             data: List to sanitize
-            sensitive_keys: Additional sensitive key names
-
+        
         Returns:
             Sanitized list
         """
         if not isinstance(data, list):
             return data
+        
+        return [
+            self.sanitize_dict(item) if isinstance(item, dict)
+            else self.sanitize_list(item) if isinstance(item, list)
+            else self.sanitize_string(item) if isinstance(item, str)
+            else item
+            for item in data
+        ]
 
-        sanitized = []
-        for item in data:
-            if isinstance(item, dict):
-                sanitized.append(cls.sanitize_dict(item, sensitive_keys))
-            elif isinstance(item, list):
-                sanitized.append(cls.sanitize_list(item, sensitive_keys))
-            elif isinstance(item, str):
-                sanitized.append(cls.sanitize_string(item))
-            else:
-                sanitized.append(item)
-
-        return sanitized
-
-    @classmethod
-    def sanitize(cls, data: Any, sensitive_keys: Optional[Set[str]] = None) -> Any:
+    def sanitize(self, data: Union[str, Dict, List]) -> Union[str, Dict, List]:
         """
-        Sanitize any data type.
-
+        Universal sanitization method.
+        
         Args:
-            data: Data to sanitize (dict, list, str, or other)
-            sensitive_keys: Additional sensitive key names
-
+            data: Data to sanitize (string, dict, or list)
+        
         Returns:
-            Sanitized data
+            Sanitized data of same type
         """
-        if isinstance(data, dict):
-            return cls.sanitize_dict(data, sensitive_keys)
+        if isinstance(data, str):
+            return self.sanitize_string(data)
+        elif isinstance(data, dict):
+            return self.sanitize_dict(data)
         elif isinstance(data, list):
-            return cls.sanitize_list(data, sensitive_keys)
-        elif isinstance(data, str):
-            return cls.sanitize_string(data)
+            return self.sanitize_list(data)
         else:
             return data
+
+    def _is_sensitive_key(self, key: str) -> bool:
+        """
+        Check if key name indicates sensitive data.
+        
+        Args:
+            key: Key name to check
+        
+        Returns:
+            True if key should be redacted
+        """
+        key_lower = key.lower()
+        return any(sensitive in key_lower for sensitive in self.sensitive_keys)
+
+    def add_pattern(self, pattern: str, replacement: str):
+        """Add a custom pattern at runtime"""
+        compiled = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
+        self.compiled_patterns.append((compiled, replacement))
+        logger.debug(
+            "custom_pattern_added",
+            extra={"pattern": pattern, "replacement": replacement}
+        )
+
+    def add_sensitive_key(self, key: str):
+        """Add a sensitive key name at runtime"""
+        self.sensitive_keys.add(key.lower())
+        logger.debug(
+            "sensitive_key_added",
+            extra={"key": key}
+        )
