@@ -19,8 +19,8 @@ Constitutional Mapping:
 """
 
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple, cast
-from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, cast
+from dataclasses import dataclass
 from collections import defaultdict
 
 from .base import BaseCriticV8

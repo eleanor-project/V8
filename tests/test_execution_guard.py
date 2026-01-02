@@ -4,7 +4,6 @@ from engine.aggregator.escalation import resolve_escalation
 from engine.execution.human_review import enforce_human_review
 from engine.execution.runner import ensure_executable, ExecutionBlocked
 from engine.execution.executor import execute_decision
-from engine.schemas.escalation import ExecutableDecision
 
 
 def test_ensure_executable_blocks_when_not_executable(critic_eval_tier2):

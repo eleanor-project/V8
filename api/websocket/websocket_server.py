@@ -16,7 +16,6 @@ Clients connect to:
 And receive JSON messages during pipeline execution.
 """
 
-import asyncio
 import json
 import os
 import uuid

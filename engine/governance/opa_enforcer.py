@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 OPA enforcement helper for local prototypes and configurable gateways.
 
@@ -11,6 +9,8 @@ Supports:
 The enforcer is configurable via env vars so the same code path can run
 locally (prototype) or behind a gateway without code changes.
 """
+
+from __future__ import annotations
 
 import os
 from dataclasses import dataclass

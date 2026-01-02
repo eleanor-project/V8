@@ -13,7 +13,7 @@ This module flags jurisprudential conflicts that may require:
     - refinement of critic logic
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 
 class PrecedentConflictV8:

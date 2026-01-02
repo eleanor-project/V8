@@ -9,7 +9,8 @@ Explicit types that preserve constitutional semantics:
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Protocol, TypedDict, Union
+from typing import Any, Dict, List, Literal, Optional, Protocol
+from typing_extensions import TypedDict
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 

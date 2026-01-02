@@ -6,7 +6,7 @@ Tests engine/precedent/embeddings.py
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from engine.precedent.embeddings import (
     BaseEmbeddingAdapter,
     EmbeddingRegistry,

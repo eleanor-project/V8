@@ -24,9 +24,8 @@ Output schema:
 }
 """
 
-from typing import Dict, Any
+from typing import Dict
 import statistics
-import math
 
 from engine.schemas.pipeline_types import UncertaintyResult, PrecedentAlignmentResult, CriticResult
 

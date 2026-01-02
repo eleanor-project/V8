@@ -6,12 +6,8 @@ Tests engine/utils/retry.py
 """
 
 import pytest
-import asyncio
-import time
-from unittest.mock import Mock, patch
 from engine.utils.retry import (
     RetryConfig,
-    RetryMetrics,
     RetryExhausted,
     calculate_delay,
     should_retry,

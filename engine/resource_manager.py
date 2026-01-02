@@ -11,7 +11,7 @@ Provides:
 import asyncio
 import logging
 import signal
-from typing import Optional, Set, Callable, Any, Dict
+from typing import Set, Callable, Any, Dict
 
 logger = logging.getLogger(__name__)
 

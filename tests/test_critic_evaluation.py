@@ -2,7 +2,7 @@
 
 import pytest
 import asyncio
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from engine.critics.rights import RightsCriticV8
 from engine.critics.risk import RiskCriticV8

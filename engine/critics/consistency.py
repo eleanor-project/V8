@@ -21,7 +21,7 @@ Usage:
 - NEVER for runtime filtering or dissent suppression
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from enum import Enum
 
 
@@ -270,7 +270,6 @@ class ConsistencyEngine:
         """
         violations = []
         charter = self.charter_boundaries[normalized_name]
-        must_not = charter["must_not"]
 
         # Check justification and violations for boundary violations
         justification = evaluation.get("justification", "").lower()
@@ -278,47 +277,43 @@ class ConsistencyEngine:
         combined_text = justification + " " + violations_text
 
         # Check for forbidden domains
-        for forbidden in must_not:
-            forbidden_lower = forbidden.replace("_", " ")
+        if normalized_name == "autonomy":
+            if "dignity" in combined_text and "violation" in combined_text:
+                violations.append({
+                    "critic": critic_name,
+                    "type": CharterViolationType.DOMAIN_OVERSTEP.value,
+                    "severity": "medium",
+                    "description": "Autonomy critic may be judging dignity (charter: must not judge dignity)",
+                    "text_sample": combined_text[:100]
+                })
+            if "fairness" in combined_text or "equitable" in combined_text:
+                violations.append({
+                    "critic": critic_name,
+                    "type": CharterViolationType.DOMAIN_OVERSTEP.value,
+                    "severity": "medium",
+                    "description": "Autonomy critic may be judging fairness (charter: must not judge fairness)",
+                    "text_sample": combined_text[:100]
+                })
 
-            # Specific checks based on charter
-            if normalized_name == "autonomy":
-                if "dignity" in combined_text and "violation" in combined_text:
-                    violations.append({
-                        "critic": critic_name,
-                        "type": CharterViolationType.DOMAIN_OVERSTEP.value,
-                        "severity": "medium",
-                        "description": f"Autonomy critic may be judging dignity (charter: must not judge dignity)",
-                        "text_sample": combined_text[:100]
-                    })
-                if "fairness" in combined_text or "equitable" in combined_text:
-                    violations.append({
-                        "critic": critic_name,
-                        "type": CharterViolationType.DOMAIN_OVERSTEP.value,
-                        "severity": "medium",
-                        "description": f"Autonomy critic may be judging fairness (charter: must not judge fairness)",
-                        "text_sample": combined_text[:100]
-                    })
+        elif normalized_name == "dignity":
+            if "consent" in combined_text or "authorization" in combined_text:
+                violations.append({
+                    "critic": critic_name,
+                    "type": CharterViolationType.DOMAIN_OVERSTEP.value,
+                    "severity": "medium",
+                    "description": "Dignity critic may be checking consent (charter: must not do consent checks)",
+                    "text_sample": combined_text[:100]
+                })
 
-            elif normalized_name == "dignity":
-                if "consent" in combined_text or "authorization" in combined_text:
-                    violations.append({
-                        "critic": critic_name,
-                        "type": CharterViolationType.DOMAIN_OVERSTEP.value,
-                        "severity": "medium",
-                        "description": f"Dignity critic may be checking consent (charter: must not do consent checks)",
-                        "text_sample": combined_text[:100]
-                    })
-
-            elif normalized_name == "fairness":
-                if "intent" in combined_text or "intention" in combined_text:
-                    violations.append({
-                        "critic": critic_name,
-                        "type": CharterViolationType.DOMAIN_OVERSTEP.value,
-                        "severity": "low",
-                        "description": f"Fairness critic may be judging intent (charter: must not judge intent)",
-                        "text_sample": combined_text[:100]
-                    })
+        elif normalized_name == "fairness":
+            if "intent" in combined_text or "intention" in combined_text:
+                violations.append({
+                    "critic": critic_name,
+                    "type": CharterViolationType.DOMAIN_OVERSTEP.value,
+                    "severity": "low",
+                    "description": "Fairness critic may be judging intent (charter: must not judge intent)",
+                    "text_sample": combined_text[:100]
+                })
 
         return violations
 

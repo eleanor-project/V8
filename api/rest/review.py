@@ -6,9 +6,8 @@ This fits into the existing API structure without creating a new server.
 """
 
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional, List
+from typing import Optional
 import os
-import uuid
 
 from governance.human_review.schemas import HumanReviewRecord
 from governance.human_review.service import submit_review, get_review, get_reviews_for_case

@@ -19,11 +19,10 @@ Usage:
         result = await fallback_adapter.generate(prompt)
 """
 
-import asyncio
 import inspect
 import time
 from enum import Enum
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Any, Optional, Dict
 import threading
 

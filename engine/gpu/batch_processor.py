@@ -4,7 +4,7 @@ Batch Processor - Dynamic batch size optimization for GPU efficiency
 
 import logging
 import time
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, Tuple, cast
+from typing import Any, Callable, List
 
 import asyncio
 import inspect
@@ -12,11 +12,6 @@ import torch
 from collections import deque
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from .manager import GPUManager
-    from .async_ops import AsyncGPUExecutor
-
 
 class BatchProcessor:
     """

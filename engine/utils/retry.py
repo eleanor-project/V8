@@ -24,7 +24,7 @@ import random
 import time
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import Any, Callable, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Optional, Tuple, Type
 import logging
 
 logger = logging.getLogger(__name__)
@@ -315,7 +315,7 @@ async def retry_async(
 
             if attempt >= config.max_retries:
                 raise RetryExhausted(
-                    f"Retry exhausted",
+                    "Retry exhausted",
                     attempts=attempt + 1,
                     last_exception=e,
                     total_delay=total_delay

@@ -13,7 +13,6 @@ This engine:
 
 import asyncio
 from typing import Any, Dict, List, Optional
-from pathlib import Path
 import importlib
 
 from .base import Detector
@@ -33,8 +32,6 @@ class DetectorEngineV8:
 
     def _load_detectors(self):
         """Dynamically load all detector modules."""
-        detector_dir = Path(__file__).parent
-
         # List of detector module names
         detector_modules = [
             "autonomy",

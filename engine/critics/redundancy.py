@@ -23,8 +23,7 @@ Usage:
 - Audit trail: Track what was deduplicated for transparency
 """
 
-from typing import Dict, Any, List, Set
-from collections import defaultdict
+from typing import Dict, Any, List
 import hashlib
 
 
@@ -114,7 +113,7 @@ class RedundancyEngine:
         for violation in violations:
             # Normalize violation for comparison
             normalized = self._normalize_violation(violation)
-            violation_hash = hashlib.md5(normalized.encode()).hexdigest()
+            violation_hash = hashlib.sha256(normalized.encode()).hexdigest()
 
             if violation_hash not in seen_hashes:
                 unique_violations.append(violation)

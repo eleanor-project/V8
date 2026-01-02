@@ -6,7 +6,7 @@ Tests engine/router/adapters.py
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, patch, AsyncMock
 from engine.router.adapters import (
     BaseLLMAdapter,
     AdapterRegistry,

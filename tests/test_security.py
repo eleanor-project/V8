@@ -4,12 +4,10 @@ Tests for Security Module (Issue #20)
 
 import os
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from engine.security.secrets import (
     EnvironmentSecretsProvider,
-    AWSSecretsProvider,
-    VaultSecretsProvider,
 )
 from engine.security.sanitizer import SecretsSanitizer
 from engine.security.audit import SecureAuditLogger

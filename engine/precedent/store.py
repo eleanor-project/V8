@@ -20,7 +20,6 @@ import time
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, cast
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -511,7 +510,6 @@ class ChromaStore(BasePrecedentStore):
         """
         try:
             import chromadb  # type: ignore[import-not-found]
-            from chromadb.config import Settings  # type: ignore[import-not-found]
         except ImportError:
             raise ImportError("chromadb not installed. Run: pip install chromadb")
 

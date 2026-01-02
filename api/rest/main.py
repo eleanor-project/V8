@@ -43,7 +43,6 @@ from fastapi.staticfiles import StaticFiles
 from api.schemas import (
     DeliberationRequest,
     GovernancePreviewRequest,
-    DeliberationResponse,
     EvaluateRequest,
     EvaluateResponse,
     EvidenceBundle,
@@ -58,7 +57,7 @@ from api.schemas import (
     HealthResponse,
     ErrorResponse,
 )
-from api.middleware.auth import verify_token, get_current_user, TokenPayload, get_auth_config, require_role
+from api.middleware.auth import get_current_user, get_auth_config, require_role
 from api.middleware.rate_limit import (
     RateLimitMiddleware,
     get_rate_limiter,
@@ -969,7 +968,6 @@ async def deliberate(
         aggregated = normalized["aggregator_output"]
         precedent_alignment = normalized["precedent_alignment"]
         uncertainty = normalized["uncertainty"]
-        model_output = normalized["model_output"]
 
         governance_payload = {
             "critics": critic_outputs,

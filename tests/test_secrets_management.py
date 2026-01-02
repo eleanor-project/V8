@@ -4,7 +4,7 @@ Tests for Secrets Management (Issue #20)
 
 import os
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 from engine.security.secrets import (
     EnvironmentSecretsProvider,
