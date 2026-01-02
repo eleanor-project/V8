@@ -1,205 +1,162 @@
 """
-ELEANOR V8 — Async GPU Operations
-
-Coordinate GPU operations with Python asyncio for non-blocking execution.
+Async GPU Operations - CUDA stream management and async execution
 """
 
 import asyncio
+import torch
+from typing import Callable, Any, List, Optional, Tuple
 import logging
-import time
-from typing import Any, Callable, List, Optional
-from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
 
 
 class AsyncGPUExecutor:
     """
-    Execute GPU operations asynchronously with proper coordination.
+    Coordinate async GPU operations with CPU tasks.
     
-    Uses multiple CUDA streams for parallel GPU operations while
-    maintaining async/await compatibility.
+    Features:
+    - Multiple CUDA streams for parallel operations
+    - Async/await integration with asyncio
+    - Non-blocking GPU execution
+    - Automatic stream synchronization
+    
+    Example:
+        >>> executor = AsyncGPUExecutor(device=torch.device("cuda"), num_streams=4)
+        >>> result = await executor.execute_async(my_gpu_function, tensor_input)
     """
     
-    def __init__(self, gpu_manager: 'GPUManager', num_streams: int = 4):
+    def __init__(self, device: torch.device, num_streams: int = 4):
         """
         Initialize async GPU executor.
         
         Args:
-            gpu_manager: GPU manager instance
-            num_streams: Number of CUDA streams for parallelism
+            device: Torch device to use
+            num_streams: Number of CUDA streams for parallel operations
         """
-        self.gpu_manager = gpu_manager
-        self.num_streams = num_streams
-        self.streams = []
-        self.current_stream_idx = 0
+        self.device = device
         
-        # Create CUDA streams if available
-        if gpu_manager.cuda_available:
-            self.streams = [
-                gpu_manager.torch.cuda.Stream()
-                for _ in range(num_streams)
-            ]
-            logger.info(f"Created {num_streams} CUDA streams for async operations")
+        if device.type == "cuda":
+            # Create multiple CUDA streams for parallel operations
+            self.streams = [torch.cuda.Stream(device) for _ in range(num_streams)]
+            logger.info(f"Created {num_streams} CUDA streams for device {device}")
+        else:
+            # No streams for CPU/MPS
+            self.streams = [None] * num_streams
+            logger.info(f"Running on {device.type} - no stream management")
+        
+        self.current_stream_idx = 0
+        self.num_streams = num_streams
+        
+        logger.info(
+            "async_gpu_executor_initialized",
+            device=str(device),
+            num_streams=num_streams if device.type == "cuda" else 0
+        )
     
-    def get_next_stream(self) -> Optional[Any]:
+    def get_stream(self) -> Optional[torch.cuda.Stream]:
         """
         Get next available CUDA stream (round-robin).
         
         Returns:
-            CUDA stream or None if not using CUDA
+            CUDA stream or None for CPU/MPS
         """
-        if not self.streams:
+        if self.device.type != "cuda":
             return None
         
         stream = self.streams[self.current_stream_idx]
         self.current_stream_idx = (self.current_stream_idx + 1) % self.num_streams
         return stream
     
-    @asynccontextmanager
-    async def stream_context(self, stream_id: Optional[int] = None):
+    async def execute_async(self, operation: Callable, *args, **kwargs) -> Any:
         """
-        Context manager for CUDA stream execution.
+        Execute GPU operation asynchronously.
+        
+        GPU operations are non-blocking by default, but we need to
+        synchronize when returning results to CPU.
         
         Args:
-            stream_id: Specific stream ID or None for auto-selection
+            operation: Callable to execute on GPU
+            *args: Positional arguments for operation
+            **kwargs: Keyword arguments for operation
+            
+        Returns:
+            Result of the GPU operation
         """
-        if not self.gpu_manager.cuda_available:
-            yield None
-            return
+        stream = self.get_stream()
         
-        if stream_id is not None and stream_id < len(self.streams):
-            stream = self.streams[stream_id]
+        if stream is not None:
+            # CUDA: Use stream for parallel execution
+            with torch.cuda.stream(stream):
+                result = operation(*args, **kwargs)
+                
+                # Synchronize stream in executor to avoid blocking event loop
+                # Run synchronization in thread pool to not block asyncio
+                await asyncio.get_event_loop().run_in_executor(
+                    None, stream.synchronize
+                )
         else:
-            stream = self.get_next_stream()
-        
-        try:
-            with self.gpu_manager.torch.cuda.stream(stream):
-                yield stream
-        finally:
-            # Stream cleanup happens automatically
-            pass
-    
-    async def run_async(self, operation: Callable, *args, **kwargs) -> Any:
-        """
-        Run GPU operation asynchronously.
-        
-        Args:
-            operation: Function to execute on GPU
-            *args: Positional arguments
-            **kwargs: Keyword arguments
-        
-        Returns:
-            Operation result
-        """
-        if not self.gpu_manager.is_available():
-            # CPU fallback
-            return await self._run_cpu(operation, *args, **kwargs)
-        
-        stream = self.get_next_stream()
-        
-        async with self.stream_context():
-            start_time = time.time()
-            
-            # Execute operation
+            # CPU or MPS: no stream management needed
             result = operation(*args, **kwargs)
-            
-            # Wait for GPU completion without blocking event loop
-            await self._sync_stream(stream)
-            
-            duration_ms = (time.time() - start_time) * 1000
-            
-            logger.debug(
-                "GPU operation completed",
-                operation=operation.__name__,
-                duration_ms=duration_ms,
-                stream_id=self.current_stream_idx
-            )
-            
-            return result
+        
+        return result
     
-    async def _sync_stream(self, stream: Optional[Any]) -> None:
+    async def batch_execute(self, operations: List[Tuple[Callable, tuple, dict]]) -> List[Any]:
         """
-        Synchronize CUDA stream without blocking event loop.
+        Execute multiple GPU operations in parallel using different streams.
         
         Args:
-            stream: CUDA stream to synchronize
-        """
-        if stream is None:
-            return
-        
-        # Run synchronization in thread pool
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, stream.synchronize)
-    
-    async def _run_cpu(self, operation: Callable, *args, **kwargs) -> Any:
-        """
-        Run operation on CPU in thread pool.
-        
-        Args:
-            operation: Function to execute
-            *args: Positional arguments
-            **kwargs: Keyword arguments
+            operations: List of (callable, args, kwargs) tuples
         
         Returns:
-            Operation result
+            List of results in same order as operations
+            
+        Example:
+            >>> ops = [
+            ...     (compute_embedding, (text1,), {}),
+            ...     (compute_embedding, (text2,), {}),
+            ...     (compute_embedding, (text3,), {}),
+            ... ]
+            >>> results = await executor.batch_execute(ops)
         """
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, 
-            lambda: operation(*args, **kwargs)
-        )
-    
-    async def run_batch_parallel(
-        self,
-        operations: List[Callable],
-        *args_list,
-        **kwargs
-    ) -> List[Any]:
-        """
-        Run multiple GPU operations in parallel using different streams.
-        
-        Args:
-            operations: List of functions to execute
-            *args_list: List of argument tuples
-            **kwargs: Common keyword arguments
-        
-        Returns:
-            List of results
-        """
-        if not operations:
-            return []
-        
-        # Create tasks for parallel execution
         tasks = []
-        for i, operation in enumerate(operations):
-            args = args_list[i] if i < len(args_list) else ()
-            task = asyncio.create_task(
-                self.run_async(operation, *args, **kwargs)
-            )
+        
+        for op, args, kwargs in operations:
+            task = self.execute_async(op, *args, **kwargs)
             tasks.append(task)
         
-        # Wait for all operations
+        # Execute all operations concurrently
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Log any errors
-        for i, result in enumerate(results):
+        # Check for exceptions
+        for idx, result in enumerate(results):
             if isinstance(result, Exception):
-                logger.error(
-                    f"GPU operation {i} failed",
-                    operation=operations[i].__name__,
-                    error=str(result)
-                )
+                logger.error(f"Operation {idx} failed: {result}")
         
         return results
     
-    def get_stream_info(self) -> dict:
-        """Get information about CUDA streams."""
-        return {
-            'num_streams': self.num_streams,
-            'current_stream': self.current_stream_idx,
-            'cuda_available': self.gpu_manager.cuda_available,
-        }
-
-
-__all__ = ["AsyncGPUExecutor"]
+    def synchronize_all(self):
+        """
+        Synchronize all CUDA streams.
+        
+        Blocks until all pending GPU operations complete.
+        """
+        if self.device.type == "cuda":
+            for stream in self.streams:
+                if stream is not None:
+                    stream.synchronize()
+            logger.debug("Synchronized all CUDA streams")
+    
+    async def synchronize_all_async(self):
+        """
+        Asynchronously synchronize all CUDA streams.
+        """
+        if self.device.type == "cuda":
+            await asyncio.get_event_loop().run_in_executor(
+                None, self.synchronize_all
+            )
+    
+    def __repr__(self) -> str:
+        return (
+            f"AsyncGPUExecutor(device={self.device}, "
+            f"num_streams={self.num_streams})"
+        )
