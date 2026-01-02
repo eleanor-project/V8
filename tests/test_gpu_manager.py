@@ -66,7 +66,8 @@ class TestGPUManager:
     
     def test_device_detection_cpu_fallback(self):
         """Test CPU fallback when no GPU available."""
-        with patch('torch.cuda.is_available', return_value=False):
+        with patch('torch.cuda.is_available', return_value=False), \
+             patch('torch.backends.mps.is_available', return_value=False, create=True):
             gpu_manager = GPUManager()
             
             if TORCH_AVAILABLE:
