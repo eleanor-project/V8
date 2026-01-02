@@ -1,0 +1,97 @@
+# ELEANOR V8 - Security Configuration
+
+security:
+  # Secrets Management
+  secrets:
+    # Provider: environment, aws, vault
+    provider: "environment"  # Default for development
+    
+    # Environment provider settings
+    environment:
+      prefix: "ELEANOR_"  # Only load vars with this prefix
+    
+    # AWS Secrets Manager settings
+    aws:
+      region: "us-west-2"
+      prefix: "eleanor/"  # Prefix for all secret names
+      cache_ttl: 300  # Seconds to cache secrets (5 minutes)
+    
+    # HashiCorp Vault settings
+    vault:
+      addr: "${VAULT_ADDR}"  # Vault server address
+      mount_point: "eleanor"  # KV secrets mount point
+      # Token from VAULT_TOKEN environment variable
+  
+  # Credential Sanitization
+  sanitization:
+    enabled: true
+    
+    # Additional patterns to redact (beyond defaults)
+    custom_patterns:
+      # Format: [regex_pattern, replacement]
+      # - ["CUSTOM-\\d{6}", "[CUSTOM_ID]"]
+    
+    # Additional sensitive key names (beyond defaults)
+    sensitive_keys:
+      # - "internal_token"
+      # - "session_id"
+  
+  # Audit Logging
+  audit:
+    enabled: true
+    sanitize_logs: true  # Automatically sanitize audit logs
+    log_secret_access: true  # Log when secrets are accessed
+    log_config_changes: true  # Log configuration changes
+  
+  # Security Headers (for API responses)
+  headers:
+    enabled: true
+    x_content_type_options: "nosniff"
+    x_frame_options: "DENY"
+    x_xss_protection: "1; mode=block"
+    strict_transport_security: "max-age=31536000; includeSubDomains"
+  
+  # Rate Limiting (per user/IP)
+  rate_limiting:
+    enabled: false  # Enable in production
+    requests_per_minute: 60
+    burst: 10
+  
+  # Input Validation
+  validation:
+    max_input_length: 100000  # Max characters in input
+    max_context_size: 1048576  # Max bytes in context (1MB)
+    sanitize_html: true  # Strip HTML tags from input
+  
+  # Secrets Rotation
+  rotation:
+    enabled: false  # Enable for production
+    check_interval: 3600  # Check for rotation every hour
+    grace_period: 86400  # Allow old secrets for 24 hours
+
+# Environment-specific overrides
+env_overrides:
+  development:
+    security:
+      secrets:
+        provider: "environment"
+      rate_limiting:
+        enabled: false
+  
+  staging:
+    security:
+      secrets:
+        provider: "aws"
+      rate_limiting:
+        enabled: true
+        requests_per_minute: 120
+  
+  production:
+    security:
+      secrets:
+        provider: "aws"  # or "vault"
+      rate_limiting:
+        enabled: true
+        requests_per_minute: 60
+      rotation:
+        enabled: true
