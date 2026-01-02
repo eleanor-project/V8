@@ -27,7 +27,7 @@ import re
 import psycopg2  # type: ignore[import-untyped]
 from psycopg2 import sql  # type: ignore[import-untyped]
 import weaviate  # type: ignore[import-not-found]
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 
 # Valid table name pattern (alphanumeric and underscore only)
@@ -58,8 +58,14 @@ class WeaviatePrecedentStore:
         self.class_name = class_name
         self.embedder = Embedder(embed_fn)
 
-    def search(self, query_text: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        embedding = self.embedder.embed(query_text)
+    def search(
+        self,
+        query_text: str,
+        top_k: int = 5,
+        embedding: Optional[List[float]] = None,
+    ) -> List[Dict[str, Any]]:
+        if embedding is None:
+            embedding = self.embedder.embed(query_text)
 
         result = (
             self.client.query  # type: ignore[attr-defined]
@@ -103,8 +109,14 @@ class PGVectorPrecedentStore:
         self.table = table_name
         self.embedder = Embedder(embed_fn)
 
-    def search(self, query_text: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        embedding = self.embedder.embed(query_text)
+    def search(
+        self,
+        query_text: str,
+        top_k: int = 5,
+        embedding: Optional[List[float]] = None,
+    ) -> List[Dict[str, Any]]:
+        if embedding is None:
+            embedding = self.embedder.embed(query_text)
 
         # Use psycopg2.sql module for safe identifier handling
         query = sql.SQL("""
