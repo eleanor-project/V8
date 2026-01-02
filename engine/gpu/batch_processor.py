@@ -196,6 +196,54 @@ class BatchProcessor:
             for future in futures:
                 if not future.done():
                     future.set_exception(e)
+
+    async def process_batch(self, items: List[Any]) -> List[Any]:
+        """
+        Process a list of items immediately in batches.
+
+        Args:
+            items: Items to process.
+
+        Returns:
+            List of results in the same order.
+        """
+        if not items:
+            return []
+
+        results: List[Any] = []
+        index = 0
+
+        while index < len(items):
+            batch_size = min(self.current_batch_size, len(items) - index)
+            batch = items[index : index + batch_size]
+            try:
+                start_time = time.time()
+                batch_results = await self._execute_batch(batch)
+                latency = time.time() - start_time
+                self.recent_latencies.append(latency)
+                if len(self.recent_latencies) > self.max_latency_samples:
+                    self.recent_latencies.pop(0)
+                if self.dynamic_sizing:
+                    self._adjust_batch_size(latency, len(batch))
+                results.extend(batch_results)
+                index += batch_size
+            except RuntimeError as e:
+                if "out of memory" in str(e).lower():
+                    logger.warning("GPU OOM with batch_size=%d", self.current_batch_size)
+                    self.oom_count += 1
+                    if self.current_batch_size <= self.min_batch_size:
+                        raise
+                    self.current_batch_size = max(
+                        self.min_batch_size,
+                        self.current_batch_size // 2,
+                    )
+                    logger.info("Reduced batch_size to %d", self.current_batch_size)
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                else:
+                    raise
+
+        return results
     
     async def _execute_batch(self, items: List[Any]) -> List[Any]:
         """

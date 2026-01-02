@@ -1628,6 +1628,21 @@ async def cache_health():
         "concurrency": concurrency.get_stats() if concurrency else None,
     }
 
+@app.get("/admin/gpu/health", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def gpu_health():
+    """Expose GPU status and memory metrics."""
+    if engine is None:
+        return {"enabled": False, "reason": "engine_not_initialized"}
+
+    gpu_manager = getattr(engine, "gpu_manager", None)
+    gpu_enabled = bool(getattr(engine, "gpu_enabled", False))
+    from engine.gpu.monitoring import collect_gpu_metrics
+
+    metrics = collect_gpu_metrics(gpu_manager)
+    metrics["configured"] = gpu_enabled
+    return metrics
+
 @app.get("/admin/resilience/health", tags=["Admin"])
 @require_role(ADMIN_ROLE)
 async def resilience_health():

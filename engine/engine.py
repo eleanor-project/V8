@@ -99,6 +99,19 @@ def _init_cache_redis(redis_url: Optional[str]) -> Optional[Any]:
         return None
 
 
+def _estimate_embedding_cache_entries(
+    max_cache_size_gb: float,
+    embedding_dim: int,
+    *,
+    bytes_per_value: int = 4,
+) -> int:
+    if max_cache_size_gb <= 0 or embedding_dim <= 0 or bytes_per_value <= 0:
+        return 0
+    bytes_per_embedding = embedding_dim * bytes_per_value
+    estimated = int((max_cache_size_gb * 1024 ** 3) / bytes_per_embedding)
+    return max(1, estimated)
+
+
 def _resolve_dependencies(
     *,
     config: "EngineConfig",
@@ -247,6 +260,9 @@ class EleanorEngineV8:
         review_trigger_evaluator: Optional[ReviewTriggerEvaluatorProtocol] = None,
         dependencies: Optional[EngineDependencies] = None,
         error_monitor: Optional[Callable[[Exception, Dict[str, Any]], None]] = None,
+        gpu_manager: Optional[Any] = None,
+        gpu_executor: Optional[Any] = None,
+        gpu_embedding_cache: Optional[Any] = None,
     ):
         settings = None
         settings_error: Optional[Exception] = None
@@ -294,6 +310,75 @@ class EleanorEngineV8:
                 maxsize=200,
                 ttl=settings.cache.router_ttl,
             )
+
+        self.gpu_manager = gpu_manager
+        self.gpu_executor = gpu_executor
+        self.gpu_embedding_cache = gpu_embedding_cache
+        self.gpu_multi_router = None
+        self.gpu_enabled = bool(
+            (settings and getattr(settings, "gpu", None) and settings.gpu.enabled)
+            or gpu_manager is not None
+        )
+        self.gpu_available = False
+
+        if settings and getattr(settings, "gpu", None) and settings.gpu.enabled:
+            try:
+                from engine.gpu.manager import GPUManager, GPUConfig
+                from engine.gpu.async_ops import AsyncGPUExecutor
+                from engine.gpu.embeddings import GPUEmbeddingCache
+                from engine.gpu.parallelization import MultiGPURouter
+            except Exception as exc:
+                logger.warning("gpu_modules_unavailable", extra={"error": str(exc)})
+            else:
+                preferred_devices = settings.gpu.preferred_devices
+                if not preferred_devices:
+                    preferred_devices = settings.gpu.multi_gpu.device_ids or None
+
+                gpu_config = GPUConfig(
+                    enabled=settings.gpu.enabled,
+                    device_preference=settings.gpu.device_preference,
+                    preferred_devices=preferred_devices,
+                    mixed_precision=settings.gpu.memory.mixed_precision,
+                    num_streams=settings.gpu.async_ops.num_streams,
+                    max_memory_per_gpu=settings.gpu.memory.max_memory_per_gpu,
+                    log_memory_stats=settings.gpu.memory.log_memory_stats,
+                    memory_check_interval=settings.gpu.memory.memory_check_interval,
+                    default_batch_size=settings.gpu.batching.default_batch_size,
+                    max_batch_size=settings.gpu.batching.max_batch_size,
+                    dynamic_batching=settings.gpu.batching.dynamic_batching,
+                )
+
+                if self.gpu_manager is None:
+                    self.gpu_manager = GPUManager(
+                        config=gpu_config,
+                        preferred_devices=preferred_devices,
+                    )
+
+                if self.gpu_manager and self.gpu_manager.device:
+                    self.gpu_available = self.gpu_manager.is_available()
+                    if self.gpu_executor is None:
+                        self.gpu_executor = AsyncGPUExecutor(
+                            device=self.gpu_manager.get_device(),
+                            num_streams=gpu_config.num_streams,
+                        )
+
+                    if self.gpu_embedding_cache is None and settings.gpu.embeddings.cache_on_gpu:
+                        bytes_per_value = 2 if settings.gpu.embeddings.mixed_precision else 4
+                        cache_entries = _estimate_embedding_cache_entries(
+                            settings.gpu.embeddings.max_cache_size_gb,
+                            settings.gpu.embeddings.embedding_dim,
+                            bytes_per_value=bytes_per_value,
+                        )
+                        if cache_entries > 0:
+                            self.gpu_embedding_cache = GPUEmbeddingCache(
+                                device=self.gpu_manager.get_device(),
+                                max_cache_size=cache_entries,
+                                embedding_dim=settings.gpu.embeddings.embedding_dim,
+                            )
+
+                    if settings.gpu.multi_gpu.enabled:
+                        device_ids = settings.gpu.multi_gpu.device_ids or None
+                        self.gpu_multi_router = MultiGPURouter(device_ids=device_ids)
         self.instance_id = str(uuid.uuid4())
         self._shutdown_event = asyncio.Event()
         self._cleanup_tasks: List[asyncio.Task] = []
@@ -331,6 +416,9 @@ class EleanorEngineV8:
         self.aggregator = deps.aggregator
         self.review_trigger_evaluator = deps.review_trigger_evaluator
         self.error_monitor = error_monitor
+        if self.precedent_retriever and self.gpu_embedding_cache:
+            if hasattr(self.precedent_retriever, "embedding_cache"):
+                self.precedent_retriever.embedding_cache = self.gpu_embedding_cache
 
         # Concurrency
         self.adaptive_concurrency: Optional[AdaptiveConcurrencyManager] = None
@@ -347,6 +435,24 @@ class EleanorEngineV8:
             self.semaphore = self.adaptive_concurrency.semaphore
         else:
             self.semaphore = asyncio.Semaphore(self.config.max_concurrency)
+
+        self.critic_batcher = None
+        if settings and getattr(settings, "gpu", None):
+            if settings.gpu.critics.gpu_batching and settings.gpu.critics.use_gpu:
+                if self.gpu_manager and self.gpu_available:
+                    try:
+                        from engine.gpu.batch_processor import BatchProcessor
+                    except Exception as exc:
+                        logger.warning("gpu_batch_processor_unavailable", extra={"error": str(exc)})
+                    else:
+                        self.critic_batcher = BatchProcessor(
+                            process_fn=self._process_critic_batch,
+                            device=self.gpu_manager.get_device(),
+                            initial_batch_size=settings.gpu.critics.batch_size,
+                            max_batch_size=settings.gpu.batching.max_batch_size,
+                            min_batch_size=1,
+                            dynamic_sizing=settings.gpu.batching.dynamic_batching,
+                        )
 
         # Diagnostics
         self.timings: Dict[str, float] = {}
@@ -423,6 +529,19 @@ class EleanorEngineV8:
                     await task
                 except asyncio.CancelledError:
                     pass
+
+        if self.gpu_embedding_cache is not None:
+            try:
+                self.gpu_embedding_cache.clear_cache()
+            except Exception as exc:
+                logger.debug("gpu_cache_clear_failed", extra={"error": str(exc)})
+        if self.gpu_manager is not None:
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception as exc:
+                logger.debug("gpu_cleanup_failed", extra={"error": str(exc)})
 
         logger.info("engine_shutdown_complete", extra={"instance_id": self.instance_id})
 
@@ -874,6 +993,33 @@ class EleanorEngineV8:
             raise
 
 
+    async def _process_critic_batch(
+        self,
+        items: List[tuple[Any, ...]],
+    ) -> List[Any]:
+        tasks = [
+            self._run_single_critic_with_breaker(
+                name,
+                critic_ref,
+                model_response,
+                input_text,
+                context,
+                trace_id,
+                degraded_components,
+            )
+            for (
+                name,
+                critic_ref,
+                model_response,
+                input_text,
+                context,
+                trace_id,
+                degraded_components,
+            ) in items
+        ]
+        return await asyncio.gather(*tasks, return_exceptions=True)
+
+
     async def _run_critics_parallel(
         self,
         model_response: str,
@@ -886,9 +1032,9 @@ class EleanorEngineV8:
         if not isinstance(input_text, str):
             input_text = str(input_text)
         critic_items = list(self.critics.items())
-        tasks = [
-            asyncio.create_task(
-                self._run_single_critic_with_breaker(
+        if self.critic_batcher:
+            batch_items = [
+                (
                     name,
                     critic_ref,
                     model_response,
@@ -897,10 +1043,25 @@ class EleanorEngineV8:
                     trace_id,
                     degraded_components,
                 )
-            )
-            for name, critic_ref in critic_items
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+                for name, critic_ref in critic_items
+            ]
+            results = await self.critic_batcher.process_batch(batch_items)
+        else:
+            tasks = [
+                asyncio.create_task(
+                    self._run_single_critic_with_breaker(
+                        name,
+                        critic_ref,
+                        model_response,
+                        input_text,
+                        context,
+                        trace_id,
+                        degraded_components,
+                    )
+                )
+                for name, critic_ref in critic_items
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
         output: CriticResultsMap = {}
         for (critic_name, _), result in zip(critic_items, results):
             if isinstance(result, CriticEvaluationError):
@@ -1260,7 +1421,15 @@ class EleanorEngineV8:
             )
             raise
 
+        if self.gpu_manager and self.gpu_manager.device:
+            context = {
+                **context,
+                "gpu_enabled": self.gpu_enabled,
+                "gpu_device": str(self.gpu_manager.device),
+            }
+
         pipeline_start = asyncio.get_event_loop().time()
+        degraded_components: List[str] = []
         degraded_components: List[str] = []
         degraded_components: List[str] = []
 
@@ -1609,6 +1778,13 @@ class EleanorEngineV8:
             )
             raise
 
+        if self.gpu_manager and self.gpu_manager.device:
+            context = {
+                **context,
+                "gpu_enabled": self.gpu_enabled,
+                "gpu_device": str(self.gpu_manager.device),
+            }
+
         pipeline_start = asyncio.get_event_loop().time()
 
         try:
@@ -1735,9 +1911,10 @@ class EleanorEngineV8:
         if not isinstance(critic_input_text, str):
             critic_input_text = str(critic_input_text)
 
-        async def _run_and_return(name, critic_ref):
-            try:
-                res = await self._run_single_critic_with_breaker(
+        critic_items = list(self.critics.items())
+        if self.critic_batcher:
+            batch_items = [
+                (
                     name,
                     critic_ref,
                     model_response,
@@ -1746,59 +1923,117 @@ class EleanorEngineV8:
                     trace_id,
                     degraded_components,
                 )
-                return name, res
-            except Exception as exc:
-                return name, exc
+                for name, critic_ref in critic_items
+            ]
+            results = await self.critic_batcher.process_batch(batch_items)
+            for (critic_name, _), res in zip(critic_items, results):
+                if isinstance(res, CriticEvaluationError):
+                    crit_error = res
+                    self._emit_error(
+                        crit_error,
+                        stage="critic",
+                        trace_id=trace_id,
+                        critic=critic_name,
+                        context=context,
+                    )
+                    fallback = (
+                        crit_error.details.get("result")
+                        if isinstance(crit_error.details, dict)
+                        else None
+                    )
+                    res = fallback or self._build_critic_error_result(critic_name, crit_error)
+                elif isinstance(res, Exception):
+                    unknown_error = res
+                    critic_error = CriticEvaluationError(
+                        critic_name=critic_name,
+                        message=str(unknown_error),
+                        trace_id=trace_id,
+                        details={"error_type": type(unknown_error).__name__},
+                    )
+                    self._emit_error(
+                        critic_error,
+                        stage="critic",
+                        trace_id=trace_id,
+                        critic=critic_name,
+                        context=context,
+                    )
+                    res = self._build_critic_error_result(critic_name, unknown_error)
+                res = cast(CriticResult, res)
+                critic_results[res.get("critic", critic_name)] = res
 
-        tasks = [
-            asyncio.create_task(_run_and_return(name, critic_ref))
-            for name, critic_ref in self.critics.items()
-        ]
+                yield {
+                    "event": "critic_result",
+                    "trace_id": trace_id,
+                    "critic": res.get("critic", critic_name),
+                    "violations": list(res.get("violations", [])),
+                    "duration_ms": res.get("duration_ms"),
+                    "evaluated_rules": res.get("evaluated_rules"),
+                }
+        else:
+            async def _run_and_return(name, critic_ref):
+                try:
+                    res = await self._run_single_critic_with_breaker(
+                        name,
+                        critic_ref,
+                        model_response,
+                        critic_input_text,
+                        context,
+                        trace_id,
+                        degraded_components,
+                    )
+                    return name, res
+                except Exception as exc:
+                    return name, exc
 
-        for future in asyncio.as_completed(tasks):
-            critic_name, res = await future
-            if isinstance(res, CriticEvaluationError):
-                crit_error = res
-                self._emit_error(
-                    crit_error,
-                    stage="critic",
-                    trace_id=trace_id,
-                    critic=critic_name,
-                    context=context,
-                )
-                fallback = (
-                    crit_error.details.get("result")
-                    if isinstance(crit_error.details, dict)
-                    else None
-                )
-                res = fallback or self._build_critic_error_result(critic_name, crit_error)
-            elif isinstance(res, Exception):
-                unknown_error = res
-                critic_error = CriticEvaluationError(
-                    critic_name=critic_name,
-                    message=str(unknown_error),
-                    trace_id=trace_id,
-                    details={"error_type": type(unknown_error).__name__},
-                )
-                self._emit_error(
-                    critic_error,
-                    stage="critic",
-                    trace_id=trace_id,
-                    critic=critic_name,
-                    context=context,
-                )
-                res = self._build_critic_error_result(critic_name, unknown_error)
-            res = cast(CriticResult, res)
-            critic_results[res.get("critic", critic_name)] = res
+            tasks = [
+                asyncio.create_task(_run_and_return(name, critic_ref))
+                for name, critic_ref in critic_items
+            ]
 
-            yield {
-                "event": "critic_result",
-                "trace_id": trace_id,
-                "critic": res.get("critic", critic_name),
-                "violations": list(res.get("violations", [])),
-                "duration_ms": res.get("duration_ms"),
-                "evaluated_rules": res.get("evaluated_rules"),
-            }
+            for future in asyncio.as_completed(tasks):
+                critic_name, res = await future
+                if isinstance(res, CriticEvaluationError):
+                    crit_error = res
+                    self._emit_error(
+                        crit_error,
+                        stage="critic",
+                        trace_id=trace_id,
+                        critic=critic_name,
+                        context=context,
+                    )
+                    fallback = (
+                        crit_error.details.get("result")
+                        if isinstance(crit_error.details, dict)
+                        else None
+                    )
+                    res = fallback or self._build_critic_error_result(critic_name, crit_error)
+                elif isinstance(res, Exception):
+                    unknown_error = res
+                    critic_error = CriticEvaluationError(
+                        critic_name=critic_name,
+                        message=str(unknown_error),
+                        trace_id=trace_id,
+                        details={"error_type": type(unknown_error).__name__},
+                    )
+                    self._emit_error(
+                        critic_error,
+                        stage="critic",
+                        trace_id=trace_id,
+                        critic=critic_name,
+                        context=context,
+                    )
+                    res = self._build_critic_error_result(critic_name, unknown_error)
+                res = cast(CriticResult, res)
+                critic_results[res.get("critic", critic_name)] = res
+
+                yield {
+                    "event": "critic_result",
+                    "trace_id": trace_id,
+                    "critic": res.get("critic", critic_name),
+                    "violations": list(res.get("violations", [])),
+                    "duration_ms": res.get("duration_ms"),
+                    "evaluated_rules": res.get("evaluated_rules"),
+                }
 
         yield {
             "event": "critics_complete",
@@ -2041,6 +2276,9 @@ def create_engine(
     review_trigger_evaluator: Optional[ReviewTriggerEvaluatorProtocol] = None,
     dependencies: Optional[EngineDependencies] = None,
     error_monitor: Optional[Callable[[Exception, Dict[str, Any]], None]] = None,
+    gpu_manager: Optional[Any] = None,
+    gpu_executor: Optional[Any] = None,
+    gpu_embedding_cache: Optional[Any] = None,
 ) -> EleanorEngineV8:
 
     engine = EleanorEngineV8(
@@ -2057,6 +2295,9 @@ def create_engine(
         review_trigger_evaluator=review_trigger_evaluator,
         dependencies=dependencies,
         error_monitor=error_monitor,
+        gpu_manager=gpu_manager,
+        gpu_executor=gpu_executor,
+        gpu_embedding_cache=gpu_embedding_cache,
     )
 
     print(f"[ELEANOR ENGINE] create_engine() â†’ Engine instance ready: {engine.instance_id}")
