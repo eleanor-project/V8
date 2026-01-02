@@ -1,0 +1,153 @@
+# ELEANOR V8 GPU Configuration
+# Configure GPU acceleration for model inference and embeddings
+
+gpu:
+  # Enable GPU acceleration
+  enabled: true
+  
+  # Device preference order (first available will be used)
+  device_preference:
+    - cuda    # NVIDIA GPUs
+    - mps     # Apple Silicon (M1/M2/M3)
+    - cpu     # Fallback
+  
+  # Multi-GPU Configuration
+  multi_gpu:
+    # List of GPU device IDs to use (empty = auto-detect all)
+    device_ids: []
+    
+    # Parallelization strategy
+    # - "data_parallel": Replicate model across GPUs, split batches
+    # - "pipeline": Split model layers across GPUs (for very large models)
+    # - "none": Use single GPU
+    strategy: "data_parallel"
+    
+    # Output device for DataParallel (usually device_ids[0])
+    output_device: null
+  
+  # Memory Optimization
+  memory:
+    # Enable mixed precision (FP16/BF16)
+    mixed_precision: true
+    
+    # Data type for mixed precision
+    # - "auto": BF16 on Ampere+, FP16 on older GPUs
+    # - "float16": Always use FP16
+    # - "bfloat16": Always use BF16
+    # - "float32": Disable mixed precision
+    dtype: "auto"
+    
+    # Model quantization (reduces memory by 2-4x)
+    quantization:
+      enabled: false
+      bits: 8  # 4 or 8 (4-bit requires bitsandbytes)
+    
+    # Maximum memory per GPU (e.g., "24GB", "16GB")
+    # Set to prevent OOM on shared systems
+    max_memory_per_gpu: null
+    
+    # Offload model to CPU when not in use (saves GPU memory)
+    offload_to_cpu: false
+    
+    # KV cache for autoregressive generation
+    kv_cache:
+      enabled: true
+      max_size_mb: 4096
+  
+  # Batch Processing
+  batch:
+    # Default batch size for GPU operations
+    batch_size: 8
+    
+    # Maximum batch size (auto-tuned if dynamic_batching enabled)
+    max_batch_size: 32
+    
+    # Enable dynamic batching (automatically adjust batch size)
+    dynamic_batching: true
+    
+    # Batch timeout (ms) - wait this long to accumulate requests
+    batch_timeout_ms: 100
+  
+  # Async Operations
+  async:
+    # Number of CUDA streams for parallel operations
+    num_streams: 4
+    
+    # Enable async memory transfers
+    async_memory_transfers: true
+  
+  # Monitoring and Logging
+  monitoring:
+    # Log GPU memory statistics
+    log_memory_stats: true
+    
+    # Memory stats logging interval (seconds)
+    stats_interval_seconds: 60
+    
+    # Enable detailed profiling (impacts performance)
+    profiling: false
+    
+    # Profile output directory
+    profile_dir: "logs/gpu_profiles"
+  
+  # Model-Specific GPU Assignments
+  # Route specific models/critics to specific GPUs
+  model_assignments:
+    # Example: Assign ethics critic to GPU 0
+    # ethics_critic: 0
+    # fairness_critic: 1
+    # precedent_retrieval: 2
+    pass
+  
+  # Embeddings GPU Acceleration
+  embeddings:
+    # Keep embeddings on GPU for fast similarity computation
+    cache_on_gpu: true
+    
+    # Maximum embeddings to cache on GPU
+    max_cached_embeddings: 100000
+    
+    # Batch size for embedding computation
+    batch_size: 128
+
+# Ollama GPU Configuration (if using Ollama backend)
+ollama:
+  # GPU layers (-1 = all layers, 0 = CPU only)
+  gpu_layers: -1
+  
+  # Number of GPUs to use
+  num_gpu: 1
+  
+  # Enable GPU memory mapping
+  use_mmap: true
+  
+  # GPU memory lock (prevents swapping)
+  use_mlock: false
+
+# CUDA-Specific Settings
+cuda:
+  # CUDA_VISIBLE_DEVICES (comma-separated GPU indices)
+  # Leave empty to use all available GPUs
+  visible_devices: ""
+  
+  # cuDNN benchmark mode (faster but non-deterministic)
+  benchmark: true
+  
+  # Deterministic operations (slower but reproducible)
+  deterministic: false
+  
+  # Allow TF32 (faster on Ampere+ GPUs)
+  allow_tf32: true
+
+# Performance Tuning
+performance:
+  # Pre-allocate GPU memory (reduces fragmentation)
+  preallocate_memory: false
+  
+  # Memory growth strategy
+  # - "static": Allocate all memory upfront
+  # - "dynamic": Grow as needed
+  memory_growth: "dynamic"
+  
+  # Garbage collection frequency (operations)
+  gc_interval: 1000

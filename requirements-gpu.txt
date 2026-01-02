@@ -1,0 +1,45 @@
+# ELEANOR V8 GPU Requirements
+# Install with: pip install -r requirements-gpu.txt
+
+# Core GPU Support (CUDA 11.8)
+# For other CUDA versions, see: https://pytorch.org/get-started/locally/
+torch>=2.1.0
+torchvision>=0.16.0
+torchaudio>=2.1.0
+
+# For CUDA 11.8 (most common):
+# torch==2.1.2+cu118
+# torchvision==0.16.2+cu118
+# torchaudio==2.1.2+cu118
+# --extra-index-url https://download.pytorch.org/whl/cu118
+
+# For CUDA 12.1:
+# torch==2.1.2+cu121
+# --extra-index-url https://download.pytorch.org/whl/cu121
+
+# For Apple Silicon (MPS):
+# torch==2.1.2
+# torchvision==0.16.2
+# torchaudio==2.1.2
+
+# Optimized GPU Operations
+flash-attn>=2.5.0; platform_system != "Darwin"  # FlashAttention (CUDA only)
+triton>=2.1.0; platform_system != "Darwin"  # CUDA kernel optimization
+
+# Memory Optimization
+bitsandbytes>=0.41.0; platform_system != "Darwin"  # 4-bit/8-bit quantization
+acceler ate>=0.25.0  # Hugging Face multi-GPU utilities
+
+# Optional: Advanced Inference Optimization
+# vllm>=0.2.7  # High-performance LLM inference (requires CUDA)
+# deepspeed>=0.12.0  # Advanced parallelization and optimization
+# tensorrt>=8.6.0  # NVIDIA TensorRT for maximum performance
+
+# GPU Monitoring
+nvidia-ml-py3>=7.352.0; platform_system != "Darwin"  # NVIDIA Management Library
+gputil>=1.4.0  # GPU utility functions
+
+# Tensor Operations
+einops>=0.7.0  # Readable tensor operations
+
+# Note: For CPU-only installation, use requirements.txt instead
