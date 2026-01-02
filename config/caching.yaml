@@ -1,0 +1,44 @@
+# ELEANOR V8 - Caching Configuration
+
+caching:
+  enabled: true
+  
+  # Redis configuration (L2 cache)
+  redis:
+    enabled: false  # Set to true for production
+    url: redis://localhost:6379
+    db: 0
+    password: null
+    
+  # L1 (in-memory) cache sizes
+  l1_sizes:
+    precedent: 1000
+    embedding: 500
+    router: 200
+    critic: 1000
+    detector: 500
+    
+  # L1 TTLs (seconds)
+  l1_ttls:
+    precedent: 3600  # 1 hour
+    embedding: 7200  # 2 hours
+    router: 1800  # 30 minutes
+    critic: 1800  # 30 minutes
+    detector: 600  # 10 minutes
+    
+  # L2 TTLs (seconds) - longer for shared cache
+  l2_ttls:
+    precedent: 7200  # 2 hours
+    embedding: 14400  # 4 hours
+    router: 3600  # 1 hour
+    critic: 3600  # 1 hour
+    detector: 1200  # 20 minutes
+
+# Adaptive concurrency
+concurrency:
+  enabled: true
+  initial_limit: 6
+  min_limit: 2
+  max_limit: 20
+  target_latency_ms: 500
+  window_size: 100
