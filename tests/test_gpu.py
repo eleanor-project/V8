@@ -2,9 +2,8 @@
 Tests for GPU acceleration components.
 """
 
-import asyncio
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 
 class TestGPUManager:

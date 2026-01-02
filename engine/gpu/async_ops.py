@@ -6,9 +6,15 @@ Coordinate async GPU operations with CPU tasks.
 
 import asyncio
 import logging
-from typing import Any, Callable, List, Optional, Tuple
+from functools import partial
+from typing import Any, Callable, List, Tuple
 
 logger = logging.getLogger(__name__)
+
+try:
+    import torch
+except ImportError:  # pragma: no cover - torch optional
+    torch = None
 
 
 class AsyncGPUExecutor:
@@ -39,22 +45,16 @@ class AsyncGPUExecutor:
             num_streams: Number of CUDA streams (ignored for CPU/MPS)
         """
         self.device = device
-        
-        # Import torch here to avoid import errors
-        try:
-            import torch
-            self.torch = torch
-            self._torch_available = True
-        except ImportError:
+        self._torch_available = torch is not None
+
+        if not self._torch_available:
             logger.warning("PyTorch not installed. Async GPU operations unavailable.")
-            self.torch = None
-            self._torch_available = False
             self.streams = [None] * num_streams
             self.current_stream_idx = 0
             return
         
         # Create CUDA streams if using CUDA
-        if device is not None and device.type == "cuda":
+        if device is not None and device.type == "cuda" and torch.cuda.is_available():
             self.streams = [torch.cuda.Stream(device) for _ in range(num_streams)]
             logger.info(
                 "async_gpu_executor_initialized",
@@ -118,11 +118,12 @@ class AsyncGPUExecutor:
             return operation(*args, **kwargs)
         
         stream = self.get_stream()
+        call = partial(operation, *args, **kwargs)
         
         if stream is not None:
             # CUDA: Use stream
-            with self.torch.cuda.stream(stream):
-                result = operation(*args, **kwargs)
+            with torch.cuda.stream(stream):
+                result = call()
                 
                 # Synchronize stream in executor to avoid blocking event loop
                 await asyncio.get_event_loop().run_in_executor(
@@ -132,9 +133,7 @@ class AsyncGPUExecutor:
             # CPU or MPS: no stream management needed
             # Run in executor to avoid blocking
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None, operation, *args
-            )
+            result = await loop.run_in_executor(None, call)
         
         return result
     

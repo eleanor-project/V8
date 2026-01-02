@@ -5,286 +5,239 @@ Manages GPU resources, device allocation, and monitoring.
 """
 
 import logging
-from typing import Dict, List, Optional, Any
+import sys
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+try:
+    import torch
+except ImportError:  # pragma: no cover - torch optional
+    torch = None
+
+
+@dataclass
+class GPUConfig:
+    """Configuration for GPU usage and tuning."""
+
+    enabled: bool = True
+    device_preference: List[str] = field(default_factory=lambda: ["cuda", "mps", "cpu"])
+    preferred_devices: Optional[List[int]] = None
+    mixed_precision: bool = True
+    num_streams: int = 4
+    max_memory_per_gpu: Optional[float] = None
+    log_memory_stats: bool = False
+    memory_check_interval: float = 60.0
+    default_batch_size: int = 8
+    max_batch_size: int = 32
+    dynamic_batching: bool = True
+
+
+@dataclass
+class GPUMemoryStats:
+    """Structured GPU memory stats."""
+
+    available: bool
+    device_id: int
+    allocated_mb: float = 0.0
+    reserved_mb: float = 0.0
+    max_allocated_mb: float = 0.0
+    total_mb: float = 0.0
+    utilization_pct: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "available": self.available,
+            "device_id": self.device_id,
+            "allocated_mb": self.allocated_mb,
+            "reserved_mb": self.reserved_mb,
+            "max_allocated_mb": self.max_allocated_mb,
+            "total_mb": self.total_mb,
+            "utilization_pct": self.utilization_pct,
+        }
 
 
 class GPUManager:
     """
     Manage GPU resources and device allocation.
-    
+
     Features:
     - Auto-detect CUDA, MPS (Apple Silicon), or CPU
     - Multi-GPU device management
     - Memory statistics and monitoring
     - Device health checks
-    
-    Example:
-        >>> gpu_manager = GPUManager()
-        >>> device = gpu_manager.get_device()
-        >>> print(f"Using device: {device}")
-        Using device: cuda:0
-        
-        >>> if gpu_manager.is_gpu_available():
-        ...     stats = gpu_manager.memory_stats()
-        ...     print(f"GPU Memory: {stats['allocated_mb']:.1f} MB")
     """
-    
-    def __init__(self, preferred_devices: Optional[List[int]] = None):
-        """
-        Initialize GPU Manager.
-        
-        Args:
-            preferred_devices: List of GPU device IDs to prefer (None = use all)
-        """
-        # Import torch here to avoid import errors if not installed
-        try:
-            import torch
-            self.torch = torch
-            self._torch_available = True
-        except ImportError:
+
+    def __init__(
+        self,
+        config: Optional[GPUConfig] = None,
+        preferred_devices: Optional[List[int]] = None,
+    ):
+        self.config = config or GPUConfig()
+
+        if preferred_devices is not None:
+            self.preferred_devices = list(preferred_devices)
+        elif self.config.preferred_devices is not None:
+            self.preferred_devices = list(self.config.preferred_devices)
+        else:
+            self.preferred_devices = []
+
+        torch_available = torch is not None and sys.modules.get("torch") is not None
+
+        if not torch_available:
             logger.warning(
                 "PyTorch not installed. GPU acceleration unavailable. "
                 "Install with: pip install torch"
             )
-            self.torch = None
-            self._torch_available = False
             self.device = None
             self.devices_available = 0
-            self.preferred_devices = []
             return
-        
-        # Detect device
-        self.device = self._detect_device()
-        self.devices_available = (
-            torch.cuda.device_count() if torch.cuda.is_available() else 0
-        )
-        self.preferred_devices = preferred_devices or list(range(self.devices_available))
-        
-        # Log initialization
+
+        self.devices_available = torch.cuda.device_count() if torch.cuda.is_available() else 0
+
+        if not self.config.enabled:
+            self.device = torch.device("cpu")
+        else:
+            self.device = self._detect_device()
+
+        if not self.preferred_devices:
+            self.preferred_devices = list(range(self.devices_available))
+
         logger.info(
             "gpu_manager_initialized",
             extra={
-                "device": str(self.device),
-                "device_type": self.device.type,
+                "device": str(self.device) if self.device is not None else None,
+                "device_type": getattr(self.device, "type", None),
                 "cuda_available": torch.cuda.is_available(),
                 "device_count": self.devices_available,
                 "cuda_version": torch.version.cuda if torch.cuda.is_available() else None,
                 "preferred_devices": self.preferred_devices,
-            }
+                "enabled": self.config.enabled,
+            },
         )
-    
+
     def _detect_device(self):
-        """
-        Auto-detect best available device.
-        
-        Returns:
-            torch.device: Best available device (cuda, mps, or cpu)
-        """
-        if not self._torch_available:
+        """Auto-detect best available device based on preference list."""
+        if torch is None:
             return None
-        
-        # Try CUDA first (NVIDIA GPUs)
-        if self.torch.cuda.is_available():
-            device = self.torch.device("cuda")
-            logger.info("detected_cuda_gpu", extra={"device": str(device)})
-            return device
-        
-        # Try MPS (Apple Silicon)
-        if hasattr(self.torch.backends, 'mps') and self.torch.backends.mps.is_available():
-            device = self.torch.device("mps")
-            logger.info("detected_apple_mps", extra={"device": str(device)})
-            return device
-        
-        # Fallback to CPU
-        device = self.torch.device("cpu")
-        logger.info(
-            "using_cpu_fallback",
-            extra={
-                "device": str(device),
-                "reason": "No GPU detected"
-            }
-        )
-        return device
-    
-    def is_gpu_available(self) -> bool:
-        """
-        Check if GPU acceleration is available.
-        
-        Returns:
-            bool: True if CUDA or MPS available
-        """
-        if not self._torch_available or self.device is None:
+
+        preferences = self.config.device_preference or ["cuda", "mps", "cpu"]
+
+        for pref in preferences:
+            pref_lower = pref.lower()
+            if pref_lower == "cuda" and torch.cuda.is_available():
+                device = torch.device("cuda")
+                logger.info("detected_cuda_gpu", extra={"device": str(device)})
+                return device
+
+            if pref_lower == "mps" and hasattr(torch.backends, "mps"):
+                if torch.backends.mps.is_available():
+                    device = torch.device("mps")
+                    logger.info("detected_apple_mps", extra={"device": str(device)})
+                    return device
+
+            if pref_lower == "cpu":
+                device = torch.device("cpu")
+                logger.info(
+                    "using_cpu_fallback",
+                    extra={"device": str(device), "reason": "Preference order"},
+                )
+                return device
+
+        return torch.device("cpu")
+
+    def is_available(self) -> bool:
+        """Check if GPU acceleration is available."""
+        if torch is None or not self.config.enabled or self.device is None:
             return False
         return self.device.type in ("cuda", "mps")
-    
+
+    def is_gpu_available(self) -> bool:
+        """Backward-compatible GPU availability check."""
+        return self.is_available()
+
     def get_device(self, preferred_gpu: Optional[int] = None):
-        """
-        Get device for computation.
-        
-        Args:
-            preferred_gpu: Specific GPU ID to use (None = use default)
-        
-        Returns:
-            torch.device: Device to use for computation
-        """
-        if not self._torch_available:
+        """Get best device, optionally selecting a specific CUDA index."""
+        if torch is None or self.device is None:
             return None
-        
-        if preferred_gpu is not None and self.devices_available > preferred_gpu:
-            return self.torch.device(f"cuda:{preferred_gpu}")
-        
+
+        if self.device.type == "cuda" and preferred_gpu is not None:
+            if torch.cuda.is_available() and 0 <= preferred_gpu < torch.cuda.device_count():
+                return torch.device(f"cuda:{preferred_gpu}")
+
         return self.device
-    
+
     def memory_stats(self, device_id: int = 0) -> Dict[str, Any]:
-        """
-        Get GPU memory statistics.
-        
-        Args:
-            device_id: GPU device ID (default: 0)
-        
-        Returns:
-            Dict with memory statistics:
-            - device_id: GPU device ID
-            - allocated_mb: Currently allocated memory (MB)
-            - reserved_mb: Reserved memory (MB)
-            - max_allocated_mb: Peak allocated memory (MB)
-            - total_mb: Total GPU memory (MB)
-            - utilization_pct: Memory utilization percentage
-            - available: Whether statistics are available
-        """
-        if not self._torch_available:
-            return {"available": False, "reason": "PyTorch not installed"}
-        
-        if not self.torch.cuda.is_available():
-            return {"available": False, "reason": "CUDA not available"}
-        
-        if device_id >= self.devices_available:
-            return {
-                "available": False,
-                "reason": f"Device {device_id} not found (only {self.devices_available} devices)"
-            }
-        
+        """Return memory stats for a CUDA device (if available)."""
+        if (
+            torch is None
+            or not self.config.enabled
+            or self.device is None
+            or self.device.type != "cuda"
+            or not torch.cuda.is_available()
+        ):
+            return GPUMemoryStats(available=False, device_id=device_id).to_dict()
+
         try:
-            allocated = self.torch.cuda.memory_allocated(device_id)
-            reserved = self.torch.cuda.memory_reserved(device_id)
-            max_allocated = self.torch.cuda.max_memory_allocated(device_id)
-            total = self.torch.cuda.get_device_properties(device_id).total_memory
-            
-            return {
-                "available": True,
-                "device_id": device_id,
-                "allocated_mb": allocated / 1024**2,
-                "reserved_mb": reserved / 1024**2,
-                "max_allocated_mb": max_allocated / 1024**2,
-                "total_mb": total / 1024**2,
-                "utilization_pct": (allocated / total * 100) if total > 0 else 0.0,
-            }
-        except Exception as e:
-            logger.error(
-                "memory_stats_error",
-                extra={"device_id": device_id, "error": str(e)},
-                exc_info=True
+            allocated = torch.cuda.memory_allocated(device_id)
+            reserved = torch.cuda.memory_reserved(device_id)
+            max_allocated = torch.cuda.max_memory_allocated(device_id)
+            total = torch.cuda.get_device_properties(device_id).total_memory
+        except Exception as exc:
+            logger.warning(
+                "gpu_memory_stats_failed",
+                extra={"error": str(exc), "device_id": device_id},
             )
-            return {"available": False, "reason": str(e)}
-    
+            return GPUMemoryStats(available=False, device_id=device_id).to_dict()
+
+        allocated_mb = allocated / (1024 ** 2)
+        reserved_mb = reserved / (1024 ** 2)
+        max_allocated_mb = max_allocated / (1024 ** 2)
+        total_mb = total / (1024 ** 2)
+        utilization_pct = (allocated / total * 100.0) if total else 0.0
+
+        return GPUMemoryStats(
+            available=True,
+            device_id=device_id,
+            allocated_mb=allocated_mb,
+            reserved_mb=reserved_mb,
+            max_allocated_mb=max_allocated_mb,
+            total_mb=total_mb,
+            utilization_pct=utilization_pct,
+        ).to_dict()
+
     def health_check(self) -> Dict[str, Any]:
-        """
-        Check GPU health status.
-        
-        Returns:
-            Dict with health status:
-            - healthy: Overall health status
-            - mode: cpu, cuda, or mps
-            - devices: List of device health stats (CUDA only)
-        """
-        if not self._torch_available:
-            return {
-                "healthy": True,
-                "mode": "cpu",
-                "reason": "PyTorch not installed"
-            }
-        
-        if not self.torch.cuda.is_available():
-            return {
-                "healthy": True,
-                "mode": self.device.type if self.device else "cpu",
-                "message": "No CUDA devices for detailed health check"
-            }
-        
-        health = {
-            "healthy": True,
-            "mode": "cuda",
-            "devices": []
-        }
-        
+        """Return a health snapshot for all available devices."""
+        if not self.is_available():
+            mode = "cpu" if torch is not None else "unavailable"
+            return {"healthy": False, "mode": mode, "devices": []}
+
+        if self.device.type == "mps":
+            return {"healthy": True, "mode": "mps", "devices": []}
+
+        devices = []
+        healthy = True
         for device_id in range(self.devices_available):
-            try:
-                stats = self.memory_stats(device_id)
-                
-                if not stats.get("available"):
-                    device_health = {
-                        "device_id": device_id,
-                        "healthy": False,
-                        "reason": stats.get("reason", "Unknown")
-                    }
-                else:
-                    # Flag if >95% memory used
-                    utilization = stats["utilization_pct"]
-                    device_health = {
-                        "device_id": device_id,
-                        "healthy": utilization < 95,
-                        "utilization_pct": utilization,
-                        "allocated_mb": stats["allocated_mb"],
-                        "total_mb": stats["total_mb"],
-                    }
-                    
-                    if utilization >= 95:
-                        device_health["warning"] = "High memory utilization"
-                        health["healthy"] = False
-                
-                health["devices"].append(device_health)
-                
-            except Exception as e:
-                logger.error(
-                    "device_health_check_failed",
-                    extra={"device_id": device_id, "error": str(e)},
-                    exc_info=True
-                )
-                health["healthy"] = False
-                health["devices"].append({
+            stats = self.memory_stats(device_id)
+            device_healthy = bool(stats.get("available"))
+            healthy = healthy and device_healthy
+            devices.append(
+                {
                     "device_id": device_id,
-                    "healthy": False,
-                    "error": str(e)
-                })
-        
-        return health
-    
-    def reset_peak_stats(self, device_id: Optional[int] = None):
-        """
-        Reset peak memory statistics.
-        
-        Args:
-            device_id: GPU device ID (None = all devices)
-        """
-        if not self._torch_available or not self.torch.cuda.is_available():
-            return
-        
-        if device_id is not None:
-            self.torch.cuda.reset_peak_memory_stats(device_id)
-        else:
-            for i in range(self.devices_available):
-                self.torch.cuda.reset_peak_memory_stats(i)
-    
+                    "healthy": device_healthy,
+                    "memory_stats": stats,
+                }
+            )
+
+        return {"healthy": healthy, "mode": "cuda", "devices": devices}
+
     def __repr__(self) -> str:
-        """String representation."""
-        if not self._torch_available:
-            return "GPUManager(torch_unavailable)"
-        
+        device_str = str(self.device) if self.device is not None else "none"
         return (
-            f"GPUManager("
-            f"device={self.device}, "
-            f"devices={self.devices_available}, "
-            f"type={self.device.type if self.device else 'none'})"
+            f"GPUManager(device={device_str}, devices_available={self.devices_available}, "
+            f"enabled={self.config.enabled})"
         )
+
+
+__all__ = ["GPUConfig", "GPUMemoryStats", "GPUManager"]
