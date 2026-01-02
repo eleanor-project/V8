@@ -29,17 +29,19 @@ python scripts/validate_config.py
 
 ```bash
 # Development
-export ENV=development
+export ELEANOR_ENVIRONMENT=development
 # Uses .env.development
 
 # Staging
-export ENV=staging
+export ELEANOR_ENVIRONMENT=staging
 # Uses .env.staging
 
 # Production
-export ENV=production
+export ELEANOR_ENVIRONMENT=production
 # Uses .env.production
 ```
+
+`ELEANOR_ENV` and `ENV` are supported as legacy aliases.
 
 ## Configuration Structure
 
@@ -111,7 +113,9 @@ ELEANOR_CACHE__ENABLED=true
 ELEANOR_CACHE__REDIS_URL=redis://redis:6379/0
 ELEANOR_CACHE__PRECEDENT_TTL=3600
 ELEANOR_CACHE__EMBEDDINGS_TTL=7200
+ELEANOR_CACHE__ROUTER_TTL=1800
 ELEANOR_CACHE__CRITICS_TTL=1800
+ELEANOR_CACHE__DETECTOR_TTL=600
 ELEANOR_CACHE__MAX_MEMORY_MB=500
 ```
 
@@ -123,7 +127,14 @@ ELEANOR_SECURITY__MAX_CONTEXT_DEPTH=5
 ELEANOR_SECURITY__ENABLE_PROMPT_INJECTION_DETECTION=true
 ELEANOR_SECURITY__SECRET_PROVIDER=vault  # env, aws, vault
 ELEANOR_SECURITY__SECRETS_CACHE_TTL=300
+ELEANOR_SECURITY__AWS__REGION=us-west-2
+ELEANOR_SECURITY__AWS__SECRET_PREFIX=eleanor
+ELEANOR_SECURITY__VAULT__ADDRESS=https://vault.example.com
+ELEANOR_SECURITY__VAULT__TOKEN=
+ELEANOR_SECURITY__VAULT__MOUNT_PATH=secret/eleanor
 ```
+
+See `docs/SECRETS_MANAGEMENT.md` for provider setup and rotation guidance.
 
 ### API Rate Limiting
 
@@ -155,6 +166,22 @@ ELEANOR_RESILIENCE__CIRCUIT_BREAKER_TIMEOUT=60
 ELEANOR_RESILIENCE__ENABLE_GRACEFUL_DEGRADATION=true
 ELEANOR_RESILIENCE__MAX_RETRY_ATTEMPTS=3
 ```
+
+### Legacy YAML Configuration (Optional)
+
+```bash
+# Lowest-precedence YAML config (legacy support)
+export ELEANOR_CONFIG=./config/eleanor.yaml
+```
+
+### Configuration Health
+
+```bash
+# Local validation
+python scripts/validate_config.py --env development
+```
+
+Runtime health endpoint (admin only): `GET /admin/config/health`
 
 ## Using Configuration in Code
 
@@ -236,7 +263,7 @@ engine = EleanorEngineV8(
 
 - Use `.env.production`
 - **Required settings:**
-  - `SECRET_PROVIDER=vault` or `aws` (NOT `env`)
+  - `ELEANOR_SECURITY__SECRET_PROVIDER=vault` or `aws` (NOT `env`)
   - `ENABLE_CIRCUIT_BREAKERS=true`
   - `ENABLE_STRUCTURED_LOGGING=true`
   - `PRECEDENT__BACKEND` must be configured

@@ -53,6 +53,7 @@ def validate_environment(env_file: str) -> Dict[str, Any]:
         
         # Validation checks
         manager = ConfigManager()
+        manager.reload(env_file=env_file)
         validation = manager.validate()
         
         result["warnings"].extend(validation.get("warnings", []))
