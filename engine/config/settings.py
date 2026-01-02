@@ -267,16 +267,56 @@ class CacheConfig(BaseModel):
         ge=60,
         description="Embeddings cache TTL in seconds"
     )
+    router_ttl: int = Field(
+        default=1800,
+        ge=60,
+        description="Router cache TTL in seconds"
+    )
     critics_ttl: int = Field(
         default=1800,
         ge=60,
         description="Critics cache TTL in seconds"
+    )
+    detector_ttl: int = Field(
+        default=600,
+        ge=60,
+        description="Detector cache TTL in seconds"
     )
     max_memory_mb: int = Field(
         default=500,
         ge=50,
         le=5000,
         description="Maximum in-memory cache size in MB"
+    )
+
+
+class AWSSecretsConfig(BaseModel):
+    """AWS Secrets Manager configuration."""
+
+    region: str = Field(
+        default="us-west-2",
+        description="AWS region for Secrets Manager"
+    )
+    secret_prefix: Optional[str] = Field(
+        default="eleanor",
+        description="Optional prefix for secret names"
+    )
+
+
+class VaultSecretsConfig(BaseModel):
+    """HashiCorp Vault configuration."""
+
+    address: Optional[str] = Field(
+        default=None,
+        description="Vault address (e.g., https://vault.example.com)"
+    )
+    token: Optional[str] = Field(
+        default=None,
+        description="Vault token (prefer env or sidecar injection)"
+    )
+    mount_path: str = Field(
+        default="secret/eleanor",
+        description="Vault mount path for secrets"
     )
 
 
@@ -308,6 +348,8 @@ class SecurityConfig(BaseModel):
         ge=60,
         description="Secrets cache TTL in seconds"
     )
+    aws: AWSSecretsConfig = Field(default_factory=AWSSecretsConfig)
+    vault: VaultSecretsConfig = Field(default_factory=VaultSecretsConfig)
 
 
 class ObservabilityConfig(BaseModel):
@@ -550,9 +592,15 @@ class EleanorSettings(BaseSettings):
             "detail_level": self.detail_level,
             "max_concurrency": self.performance.max_concurrency,
             "timeout_seconds": self.performance.timeout_seconds,
+            "enable_adaptive_concurrency": self.performance.enable_adaptive_concurrency,
+            "target_latency_ms": self.performance.target_latency_ms,
             "enable_reflection": self.enable_reflection,
             "enable_drift_check": self.enable_drift_check,
             "enable_precedent_analysis": self.enable_precedent_analysis,
+            "enable_circuit_breakers": self.resilience.enable_circuit_breakers,
+            "circuit_breaker_threshold": self.resilience.circuit_breaker_threshold,
+            "circuit_breaker_timeout": self.resilience.circuit_breaker_timeout,
+            "enable_graceful_degradation": self.resilience.enable_graceful_degradation,
             "jsonl_evidence_path": self.evidence.jsonl_path,
         }
 
@@ -606,6 +654,8 @@ __all__ = [
     "PerformanceConfig",
     "CacheConfig",
     "SecurityConfig",
+    "AWSSecretsConfig",
+    "VaultSecretsConfig",
     "ObservabilityConfig",
     "ResilienceConfig",
 ]

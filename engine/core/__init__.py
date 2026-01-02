@@ -10,6 +10,7 @@ embeddings, governance, and evidence sinks.
 import os
 import json
 import inspect
+import logging
 from typing import Any, Dict, Optional, cast
 
 from engine.engine import create_engine, EngineConfig
@@ -27,6 +28,13 @@ from engine.precedent.stores import (
 from engine.recorder.evidence_recorder import EvidenceRecorder
 from engine.detectors.engine import DetectorEngineV8
 from engine.governance.opa_client import OPAClientV8
+from engine.security.secrets import (
+    EnvironmentSecretProvider,
+    build_secret_provider_from_settings,
+    get_llm_api_key_sync,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def _wrap_llm_adapter(fn):
@@ -212,9 +220,34 @@ def build_eleanor_engine_v8(
     local development can run with minimal configuration.
     """
 
-    openai_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY")
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_KEY")
-    xai_key = os.getenv("XAI_API_KEY") or os.getenv("XAI_KEY")
+    settings = None
+    environment = os.getenv("ELEANOR_ENVIRONMENT") or os.getenv("ELEANOR_ENV") or "development"
+    cache_ttl = 300
+    secret_provider = None
+
+    try:
+        from engine.config import ConfigManager
+
+        settings = ConfigManager().settings
+        environment = settings.environment
+        cache_ttl = settings.security.secrets_cache_ttl
+        secret_provider = build_secret_provider_from_settings(settings)
+    except Exception as exc:
+        if environment == "production":
+            raise
+        logger.warning(
+            "Secret provider setup failed; falling back to environment provider",
+            extra={"error": str(exc)},
+        )
+
+    if secret_provider is None:
+        if environment == "production":
+            raise RuntimeError("Secret provider required in production")
+        secret_provider = EnvironmentSecretProvider(cache_ttl=cache_ttl)
+
+    openai_key = get_llm_api_key_sync("openai", secret_provider)
+    anthropic_key = get_llm_api_key_sync("anthropic", secret_provider)
+    xai_key = get_llm_api_key_sync("xai", secret_provider)
     embedding_backend = os.getenv("EMBEDDING_BACKEND", "gpt")
 
     adapters = router_adapters or {}
@@ -238,7 +271,13 @@ def build_eleanor_engine_v8(
         xai_key=xai_key,
     )
 
-    recorder = EvidenceRecorder(jsonl_path=evidence_path or "evidence.jsonl")
+    evidence_buffer = settings.evidence.buffer_size if settings else None
+    evidence_flush_interval = settings.evidence.flush_interval if settings else None
+    recorder = EvidenceRecorder(
+        jsonl_path=evidence_path or "evidence.jsonl",
+        buffer_size=evidence_buffer,
+        flush_interval=evidence_flush_interval,
+    )
 
     detectors = {
         "coercion": HeuristicDetector("coercion", [r"no choice", r"you must", r"or else", r"cannot refuse"]),
