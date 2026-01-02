@@ -290,9 +290,10 @@ def build_eleanor_engine_v8(
     uncertainty = UncertaintyEngineV8() if UncertaintyEngineV8 is not None else None
     aggregator = AggregatorV8()
     precedent_engine = PrecedentAlignmentEngineV8() if PrecedentAlignmentEngineV8 is not None else None
+    engine_config = EngineConfig.from_settings(settings) if settings else EngineConfig()
 
     engine_instance = create_engine(
-        config=EngineConfig(),
+        config=engine_config,
         evidence_recorder=recorder,
         detector_engine=detector_engine,
         precedent_engine=precedent_engine,

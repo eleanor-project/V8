@@ -60,7 +60,18 @@ def _normalize_yaml_config(payload: Dict[str, Any]) -> Dict[str, Any]:
     if "enable_precedent_analysis" in payload:
         normalized["enable_precedent_analysis"] = payload["enable_precedent_analysis"]
 
-    for key in ("llm", "router", "precedent", "evidence", "performance", "cache", "security", "observability", "resilience"):
+    for key in (
+        "llm",
+        "router",
+        "precedent",
+        "evidence",
+        "performance",
+        "cache",
+        "security",
+        "observability",
+        "resilience",
+        "resource_management",
+    ):
         if key in payload:
             normalized[key] = payload[key]
 
@@ -423,6 +434,22 @@ class ResilienceConfig(BaseModel):
     )
 
 
+class ShutdownConfig(BaseModel):
+    """Graceful shutdown configuration."""
+
+    graceful_timeout: float = Field(
+        default=30.0,
+        ge=1.0,
+        description="Maximum seconds to wait for cleanup"
+    )
+
+
+class ResourceManagementConfig(BaseModel):
+    """Resource lifecycle configuration."""
+
+    shutdown: ShutdownConfig = Field(default_factory=ShutdownConfig)
+
+
 class EleanorSettings(BaseSettings):
     """
     Main ELEANOR configuration with hierarchical overrides.
@@ -527,6 +554,7 @@ class EleanorSettings(BaseSettings):
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     resilience: ResilienceConfig = Field(default_factory=ResilienceConfig)
+    resource_management: ResourceManagementConfig = Field(default_factory=ResourceManagementConfig)
     
     # Critics Configuration (dynamic loading)
     enabled_critics: List[str] = Field(
@@ -602,6 +630,7 @@ class EleanorSettings(BaseSettings):
             "circuit_breaker_timeout": self.resilience.circuit_breaker_timeout,
             "enable_graceful_degradation": self.resilience.enable_graceful_degradation,
             "jsonl_evidence_path": self.evidence.jsonl_path,
+            "shutdown_timeout_seconds": self.resource_management.shutdown.graceful_timeout,
         }
 
 
@@ -658,4 +687,6 @@ __all__ = [
     "VaultSecretsConfig",
     "ObservabilityConfig",
     "ResilienceConfig",
+    "ResourceManagementConfig",
+    "ShutdownConfig",
 ]

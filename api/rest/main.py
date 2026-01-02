@@ -702,6 +702,8 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting ELEANOR V8 API server...")
     initialize_engine()
+    if engine is not None and hasattr(engine, "__aenter__"):
+        await engine.__aenter__()
     refresh_task = None
     if secret_provider is not None:
         refresh_task = asyncio.create_task(_secret_refresh_loop(secret_provider))
