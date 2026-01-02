@@ -125,6 +125,16 @@ ELEANOR_SECURITY__SECRET_PROVIDER=vault  # env, aws, vault
 ELEANOR_SECURITY__SECRETS_CACHE_TTL=300
 ```
 
+### API Rate Limiting
+
+```bash
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_REQUESTS=100
+RATE_LIMIT_WINDOW=60
+RATE_LIMIT_REDIS_URL=redis://localhost:6379/0
+RATE_LIMIT_KEY_PREFIX=eleanor:rate_limit:
+```
+
 ### Observability
 
 ```bash

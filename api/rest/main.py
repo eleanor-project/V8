@@ -82,8 +82,10 @@ from pydantic import BaseModel
 from pathlib import Path
 from engine.execution.human_review import enforce_human_review
 from engine.schemas.escalation import AggregationResult, HumanAction, ExecutableDecision
+from engine.exceptions import InputValidationError
 from engine.version import ELEANOR_VERSION
 from engine.utils.critic_names import canonical_critic_name, canonicalize_critic_map
+from engine.utils.validation import sanitize_for_logging
 
 # Initialize logging
 configure_logging()
@@ -955,6 +957,30 @@ async def deliberate(
 
         return response_payload
 
+    except InputValidationError as exc:
+        duration_ms = (time.time() - start_time) * 1000
+        safe_input = sanitize_for_logging(payload.input, max_length=300)
+
+        logger.warning(
+            "input_validation_failed",
+            extra={
+                "trace_id": trace_id,
+                "error": exc.message,
+                "validation_type": exc.details.get("validation_type"),
+                "field": exc.details.get("field"),
+                "input_excerpt": safe_input,
+                "duration_ms": duration_ms,
+            },
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_input",
+                "message": exc.message,
+                "details": exc.details,
+            },
+        )
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
 
@@ -1110,6 +1136,24 @@ async def evaluate(
             errors=[],
         )
 
+    except InputValidationError as exc:
+        logger.warning(
+            "evaluation_input_validation_failed",
+            extra={
+                "request_id": payload.request_id,
+                "error": exc.message,
+                "validation_type": exc.details.get("validation_type"),
+                "field": exc.details.get("field"),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_input",
+                "message": exc.message,
+                "details": exc.details,
+            },
+        )
     except Exception as exc:
         logger.error(
             "evaluation_failed",

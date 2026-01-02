@@ -22,7 +22,7 @@ class DeliberationRequest(BaseModel):
     input: str = Field(
         ...,
         min_length=1,
-        max_length=50000,
+        max_length=100000,
         description="The input text to deliberate on"
     )
     context: Dict[str, Any] = Field(
@@ -47,7 +47,7 @@ class DeliberationRequest(BaseModel):
     @validator('context')
     def validate_context(cls, v: Dict[str, Any]) -> Dict[str, Any]:
         """Ensure context doesn't contain overly nested structures."""
-        def check_depth(obj: Any, depth: int = 0, max_depth: int = 10) -> bool:
+        def check_depth(obj: Any, depth: int = 0, max_depth: int = 5) -> bool:
             if depth > max_depth:
                 return False
             if isinstance(obj, dict):

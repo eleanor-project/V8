@@ -33,7 +33,6 @@ jobs:
       
       - name: Run mypy type checker
         run: mypy engine/ api/
-        continue-on-error: true  # Don't block on type errors initially
 
       - name: Run pyright type checker
         run: pyright
@@ -57,20 +56,22 @@ jobs:
       
       - name: Run Bandit security scanner
         run: |
-          bandit -r engine/ api/ -f json -o bandit-report.json
-          bandit -r engine/ api/ -f screen
-        continue-on-error: true
+          python -m bandit -r engine/ api/ governance/ -lll -f json -o bandit-report.json
+          python -m bandit -r engine/ api/ governance/ -lll -f screen
       
       - name: Run Safety vulnerability check
-        run: safety check --json
-        continue-on-error: true
+        run: |
+          python -m safety check --json --output safety-report.json
+          python -m safety check
       
       - name: Upload security reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: security-reports
-          path: bandit-report.json
+          path: |
+            bandit-report.json
+            safety-report.json
 
   test:
     name: Test Suite

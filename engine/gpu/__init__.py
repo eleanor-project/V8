@@ -20,9 +20,21 @@ Usage:
 
 from .manager import GPUManager, GPUConfig, GPUMemoryStats
 from .async_ops import AsyncGPUExecutor
-from .embeddings import GPUEmbeddingCache
-from .batch_processor import GPUBatchProcessor
-from .parallelization import MultiGPURouter as MultiGPUManager
+
+try:
+    from .embeddings import GPUEmbeddingCache
+except Exception:
+    GPUEmbeddingCache = None  # type: ignore[assignment]
+
+try:
+    from .batch_processor import GPUBatchProcessor
+except Exception:
+    GPUBatchProcessor = None  # type: ignore[assignment]
+
+try:
+    from .parallelization import MultiGPURouter as MultiGPUManager
+except Exception:
+    MultiGPUManager = None  # type: ignore[assignment]
 
 __all__ = [
     "GPUManager",

@@ -215,9 +215,9 @@ def validate_trace_id(trace_id: Optional[str]) -> str:
             raise InputValidationError(f"trace_id is not a valid UUID: {trace_id}")
     
     # Otherwise just check it's a reasonable identifier
-    if not re.match(r'^[a-zA-Z0-9_-]{1,64}$', trace_id):
+    if not re.match(r'^[a-zA-Z0-9_-]{1,128}$', trace_id):
         raise InputValidationError(
-            f"trace_id must be alphanumeric with hyphens/underscores, max 64 chars"
+            "trace_id must be alphanumeric with hyphens/underscores, max 128 chars"
         )
     
     return trace_id

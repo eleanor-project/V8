@@ -429,29 +429,53 @@ async def verify_token(credentials = Security(security)):
 ```python
 # api/schemas.py
 from pydantic import BaseModel, Field, validator
+from typing import Dict, Any, Optional
 
 class DeliberationRequest(BaseModel):
-    input: str = Field(..., min_length=1, max_length=10000)
-    context: dict = Field(default_factory=dict)
+    input: str = Field(..., min_length=1, max_length=100000)
+    context: Dict[str, Any] = Field(default_factory=dict)
+    trace_id: Optional[str] = Field(None, pattern=r"^[a-zA-Z0-9_-]{1,128}$")
     
     @validator('input')
     def sanitize_input(cls, v):
         return v.strip()
 ```
 
+Runtime validation (`engine/validation.py`) enforces:
+- text length ≤ 100KB, control chars stripped, Unicode normalized
+- context JSON size ≤ 1MB, depth ≤ 5, key count ≤ 100
+- override keys validated (`skip_router` requires `model_output`)
+- prompt injection patterns rejected
+
+Example safe context:
+
+```json
+{
+  "domain": "finance",
+  "priority": "high",
+  "constraints": {"max_risk_score": 0.4}
+}
+```
+
+Validation error response (HTTP 400):
+
+```json
+{
+  "error": "invalid_input",
+  "message": "Context must be JSON-serializable",
+  "details": {"field": "context", "validation_type": "serialization_error"}
+}
+```
+
 ### Priority 3: Rate Limiting
 
 ```python
-# api/rest/main.py
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-limiter = Limiter(key_func=get_remote_address)
-
-@app.post("/deliberate")
-@limiter.limit("10/minute")
-async def deliberate_endpoint(request: Request, payload: DeliberationRequest):
-    # ...
+# api/middleware/rate_limit.py
+# Token-bucket middleware with optional Redis backend.
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_REQUESTS=100
+RATE_LIMIT_WINDOW=60
+RATE_LIMIT_REDIS_URL=redis://localhost:6379/0
 ```
 
 ---

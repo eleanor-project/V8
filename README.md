@@ -1,5 +1,8 @@
 # ELEANOR V8 Engine Repository
 
+[![Constitutional CI](https://github.com/eleanor-project/V8/actions/workflows/constitutional-ci.yml/badge.svg)](https://github.com/eleanor-project/V8/actions/workflows/constitutional-ci.yml)
+[![Quality Checks](https://github.com/eleanor-project/V8/actions/workflows/quality-checks.yml/badge.svg)](https://github.com/eleanor-project/V8/actions/workflows/quality-checks.yml)
+
 ELEANOR V8 enforces constitutional governance at runtime: critic-declared escalation gates execution, `enforce_human_review` must approve every decision, and `execute_decision` refuses anything without an audit trail. CI (`.github/workflows/constitutional-ci.yml`) blocks merges if these guardrails drift.
 
 ## Production Roadmap
