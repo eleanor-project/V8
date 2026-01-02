@@ -50,7 +50,7 @@ class EscalationSignal(BaseModel):
     clause: EscalationClause
     triggered_at: str = Field(..., description="ISO timestamp")
     trace_id: str = Field(..., description="Audit trail identifier")
-    human_review_required: bool = Field(default=True, const=True)
+    human_review_required: Literal[True] = True
     
     # Human review fulfillment (populated after review)
     human_reviewer: Optional[str] = None
