@@ -6,17 +6,83 @@ All settings can be overridden via environment variables with ELEANOR_ prefix.
 """
 
 import os
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Callable
 from pathlib import Path
 from pydantic import (
     BaseModel,
     Field,
+    AliasChoices,
     field_validator,
     model_validator,
     ConfigDict,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict  # type: ignore[import-not-found]
 import warnings
+
+
+def _resolve_environment() -> str:
+    return (
+        os.getenv("ELEANOR_ENVIRONMENT")
+        or os.getenv("ELEANOR_ENV")
+        or os.getenv("ENV")
+        or "development"
+    )
+
+
+def _load_yaml_config(path: str) -> Dict[str, Any]:
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ImportError("PyYAML is required for YAML config support.") from exc
+
+    yaml_path = Path(path)
+    if not yaml_path.exists() or not yaml_path.is_file():
+        return {}
+
+    with yaml_path.open("r", encoding="utf-8") as handle:
+        payload = yaml.safe_load(handle) or {}
+    if not isinstance(payload, dict):
+        return {}
+    return payload
+
+
+def _normalize_yaml_config(payload: Dict[str, Any]) -> Dict[str, Any]:
+    normalized: Dict[str, Any] = {}
+
+    if "environment" in payload:
+        normalized["environment"] = payload["environment"]
+    if "detail_level" in payload:
+        normalized["detail_level"] = payload["detail_level"]
+    if "enable_reflection" in payload:
+        normalized["enable_reflection"] = payload["enable_reflection"]
+    if "enable_drift_check" in payload:
+        normalized["enable_drift_check"] = payload["enable_drift_check"]
+    if "enable_precedent_analysis" in payload:
+        normalized["enable_precedent_analysis"] = payload["enable_precedent_analysis"]
+
+    for key in ("llm", "router", "precedent", "evidence", "performance", "cache", "security", "observability", "resilience"):
+        if key in payload:
+            normalized[key] = payload[key]
+
+    governance = payload.get("governance") if isinstance(payload.get("governance"), dict) else {}
+    if "constitutional_config_path" in governance:
+        normalized["constitutional_config_path"] = governance["constitutional_config_path"]
+
+    storage = payload.get("storage") if isinstance(payload.get("storage"), dict) else {}
+    if "evidence_path" in storage:
+        normalized.setdefault("evidence", {})["jsonl_path"] = storage["evidence_path"]
+    if "replay_log_path" in storage:
+        normalized["replay_log_path"] = storage["replay_log_path"]
+
+    precedent = payload.get("precedent") if isinstance(payload.get("precedent"), dict) else {}
+    if "backend" in precedent:
+        normalized.setdefault("precedent", {})["backend"] = precedent["backend"]
+
+    logging_cfg = payload.get("logging") if isinstance(payload.get("logging"), dict) else {}
+    if "level" in logging_cfg:
+        normalized.setdefault("observability", {})["log_level"] = logging_cfg["level"]
+
+    return normalized
 
 
 class LLMConfig(BaseModel):
@@ -335,11 +401,56 @@ class EleanorSettings(BaseSettings):
         case_sensitive=False,
         extra="ignore",  # Ignore unknown fields
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: Callable[..., Dict[str, Any]],
+        env_settings: Callable[..., Dict[str, Any]],
+        dotenv_settings: Callable[..., Dict[str, Any]],
+        file_secret_settings: Callable[..., Dict[str, Any]],
+    ) -> tuple[Callable[..., Dict[str, Any]], ...]:
+        def yaml_settings(_: BaseSettings) -> Dict[str, Any]:
+            path = os.getenv("ELEANOR_CONFIG_PATH") or os.getenv("ELEANOR_CONFIG")
+            if not path:
+                return {}
+            if not path.lower().endswith((".yml", ".yaml")):
+                return {}
+            payload = _load_yaml_config(path)
+            return _normalize_yaml_config(payload)
+
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            yaml_settings,
+            file_secret_settings,
+        )
     
     # Environment
     environment: str = Field(
         default="development",
-        description="Environment: development, staging, production"
+        description="Environment: development, staging, production",
+        validation_alias=AliasChoices("ELEANOR_ENVIRONMENT", "ELEANOR_ENV", "ENV"),
+    )
+
+    constitutional_config_path: str = Field(
+        default="governance/constitutional.yaml",
+        description="Path to the constitutional config YAML",
+        validation_alias=AliasChoices(
+            "ELEANOR_CONSTITUTIONAL_CONFIG_PATH",
+            "CONSTITUTIONAL_CONFIG_PATH",
+        ),
+    )
+
+    replay_log_path: str = Field(
+        default="replay_log.jsonl",
+        description="Path to replay log JSONL",
+        validation_alias=AliasChoices(
+            "ELEANOR_REPLAY_LOG_PATH",
+            "REPLAY_LOG_PATH",
+        ),
     )
     
     # Engine Configuration
@@ -469,7 +580,7 @@ def get_settings(
     if _settings is None or reload:
         # Determine environment file
         if env_file is None:
-            env = os.getenv("ENV", "development")
+            env = _resolve_environment()
             env_file = f".env.{env}"
             
             # Fallback to .env if specific file doesn't exist

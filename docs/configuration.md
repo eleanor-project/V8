@@ -29,17 +29,19 @@ python scripts/validate_config.py
 
 ```bash
 # Development
-export ENV=development
+export ELEANOR_ENVIRONMENT=development
 # Uses .env.development
 
 # Staging
-export ENV=staging
+export ELEANOR_ENVIRONMENT=staging
 # Uses .env.staging
 
 # Production
-export ENV=production
+export ELEANOR_ENVIRONMENT=production
 # Uses .env.production
 ```
+
+`ELEANOR_ENV` and `ENV` are supported as legacy aliases.
 
 ## Configuration Structure
 
@@ -155,6 +157,22 @@ ELEANOR_RESILIENCE__CIRCUIT_BREAKER_TIMEOUT=60
 ELEANOR_RESILIENCE__ENABLE_GRACEFUL_DEGRADATION=true
 ELEANOR_RESILIENCE__MAX_RETRY_ATTEMPTS=3
 ```
+
+### Legacy YAML Configuration (Optional)
+
+```bash
+# Lowest-precedence YAML config (legacy support)
+export ELEANOR_CONFIG=./config/eleanor.yaml
+```
+
+### Configuration Health
+
+```bash
+# Local validation
+python scripts/validate_config.py --env development
+```
+
+Runtime health endpoint (admin only): `GET /admin/config/health`
 
 ## Using Configuration in Code
 

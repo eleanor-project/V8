@@ -34,6 +34,9 @@ jobs:
       - name: Run mypy type checker
         run: mypy engine/ api/
 
+      - name: Validate configuration
+        run: python scripts/validate_config.py --env development
+
       - name: Run pyright type checker
         run: pyright
         continue-on-error: true  # Keep non-blocking while types are tightened

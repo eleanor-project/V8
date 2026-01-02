@@ -37,7 +37,11 @@ def get_log_level() -> int:
 
 def get_log_format() -> str:
     """Get the log format from environment."""
-    env = os.getenv("ELEANOR_ENV", "development")
+    env = (
+        os.getenv("ELEANOR_ENVIRONMENT")
+        or os.getenv("ELEANOR_ENV")
+        or "development"
+    )
     default = "console" if env == "development" else "json"
     return os.getenv("LOG_FORMAT", default)
 

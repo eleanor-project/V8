@@ -8,7 +8,8 @@ PORT="${PORT:-8001}"
 CONFIG="${ELEANOR_CONFIG:-./config/eleanor.yaml}"
 
 # Core env
-export ELEANOR_ENV="${ELEANOR_ENV:-development}"
+export ELEANOR_ENVIRONMENT="${ELEANOR_ENVIRONMENT:-${ELEANOR_ENV:-development}}"
+export ELEANOR_ENV="${ELEANOR_ENV:-$ELEANOR_ENVIRONMENT}"
 export ELEANOR_CONFIG="$CONFIG"
 
 # Ollama models to register (adapters become ollama-<name>)
