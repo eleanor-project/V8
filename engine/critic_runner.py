@@ -1,8 +1,8 @@
 from llm.factory import get_llm
-from critics.truth import TruthCritic
-from critics.fairness import FairnessCritic
-from critics.risk import RiskCritic
-from critics.pragmatics import PragmaticsCritic
+from critics.truth import truth_critic
+from critics.fairness import fairness_critic
+from critics.risk import risk_critic
+from critics.pragmatics import pragmatics_critic
 
 
 def run_critics(prompt: str):
@@ -11,15 +11,9 @@ def run_critics(prompt: str):
     """
     llm = get_llm()
 
-    critics = [
-        TruthCritic(llm),
-        FairnessCritic(llm),
-        RiskCritic(llm),
-        PragmaticsCritic(llm),
+    return [
+        truth_critic(prompt, llm),
+        fairness_critic(prompt, llm),
+        risk_critic(prompt, llm),
+        pragmatics_critic(prompt, llm),
     ]
-
-    results = []
-    for critic in critics:
-        results.append(critic.evaluate(prompt))
-
-    return results

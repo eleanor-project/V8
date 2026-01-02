@@ -4,7 +4,7 @@ These types provide explicit shapes for critic, precedent, uncertainty,
 and aggregation outputs without enforcing runtime validation.
 """
 
-from typing import Dict, List, Optional, TypedDict, Union
+from typing import Dict, List, Optional, Sequence, TypedDict, Union
 
 from engine.types import CriticViolation
 
@@ -17,7 +17,7 @@ class CriticResult(TypedDict, total=False):
     value: str
     severity: float
     score: float
-    violations: List[ViolationEntry]
+    violations: Sequence[ViolationEntry]
     justification: str
     principle: str
     evaluated_rules: List[str]

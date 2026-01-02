@@ -6,8 +6,11 @@ High-performance embedding computation and similarity search on GPU.
 
 import logging
 import hashlib
-from typing import List, Optional, Dict, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 import numpy as np
+
+if TYPE_CHECKING:
+    from .manager import GPUManager
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +40,7 @@ class GPUEmbeddingCache:
         
         logger.info(
             "GPU embedding cache initialized",
-            cache_size=cache_size,
-            device=str(self.device)
+            extra={"cache_size": cache_size, "device": str(self.device)},
         )
     
     def _hash_text(self, text: str) -> str:

@@ -197,10 +197,13 @@ def _calculate_critic_disagreement(critic_outputs: Dict[str, Any]) -> float:
     if not critic_outputs:
         return 0.0
 
-    severities = []
+    severities: list[float] = []
     for critic_data in critic_outputs.values():
         if isinstance(critic_data, dict) and "severity" in critic_data:
-            severities.append(critic_data["severity"])
+            try:
+                severities.append(float(critic_data["severity"]))
+            except (TypeError, ValueError):
+                continue
 
     if len(severities) < 2:
         return 0.0

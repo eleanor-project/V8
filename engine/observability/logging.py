@@ -15,6 +15,7 @@ from structlog.processors import (
     StackInfoRenderer,
     format_exc_info,
 )
+from structlog.types import Processor
 
 
 def configure_logging(
@@ -38,7 +39,7 @@ def configure_logging(
     )
     
     # Processors for all modes
-    processors = [
+    processors: list[Processor] = [
         structlog.stdlib.filter_by_level,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,

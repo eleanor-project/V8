@@ -9,6 +9,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from engine.schemas.pipeline_types import (
+    AggregationOutput,
+    CriticResult,
+    PrecedentAlignmentResult,
+    PrecedentRetrievalResult,
+    UncertaintyResult,
+)
+
 
 class MockRouter:
     def __init__(
@@ -41,7 +49,12 @@ class MockCritic:
         self.name = name
         self._score = score
 
-    async def evaluate(self, model_adapter: Any, input_text: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def evaluate(
+        self,
+        model_adapter: Any,
+        input_text: str,
+        context: Dict[str, Any],
+    ) -> CriticResult:
         return {
             "severity": self._score,
             "violations": [],
@@ -85,7 +98,7 @@ class MockPrecedentEngine:
         critics: Dict[str, Any],
         precedent_cases: List[Dict[str, Any]],
         query_embedding: List[float],
-    ) -> Dict[str, Any]:
+    ) -> PrecedentAlignmentResult:
         return {
             "alignment_score": 0.0,
             "support_strength": 0.0,
@@ -105,9 +118,9 @@ class MockPrecedentRetriever:
     def retrieve(
         self,
         query: str,
-        critic_results: List[Dict[str, Any]],
+        critic_results: List[CriticResult],
         top_k: int = 5,
-    ) -> Dict[str, Any]:
+    ) -> PrecedentRetrievalResult:
         return {
             "precedent_cases": [],
             "query_embedding": [],
@@ -119,8 +132,8 @@ class MockUncertaintyEngine:
         self,
         critics: Dict[str, Any],
         model_used: str,
-        precedent_alignment: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        precedent_alignment: PrecedentAlignmentResult,
+    ) -> UncertaintyResult:
         return {
             "overall_uncertainty": 0.0,
             "needs_escalation": False,
@@ -132,10 +145,10 @@ class MockAggregator:
     def aggregate(
         self,
         critics: Dict[str, Any],
-        precedent: Dict[str, Any],
-        uncertainty: Dict[str, Any],
+        precedent: PrecedentAlignmentResult,
+        uncertainty: UncertaintyResult,
         model_output: str = "",
-    ) -> Dict[str, Any]:
+    ) -> AggregationOutput:
         return {
             "decision": "allow",
             "final_output": model_output or "",

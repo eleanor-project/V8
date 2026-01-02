@@ -31,7 +31,7 @@ import uuid
 import time
 import asyncio
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Literal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Depends, Request, status
@@ -269,10 +269,13 @@ def run_readiness_checks() -> Dict[str, str]:
         issues.append(f"storage_error:{exc}")
 
     if issues:
-        logger.error("Readiness checks failed", issues=issues, results=results)
+        logger.error(
+            "Readiness checks failed",
+            extra={"issues": issues, "results": results},
+        )
         raise RuntimeError(f"Readiness checks failed: {issues}")
 
-    logger.info("Readiness checks passed", results=results)
+    logger.info("Readiness checks passed", extra={"results": results})
     return results
 
 
@@ -405,7 +408,7 @@ def _severity_score(data: Dict[str, Any]) -> float:
     return 0.0
 
 
-def _critic_verdict(severity: float) -> str:
+def _critic_verdict(severity: float) -> Literal["PASS", "WARN", "FAIL"]:
     if severity >= 2.0:
         return "FAIL"
     if severity >= 1.0:
@@ -421,7 +424,7 @@ def _build_uncertainty_envelope(uncertainty: Dict[str, Any]) -> UncertaintyEnvel
         overall = 0.0
 
     if overall >= 0.6:
-        level = "HIGH"
+        level: Literal["LOW", "MEDIUM", "HIGH"] = "HIGH"
     elif overall >= 0.3:
         level = "MEDIUM"
     else:
@@ -445,7 +448,9 @@ def _confidence_from_uncertainty(uncertainty: Dict[str, Any]) -> float:
     return max(0.0, min(1.0, 1.0 - overall))
 
 
-def _map_decision(final_decision: Optional[str]) -> str:
+def _map_decision(
+    final_decision: Optional[str],
+) -> Literal["ALLOW", "ALLOW_WITH_CONSTRAINTS", "ABSTAIN", "ESCALATE", "DENY"]:
     if not final_decision:
         return "ABSTAIN"
     decision = str(final_decision).lower()
@@ -595,7 +600,10 @@ def resolve_execution_decision(
     try:
         aggregation_result = AggregationResult.model_validate(aggregation_payload)
     except Exception as exc:
-        logger.error("Invalid aggregation_result payload", error=str(exc))
+        logger.error(
+            "Invalid aggregation_result payload",
+            extra={"error": str(exc)},
+        )
         raise RuntimeError("Invalid aggregation_result payload") from exc
     return enforce_human_review(aggregation_result=aggregation_result, human_action=human_action)
 
@@ -715,10 +723,12 @@ async def general_exception_handler(request: Request, exc: Exception):
     # Log the full error internally
     logger.error(
         "Unhandled exception",
-        trace_id=trace_id,
-        error=str(exc),
-        error_type=type(exc).__name__,
-        path=request.url.path,
+        extra={
+            "trace_id": trace_id,
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "path": request.url.path,
+        },
     )
 
     # Return sanitized error to client
@@ -835,9 +845,11 @@ async def deliberate(
 
     logger.info(
         "deliberation_started",
-        trace_id=trace_id,
-        user_id=user,
-        input_length=len(payload.input),
+        extra={
+            "trace_id": trace_id,
+            "user_id": user,
+            "input_length": len(payload.input),
+        },
     )
 
     if engine is None:
@@ -944,10 +956,12 @@ async def deliberate(
 
         logger.error(
             "deliberation_failed",
-            trace_id=trace_id,
-            error=str(e),
-            error_type=type(e).__name__,
-            duration_ms=duration_ms,
+            extra={
+                "trace_id": trace_id,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "duration_ms": duration_ms,
+            },
         )
 
         raise HTTPException(
@@ -1034,7 +1048,10 @@ async def evaluate(
         try:
             execution_decision = resolve_execution_decision(aggregated, None)
         except Exception as exc:
-            logger.warning("Execution gate evaluation failed", error=str(exc))
+            logger.warning(
+                "Execution gate evaluation failed",
+                extra={"error": str(exc)},
+            )
 
         final_decision = apply_execution_gate(final_decision, execution_decision)
 
@@ -1092,9 +1109,11 @@ async def evaluate(
     except Exception as exc:
         logger.error(
             "evaluation_failed",
-            request_id=payload.request_id,
-            error=str(exc),
-            error_type=type(exc).__name__,
+            extra={
+                "request_id": payload.request_id,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            },
         )
 
         error = EvaluateError(code="E_ENGINE_ERROR", message=str(exc))

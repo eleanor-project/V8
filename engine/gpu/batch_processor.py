@@ -6,11 +6,14 @@ Efficient batched processing for critics and inference operations.
 
 import logging
 import time
-from typing import List, Dict, Any, Optional, Callable
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, cast
 import asyncio
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from .manager import GPUManager
+    from .async_ops import AsyncGPUExecutor
 
 class GPUBatchProcessor:
     """
@@ -43,8 +46,10 @@ class GPUBatchProcessor:
         
         logger.info(
             "GPU batch processor initialized",
-            batch_size=self.batch_size,
-            max_batch_size=self.max_batch_size
+            extra={
+                "batch_size": self.batch_size,
+                "max_batch_size": self.max_batch_size,
+            },
         )
     
     async def process_batch(
@@ -68,14 +73,18 @@ class GPUBatchProcessor:
             return []
         
         batch_size = batch_size or self.batch_size
-        results = []
+        results: List[Any] = []
         
         start_time = time.time()
         num_batches = (len(items) + batch_size - 1) // batch_size
         
         logger.debug(
-            f"Processing {len(items)} items in {num_batches} batches",
-            batch_size=batch_size
+            "Processing batch items",
+            extra={
+                "total_items": len(items),
+                "num_batches": num_batches,
+                "batch_size": batch_size,
+            },
         )
         
         for i in range(0, len(items), batch_size):
@@ -94,10 +103,12 @@ class GPUBatchProcessor:
         
         logger.info(
             "Batch processing complete",
-            total_items=len(items),
-            num_batches=num_batches,
-            duration_ms=duration_ms,
-            throughput_per_sec=throughput
+            extra={
+                "total_items": len(items),
+                "num_batches": num_batches,
+                "duration_ms": duration_ms,
+                "throughput_per_sec": throughput,
+            },
         )
         
         return results
@@ -119,7 +130,7 @@ class GPUBatchProcessor:
         Returns:
             Dictionary of critic name -> results list
         """
-        results = {name: [] for name in critics.keys()}
+        results: Dict[str, List[Any]] = {name: [] for name in critics.keys()}
         batch_size = batch_size or self.batch_size
         
         start_time = time.time()
@@ -127,10 +138,12 @@ class GPUBatchProcessor:
         
         logger.info(
             "Starting batched critic execution",
-            num_critics=len(critics),
-            num_inputs=len(inputs),
-            batch_size=batch_size,
-            num_batches=num_batches
+            extra={
+                "num_critics": len(critics),
+                "num_inputs": len(inputs),
+                "batch_size": batch_size,
+                "num_batches": num_batches,
+            },
         )
         
         # Process each batch
@@ -162,9 +175,11 @@ class GPUBatchProcessor:
         
         logger.info(
             "Batched critic execution complete",
-            total_operations=total_ops,
-            duration_ms=duration_ms,
-            throughput_per_sec=throughput
+            extra={
+                "total_operations": total_ops,
+                "duration_ms": duration_ms,
+                "throughput_per_sec": throughput,
+            },
         )
         
         return results
@@ -207,9 +222,10 @@ class GPUBatchProcessor:
                     critic.evaluate_batch,
                     batch
                 )
+                results = cast(List[Any], results)
             else:
                 # Fall back to sequential evaluation
-                results = []
+                results: List[Any] = []
                 for item in batch:
                     result = await self.async_executor.run_async(
                         critic.evaluate,
@@ -221,8 +237,9 @@ class GPUBatchProcessor:
             
         except Exception as e:
             logger.error(
-                f"Critic {critic_name} failed on batch",
-                error=str(e)
+                "Critic %s failed on batch",
+                critic_name,
+                extra={"error": str(e)},
             )
             return [None] * len(batch)
     
