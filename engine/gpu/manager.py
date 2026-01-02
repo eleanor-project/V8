@@ -100,6 +100,8 @@ class GPUManager:
         # Detect device
         self.device = self._detect_device()
         self.devices_available = torch.cuda.device_count() if torch.cuda.is_available() else 0
+        if self.device and getattr(self.device, "type", None) == "mps":
+            self.devices_available = 1
         self.preferred_devices = (
             self.config.preferred_devices
             or preferred_devices
@@ -254,7 +256,13 @@ class GPUManager:
 
     def is_available(self) -> bool:
         """Check if GPU is available."""
-        return TORCH_AVAILABLE and torch.cuda.is_available()
+        if not TORCH_AVAILABLE:
+            return False
+        if torch.cuda.is_available():
+            return True
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return True
+        return False
 
     def __repr__(self) -> str:
         return (

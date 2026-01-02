@@ -218,7 +218,8 @@ class AdapterRegistry:
 def bootstrap_default_registry(
     openai_key=None,
     anthropic_key=None,
-    xai_key=None
+    xai_key=None,
+    hf_device: Optional[str] = None,
 ) -> AdapterRegistry:
     """
     Build a registry of available adapters.
@@ -253,7 +254,7 @@ def bootstrap_default_registry(
             models.extend([m.strip() for m in env_many.split(",") if m.strip()])
         if not models:
             models = ["meta-llama/Llama-3-8b"]
-        device = os.getenv("HF_DEVICE", "cpu")
+        device = hf_device or os.getenv("HF_DEVICE", "cpu")
         for m in models:
             # derive a short name
             short = m.split("/")[-1].lower().replace(" ", "-")

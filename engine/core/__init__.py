@@ -61,6 +61,7 @@ def _build_router(
     openai_key: Optional[str],
     anthropic_key: Optional[str],
     xai_key: Optional[str],
+    hf_device: Optional[str] = None,
 ):
     def _parse_mapping(env_var: str) -> Dict[str, float]:
         raw = os.getenv(env_var)
@@ -88,6 +89,7 @@ def _build_router(
             openai_key=openai_key,
             anthropic_key=anthropic_key,
             xai_key=xai_key,
+            hf_device=hf_device,
         )
         adapters = {}
         for name in registry.list():
@@ -117,6 +119,7 @@ def _build_precedent_layer(
     openai_key: Optional[str],
     anthropic_key: Optional[str],
     xai_key: Optional[str],
+    embedding_device: Optional[str] = None,
 ):
     retriever = None
     store = precedent_store
@@ -126,6 +129,7 @@ def _build_precedent_layer(
         openai_key=openai_key,
         anthropic_key=anthropic_key,
         xai_key=xai_key,
+        device=embedding_device,
     )
     embed_fn = None
     if embed_backend in embed_registry.list():
@@ -249,11 +253,67 @@ def build_eleanor_engine_v8(
     anthropic_key = get_llm_api_key_sync("anthropic", secret_provider)
     xai_key = get_llm_api_key_sync("xai", secret_provider)
     embedding_backend = os.getenv("EMBEDDING_BACKEND", "gpt")
+    gpu_manager = None
+    gpu_device_name = None
+
+    if settings and getattr(settings, "gpu", None) and settings.gpu.enabled:
+        try:
+            from engine.gpu.manager import GPUManager, GPUConfig as ManagerConfig
+
+            preferred_devices = settings.gpu.preferred_devices
+            if not preferred_devices:
+                preferred_devices = settings.gpu.multi_gpu.device_ids or None
+
+            gpu_config = ManagerConfig(
+                enabled=settings.gpu.enabled,
+                device_preference=settings.gpu.device_preference,
+                preferred_devices=preferred_devices,
+                mixed_precision=settings.gpu.memory.mixed_precision,
+                num_streams=settings.gpu.async_ops.num_streams,
+                max_memory_per_gpu=settings.gpu.memory.max_memory_per_gpu,
+                log_memory_stats=settings.gpu.memory.log_memory_stats,
+                memory_check_interval=settings.gpu.memory.memory_check_interval,
+                default_batch_size=settings.gpu.batching.default_batch_size,
+                max_batch_size=settings.gpu.batching.max_batch_size,
+                dynamic_batching=settings.gpu.batching.dynamic_batching,
+            )
+            gpu_manager = GPUManager(
+                config=gpu_config,
+                preferred_devices=preferred_devices,
+            )
+            if gpu_manager.device:
+                gpu_device_name = str(gpu_manager.device)
+        except Exception as exc:
+            logger.warning(
+                "GPU manager initialization failed",
+                extra={"error": str(exc)},
+            )
+            gpu_manager = None
+            gpu_device_name = None
+
+    def _resolve_gpu_device_name(preferred: Optional[str]) -> Optional[str]:
+        if preferred:
+            if gpu_manager and gpu_manager.device:
+                if preferred.startswith("cuda") and gpu_manager.device.type != "cuda":
+                    return str(gpu_manager.device)
+                if preferred == "mps" and gpu_manager.device.type != "mps":
+                    return str(gpu_manager.device)
+            return preferred
+        if gpu_device_name:
+            return gpu_device_name
+        return None
 
     adapters = router_adapters or {}
     if llm_fn and not adapters:
         adapters = {"primary": _wrap_llm_adapter(llm_fn)}
         router_policy = router_policy or {"primary": "primary", "fallback_order": []}
+
+    hf_device = None
+    if settings and getattr(settings, "gpu", None):
+        if settings.gpu.critics.use_gpu:
+            hf_device = _resolve_gpu_device_name(None)
+        else:
+            hf_device = "cpu"
 
     router_backend = _build_router(
         adapters=adapters,
@@ -261,7 +321,12 @@ def build_eleanor_engine_v8(
         openai_key=openai_key,
         anthropic_key=anthropic_key,
         xai_key=xai_key,
+        hf_device=hf_device,
     )
+
+    embedding_device = None
+    if settings and getattr(settings, "gpu", None):
+        embedding_device = _resolve_gpu_device_name(settings.gpu.embeddings.device)
 
     precedent_retriever = _build_precedent_layer(
         precedent_store=precedent_store,
@@ -269,6 +334,7 @@ def build_eleanor_engine_v8(
         openai_key=openai_key,
         anthropic_key=anthropic_key,
         xai_key=xai_key,
+        embedding_device=embedding_device,
     )
 
     evidence_buffer = settings.evidence.buffer_size if settings else None
@@ -302,6 +368,7 @@ def build_eleanor_engine_v8(
         aggregator=aggregator,
         router_backend=router_backend,
         critic_models=critic_models,
+        gpu_manager=gpu_manager,
     )
 
     # Governance (OPA)

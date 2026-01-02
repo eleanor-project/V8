@@ -47,6 +47,10 @@ gpu:
     dtype: "auto"  # BF16 on Ampere+, FP16 otherwise
 ```
 
+Environment variable overrides are also supported via the `ELEANOR_GPU__*`
+namespace (see `docs/configuration.md`). GPU health is exposed at
+`GET /admin/gpu/health` for admin users.
+
 ### 3. Initialize Engine with GPU
 
 ```python

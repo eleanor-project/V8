@@ -82,6 +82,7 @@ class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
         model: str = "voyage-large-2",
         api_key: Optional[str] = None,
         fallback_to_local: bool = True,
+        device: Optional[str] = None,
     ):
         """
         Initialize Claude embedding adapter.
@@ -94,6 +95,7 @@ class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
         self.model = model
         self.api_key = api_key or os.getenv("VOYAGE_API_KEY")
         self.fallback_to_local = fallback_to_local
+        self.device = device
         self._local_model = None
 
         # Try to import voyageai client
@@ -115,7 +117,10 @@ class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
                 "Install one of: pip install voyageai OR pip install sentence-transformers"
             )
         # Use a high-quality model that's compatible with most use cases
-        self._local_model = SentenceTransformer("all-mpnet-base-v2")
+        if self.device:
+            self._local_model = SentenceTransformer("all-mpnet-base-v2", device=self.device)
+        else:
+            self._local_model = SentenceTransformer("all-mpnet-base-v2")
 
     def embed(self, text: str) -> List[float]:
         """
@@ -183,10 +188,10 @@ except:
 class HFEmbeddingAdapter(BaseEmbeddingAdapter):
     """Uses any SentenceTransformer model for local embedding."""
 
-    def __init__(self, model="all-MiniLM-L6-v2"):
+    def __init__(self, model="all-MiniLM-L6-v2", device: Optional[str] = None):
         if SentenceTransformer is None:
             raise ImportError("sentence-transformers library not installed")
-        self.model = SentenceTransformer(model)
+        self.model = SentenceTransformer(model, device=device) if device else SentenceTransformer(model)
 
     def embed(self, text: str) -> List[float]:
         vec = self.model.encode(text)
@@ -244,7 +249,8 @@ class EmbeddingRegistry:
 def bootstrap_embedding_registry(
     openai_key=None,
     anthropic_key=None,
-    xai_key=None
+    xai_key=None,
+    device: Optional[str] = None,
 ) -> EmbeddingRegistry:
 
     reg = EmbeddingRegistry()
@@ -253,13 +259,13 @@ def bootstrap_embedding_registry(
     if openai_key:
         reg.register("gpt", GPTEmbeddingAdapter(api_key=openai_key))
     if anthropic_key:
-        reg.register("claude", ClaudeEmbeddingAdapter(api_key=anthropic_key))
+        reg.register("claude", ClaudeEmbeddingAdapter(api_key=anthropic_key, device=device))
     if xai_key:
         reg.register("grok", GrokEmbeddingAdapter(api_key=xai_key))
 
     # Local Backends
     if SentenceTransformer is not None:
-        reg.register("hf", HFEmbeddingAdapter())
+        reg.register("hf", HFEmbeddingAdapter(device=device))
     reg.register("ollama", OllamaEmbeddingAdapter())
 
     return reg

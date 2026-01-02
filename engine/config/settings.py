@@ -71,9 +71,25 @@ def _normalize_yaml_config(payload: Dict[str, Any]) -> Dict[str, Any]:
         "observability",
         "resilience",
         "resource_management",
+        "gpu",
     ):
         if key in payload:
             normalized[key] = payload[key]
+
+    if isinstance(payload.get("gpu"), dict):
+        normalized["gpu"] = payload["gpu"]
+
+    def _map_gpu_section(section_key: str, expected_keys: tuple[str, ...]) -> None:
+        section = payload.get(section_key)
+        if not isinstance(section, dict):
+            return
+        if any(key in section for key in expected_keys):
+            normalized.setdefault("gpu", {})[section_key] = section
+
+    _map_gpu_section("ollama", ("gpu_layers", "enable_gpu", "num_gpu"))
+    _map_gpu_section("embeddings", ("cache_on_gpu", "max_cache_size_gb", "device"))
+    _map_gpu_section("critics", ("gpu_batching", "use_gpu"))
+    _map_gpu_section("precedent", ("gpu_similarity_search", "cache_embeddings_on_gpu"))
 
     governance = payload.get("governance") if isinstance(payload.get("governance"), dict) else {}
     if "constitutional_config_path" in governance:
@@ -450,6 +466,208 @@ class ResourceManagementConfig(BaseModel):
     shutdown: ShutdownConfig = Field(default_factory=ShutdownConfig)
 
 
+class GPUAsyncConfig(BaseModel):
+    """Async GPU operation configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    num_streams: int = Field(
+        default=4,
+        ge=1,
+        le=32,
+        description="Number of CUDA streams for async GPU execution",
+    )
+
+
+class GPUBatchingConfig(BaseModel):
+    """GPU batching configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = Field(default=True, description="Enable GPU batching")
+    default_batch_size: int = Field(
+        default=8,
+        ge=1,
+        description="Default batch size for GPU workloads",
+    )
+    max_batch_size: int = Field(
+        default=32,
+        ge=1,
+        description="Maximum batch size for GPU workloads",
+    )
+    dynamic_batching: bool = Field(
+        default=True,
+        description="Dynamically adjust batch size based on observed latency",
+    )
+
+
+class GPUMemoryConfig(BaseModel):
+    """GPU memory optimization settings."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    mixed_precision: bool = Field(
+        default=True,
+        description="Enable mixed precision inference",
+    )
+    max_memory_per_gpu: Optional[str] = Field(
+        default="24GB",
+        description="Soft limit for GPU memory usage per device",
+    )
+    log_memory_stats: bool = Field(
+        default=True,
+        description="Log GPU memory statistics periodically",
+    )
+    memory_check_interval: int = Field(
+        default=60,
+        ge=1,
+        description="Memory check interval in seconds",
+    )
+
+
+class GPUMultiConfig(BaseModel):
+    """Multi-GPU configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = Field(default=False, description="Enable multi-GPU mode")
+    device_ids: List[int] = Field(
+        default_factory=list,
+        description="GPU device IDs to use (empty = all available)",
+    )
+    strategy: str = Field(
+        default="data_parallel",
+        description="Multi-GPU strategy: data_parallel, model_parallel, pipeline_parallel",
+    )
+
+
+class GPUOllamaConfig(BaseModel):
+    """Ollama GPU configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    gpu_layers: int = Field(
+        default=-1,
+        description="Number of Ollama GPU layers (-1 = all, 0 = CPU only)",
+    )
+    num_gpu: int = Field(
+        default=1,
+        ge=1,
+        description="Number of GPUs per Ollama instance",
+    )
+    gpu_memory_utilization: float = Field(
+        default=0.9,
+        ge=0.1,
+        le=1.0,
+        description="GPU memory utilization ratio for Ollama",
+    )
+    enable_gpu: bool = Field(
+        default=True,
+        description="Enable GPU acceleration for Ollama",
+    )
+
+
+class GPUEmbeddingsConfig(BaseModel):
+    """GPU embedding configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    device: Optional[str] = Field(
+        default=None,
+        description="Embedding device override: cuda, mps, cpu",
+    )
+    batch_size: int = Field(
+        default=32,
+        ge=1,
+        description="Embedding batch size",
+    )
+    cache_on_gpu: bool = Field(
+        default=True,
+        description="Cache embeddings on GPU memory",
+    )
+    max_cache_size_gb: float = Field(
+        default=2.0,
+        ge=0.1,
+        description="Maximum embedding cache size in GB",
+    )
+    mixed_precision: bool = Field(
+        default=True,
+        description="Use mixed precision for embedding generation",
+    )
+    embedding_dim: int = Field(
+        default=768,
+        ge=64,
+        description="Expected embedding vector dimension",
+    )
+
+
+class GPUCriticsConfig(BaseModel):
+    """GPU critic execution configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    gpu_batching: bool = Field(
+        default=True,
+        description="Enable GPU batching for critics",
+    )
+    batch_size: int = Field(
+        default=8,
+        ge=1,
+        description="Critic batch size",
+    )
+    use_gpu: bool = Field(
+        default=True,
+        description="Allow critics to run on GPU",
+    )
+
+
+class GPUPrecedentConfig(BaseModel):
+    """GPU precedent retrieval configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    gpu_similarity_search: bool = Field(
+        default=True,
+        description="Use GPU for precedent similarity search",
+    )
+    cache_embeddings_on_gpu: bool = Field(
+        default=True,
+        description="Cache precedent embeddings on GPU",
+    )
+    max_cached_precedents: int = Field(
+        default=10_000,
+        ge=1,
+        description="Max precedents to cache on GPU",
+    )
+
+
+class GPUSettings(BaseModel):
+    """GPU acceleration configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = Field(default=False, description="Enable GPU acceleration")
+    device_preference: List[str] = Field(
+        default_factory=lambda: ["cuda", "mps", "cpu"],
+        description="Device preference order",
+    )
+    preferred_devices: Optional[List[int]] = Field(
+        default=None,
+        description="Preferred GPU device IDs",
+    )
+    multi_gpu: GPUMultiConfig = Field(default_factory=GPUMultiConfig)
+    memory: GPUMemoryConfig = Field(default_factory=GPUMemoryConfig)
+    batching: GPUBatchingConfig = Field(default_factory=GPUBatchingConfig)
+    async_ops: GPUAsyncConfig = Field(
+        default_factory=GPUAsyncConfig,
+        validation_alias=AliasChoices("async", "async_ops"),
+    )
+    ollama: GPUOllamaConfig = Field(default_factory=GPUOllamaConfig)
+    embeddings: GPUEmbeddingsConfig = Field(default_factory=GPUEmbeddingsConfig)
+    critics: GPUCriticsConfig = Field(default_factory=GPUCriticsConfig)
+    precedent: GPUPrecedentConfig = Field(default_factory=GPUPrecedentConfig)
+
+
 class EleanorSettings(BaseSettings):
     """
     Main ELEANOR configuration with hierarchical overrides.
@@ -555,6 +773,7 @@ class EleanorSettings(BaseSettings):
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     resilience: ResilienceConfig = Field(default_factory=ResilienceConfig)
     resource_management: ResourceManagementConfig = Field(default_factory=ResourceManagementConfig)
+    gpu: GPUSettings = Field(default_factory=GPUSettings)
     
     # Critics Configuration (dynamic loading)
     enabled_critics: List[str] = Field(
@@ -689,4 +908,13 @@ __all__ = [
     "ResilienceConfig",
     "ResourceManagementConfig",
     "ShutdownConfig",
+    "GPUSettings",
+    "GPUAsyncConfig",
+    "GPUBatchingConfig",
+    "GPUMemoryConfig",
+    "GPUMultiConfig",
+    "GPUOllamaConfig",
+    "GPUEmbeddingsConfig",
+    "GPUCriticsConfig",
+    "GPUPrecedentConfig",
 ]

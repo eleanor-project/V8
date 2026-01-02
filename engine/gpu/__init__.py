@@ -20,6 +20,7 @@ Usage:
 
 from .manager import GPUManager, GPUConfig, GPUMemoryStats
 from .async_ops import AsyncGPUExecutor
+from .monitoring import collect_gpu_metrics
 
 try:
     from .embeddings import GPUEmbeddingCache
@@ -40,6 +41,7 @@ __all__ = [
     "GPUManager",
     "GPUConfig",
     "AsyncGPUExecutor",
+    "collect_gpu_metrics",
 ]
 
 __version__ = "1.0.0"
