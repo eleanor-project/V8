@@ -1,153 +1,126 @@
-# ELEANOR V8 GPU Configuration
-# Configure GPU acceleration for model inference and embeddings
+# ELEANOR V8 - GPU Acceleration Configuration
+# Complete configuration for GPU-accelerated inference and embeddings
 
 gpu:
   # Enable GPU acceleration
+  # Set to false to disable GPU and use CPU only
   enabled: true
   
-  # Device preference order (first available will be used)
-  device_preference:
-    - cuda    # NVIDIA GPUs
-    - mps     # Apple Silicon (M1/M2/M3)
-    - cpu     # Fallback
+  # Device preference order (first available is used)
+  # Options: "cuda" (NVIDIA), "mps" (Apple Silicon), "cpu"
+  device_preference: ["cuda", "mps", "cpu"]
   
-  # Multi-GPU Configuration
+  # Multi-GPU settings
   multi_gpu:
-    # List of GPU device IDs to use (empty = auto-detect all)
-    device_ids: []
+    enabled: false
+    
+    # Which GPU device IDs to use (empty = all available)
+    device_ids: []  # e.g., [0, 1, 2, 3]
     
     # Parallelization strategy
-    # - "data_parallel": Replicate model across GPUs, split batches
-    # - "pipeline": Split model layers across GPUs (for very large models)
-    # - "none": Use single GPU
+    # Options: "data_parallel", "model_parallel", "pipeline_parallel"
     strategy: "data_parallel"
-    
-    # Output device for DataParallel (usually device_ids[0])
-    output_device: null
   
-  # Memory Optimization
+  # Memory optimization
   memory:
-    # Enable mixed precision (FP16/BF16)
+    # Mixed precision inference (FP16/BF16 for speed/memory)
     mixed_precision: true
+    precision: "fp16"  # Options: "fp16", "bf16", "fp32"
     
-    # Data type for mixed precision
-    # - "auto": BF16 on Ampere+, FP16 on older GPUs
-    # - "float16": Always use FP16
-    # - "bfloat16": Always use BF16
-    # - "float32": Disable mixed precision
-    dtype: "auto"
-    
-    # Model quantization (reduces memory by 2-4x)
+    # Model quantization for reduced memory footprint
     quantization:
       enabled: false
-      bits: 8  # 4 or 8 (4-bit requires bitsandbytes)
+      bits: 8  # Options: 4, 8, or 16
+      method: "dynamic"  # Options: "dynamic" or "static"
     
-    # Maximum memory per GPU (e.g., "24GB", "16GB")
-    # Set to prevent OOM on shared systems
-    max_memory_per_gpu: null
+    # Memory limits per GPU
+    max_memory_per_gpu: "24GB"
     
-    # Offload model to CPU when not in use (saves GPU memory)
+    # Offload to CPU when GPU memory is low
     offload_to_cpu: false
     
-    # KV cache for autoregressive generation
-    kv_cache:
-      enabled: true
-      max_size_mb: 4096
+    # KV cache size for attention mechanisms
+    kv_cache_size: "4GB"
   
-  # Batch Processing
-  batch:
-    # Default batch size for GPU operations
-    batch_size: 8
-    
-    # Maximum batch size (auto-tuned if dynamic_batching enabled)
+  # Batch processing
+  batching:
+    enabled: true
+    default_batch_size: 8
     max_batch_size: 32
     
-    # Enable dynamic batching (automatically adjust batch size)
+    # Dynamically adjust batch size based on available memory
     dynamic_batching: true
-    
-    # Batch timeout (ms) - wait this long to accumulate requests
-    batch_timeout_ms: 100
   
-  # Async Operations
+  # Async GPU operations
   async:
     # Number of CUDA streams for parallel operations
+    # More streams = better parallelization (up to hardware limit)
     num_streams: 4
     
-    # Enable async memory transfers
-    async_memory_transfers: true
+    # Prefetch next batch while processing current batch
+    prefetch: true
   
-  # Monitoring and Logging
+  # Monitoring and debugging
   monitoring:
     # Log GPU memory statistics
     log_memory_stats: true
     
-    # Memory stats logging interval (seconds)
-    stats_interval_seconds: 60
+    # How often to check GPU memory (seconds)
+    memory_check_interval: 60
     
-    # Enable detailed profiling (impacts performance)
-    profiling: false
-    
-    # Profile output directory
-    profile_dir: "logs/gpu_profiles"
-  
-  # Model-Specific GPU Assignments
-  # Route specific models/critics to specific GPUs
-  model_assignments:
-    # Example: Assign ethics critic to GPU 0
-    # ethics_critic: 0
-    # fairness_critic: 1
-    # precedent_retrieval: 2
-    pass
-  
-  # Embeddings GPU Acceleration
-  embeddings:
-    # Keep embeddings on GPU for fast similarity computation
-    cache_on_gpu: true
-    
-    # Maximum embeddings to cache on GPU
-    max_cached_embeddings: 100000
-    
-    # Batch size for embedding computation
-    batch_size: 128
+    # Enable detailed performance profiling
+    # WARNING: Adds overhead, disable in production
+    enable_profiling: false
 
-# Ollama GPU Configuration (if using Ollama backend)
+# LLM Backend GPU Configuration (Ollama)
 ollama:
-  # GPU layers (-1 = all layers, 0 = CPU only)
+  # Number of GPU layers to load (-1 = all, 0 = CPU only)
   gpu_layers: -1
   
-  # Number of GPUs to use
+  # Number of GPUs to use per model instance
   num_gpu: 1
   
-  # Enable GPU memory mapping
-  use_mmap: true
+  # Maximum fraction of GPU memory to use (0.0-1.0)
+  gpu_memory_utilization: 0.9
   
-  # GPU memory lock (prevents swapping)
-  use_mlock: false
+  # Enable GPU for Ollama inference
+  enable_gpu: true
 
-# CUDA-Specific Settings
-cuda:
-  # CUDA_VISIBLE_DEVICES (comma-separated GPU indices)
-  # Leave empty to use all available GPUs
-  visible_devices: ""
+# Embedding Model GPU Settings
+embeddings:
+  # Device for embedding computation
+  device: "cuda"  # Options: "cuda", "mps", "cpu"
   
-  # cuDNN benchmark mode (faster but non-deterministic)
-  benchmark: true
+  # Batch size for embedding generation
+  batch_size: 32
   
-  # Deterministic operations (slower but reproducible)
-  deterministic: false
+  # Keep embedding cache on GPU memory for fast similarity search
+  cache_on_gpu: true
   
-  # Allow TF32 (faster on Ampere+ GPUs)
-  allow_tf32: true
+  # Maximum embedding cache size (GPU memory)
+  max_cache_size_gb: 2
+  
+  # Use mixed precision for embeddings
+  mixed_precision: true
 
-# Performance Tuning
-performance:
-  # Pre-allocate GPU memory (reduces fragmentation)
-  preallocate_memory: false
+# Critic GPU Settings
+critics:
+  # Enable GPU batching for critic evaluation
+  gpu_batching: true
   
-  # Memory growth strategy
-  # - "static": Allocate all memory upfront
-  # - "dynamic": Grow as needed
-  memory_growth: "dynamic"
+  # Batch size for critic execution
+  batch_size: 8
   
-  # Garbage collection frequency (operations)
-  gc_interval: 1000
+  # Use GPU for critic model inference
+  use_gpu: true
+
+# Precedent Retrieval GPU Settings
+precedent:
+  # Use GPU for similarity search
+  gpu_similarity_search: true
+  
+  # Keep precedent embeddings on GPU
+  cache_embeddings_on_gpu: true
+  
+  # Maximum number of precedents to cache on GPU
+  max_cached_precedents: 10000
