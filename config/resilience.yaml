@@ -1,0 +1,50 @@
+# ELEANOR V8 - Resilience Configuration
+
+resilience:
+  # Circuit breaker configuration by component
+  circuit_breakers:
+    router:
+      failure_threshold: 3
+      recovery_timeout: 30
+      success_threshold: 2
+      
+    precedent_store:
+      failure_threshold: 5
+      recovery_timeout: 60
+      success_threshold: 2
+      
+    uncertainty_engine:
+      failure_threshold: 5
+      recovery_timeout: 60
+      success_threshold: 2
+      
+    critics:
+      failure_threshold: 3
+      recovery_timeout: 45
+      success_threshold: 2
+      
+    detectors:
+      failure_threshold: 3
+      recovery_timeout: 30
+      success_threshold: 2
+  
+  # Timeout configuration (seconds)
+  timeouts:
+    critic_evaluation: 10.0
+    router_selection: 5.0
+    precedent_retrieval: 8.0
+    uncertainty_computation: 5.0
+    detector_evaluation: 3.0
+  
+  # Retry configuration
+  retries:
+    max_attempts: 3
+    backoff_multiplier: 1
+    backoff_min: 1
+    backoff_max: 10
+  
+  # Degradation settings
+  degradation:
+    allow_partial_results: true  # Continue with subset of critics
+    require_minimum_critics: 2  # Minimum critics needed to proceed
+    default_fallback_model: llama3.2:3b
