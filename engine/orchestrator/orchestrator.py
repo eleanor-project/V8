@@ -24,12 +24,16 @@ This is the backbone of the deliberation pipeline.
 
 import asyncio
 import traceback
-from typing import Dict, Any, Callable, List, Optional
+from typing import Awaitable, Dict, Any, Callable, List, Optional
 
 
 class OrchestratorV8:
 
-    def __init__(self, critics: Dict[str, Callable], timeout_seconds: float = 3.0):
+    def __init__(
+        self,
+        critics: Dict[str, Callable[[Any], Awaitable[Dict[str, Any]]]],
+        timeout_seconds: float = 3.0,
+    ):
         """
         critics: dict of {critic_name: critic_callable(input) -> dict}
         timeout_seconds: max time allowed for each critic
@@ -54,7 +58,12 @@ class OrchestratorV8:
     # ---------------------------------------------------------------
     #  Run a single critic safely with timeout + error isolation
     # ---------------------------------------------------------------
-    async def _run_critic(self, name: str, critic_fn: Callable, input_snapshot: Any) -> Dict[str, Any]:
+    async def _run_critic(
+        self,
+        name: str,
+        critic_fn: Callable[[Any], Awaitable[Dict[str, Any]]],
+        input_snapshot: Any,
+    ) -> Dict[str, Any]:
         """
         Executes a critic with timeout and error handling.
         """
@@ -110,4 +119,3 @@ class OrchestratorV8:
         in environments that may not be async.
         """
         return asyncio.run(self.run_all(input_snapshot))
-

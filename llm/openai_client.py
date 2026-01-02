@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict
+from typing import Any, Dict, cast
 import requests
 from llm.base import LLMClient
 
@@ -28,7 +28,7 @@ class OpenAIClient(LLMClient):
 
         self.base_url = base_url
 
-    def invoke(self, system_prompt: str, user_prompt: str) -> Dict:
+    def invoke(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -55,7 +55,7 @@ class OpenAIClient(LLMClient):
         content = response.json()["choices"][0]["message"]["content"]
 
         try:
-            return json.loads(content)
+            return cast(Dict[str, Any], json.loads(content))
         except json.JSONDecodeError as e:
             raise RuntimeError(
                 "LLM did not return valid JSON required by critic schema"

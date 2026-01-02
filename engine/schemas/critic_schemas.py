@@ -47,7 +47,7 @@ class CriticEvaluationResult(BaseModel):
     evaluated_rules: List[str] = Field(default_factory=list)
     duration_ms: Optional[float] = None
     evidence: Optional[Dict[str, Any]] = None
-    precedent_refs: Optional[List[str]] = Field(default_factory=list)
+    precedent_refs: List[str] = Field(default_factory=list)
     
     @field_validator('score')
     @classmethod

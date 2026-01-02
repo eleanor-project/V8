@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, cast
 from types import ModuleType
 from uuid import uuid4
 
+_fcntl: Optional[ModuleType]
 try:
     import fcntl as _fcntl  # type: ignore
 except Exception:  # pragma: no cover - platform specific
