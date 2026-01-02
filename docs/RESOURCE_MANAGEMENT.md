@@ -1,44 +1,281 @@
-# ELEANOR V8 — Async Resource Management
+The `docs/RESOURCE_MANAGEMENT.md` file is entirely replaced below; you can delete the existing file contents and paste this version in full.[1]
+
+```markdown
+# ELEANOR V8 - Resource Management Guide
 
 ## Overview
 
-ELEANOR provides explicit lifecycle management for async resources to prevent
-leaks during shutdown or unexpected interruptions. The engine implements an
-async context manager and a `shutdown()` method that closes resources and
-flushes buffers.
+ELEANOR V8 implements comprehensive async resource management to ensure:
+- **Data Integrity**: Evidence is always flushed before shutdown
+- **Reliability**: No resource leaks in production
+- **Graceful Degradation**: Clean shutdown even under error conditions
+- **Production Ready**: Signal handling for container orchestration
 
-## Engine Lifecycle
+## Features
+
+### 1. Context Manager Protocol
+
+The engine implements Python's async context manager protocol:
 
 ```python
-async with EleanorEngineV8(...) as engine:
-    result = await engine.run("...")
-
-# or, on shutdown:
-await engine.shutdown()
+async with EleanorEngineV8(config=config) as engine:
+    result = await engine.run(text="...")
+    # Resources automatically cleaned up on exit
 ```
 
-### Resources Cleaned Up
+**Benefits:**
+- Automatic resource initialization on `__aenter__`
+- Guaranteed cleanup on `__aexit__`
+- Works with exceptions and early returns
+- Follows Python best practices
 
-- Evidence recorder: flush pending evidence and stop background flush task
-- Cache manager: close Redis connections (if configured)
-- Precedent retriever: close underlying store connection (if supported)
+### 2. Async Evidence Recorder
 
-## API Integration
+The new `AsyncEvidenceRecorder` provides:
+- **Buffered Writes**: Batch records for efficiency
+- **Periodic Flushing**: Auto-flush every 5 seconds (configurable)
+- **Graceful Shutdown**: Always flushes on close
+- **Async I/O**: Non-blocking file operations with `aiofiles`
 
-The FastAPI server uses its lifespan handler to call `engine.shutdown()` on
-shutdown signals (SIGTERM/SIGINT). This ensures cleanup during deployments or
-restarts.
+```python
+from engine.evidence_recorder_async import AsyncEvidenceRecorder
 
-## Evidence Recorder Flush
+async with AsyncEvidenceRecorder("evidence.jsonl") as recorder:
+    await recorder.record(critic="rights", severity="HIGH", ...)
+    # Auto-flushed periodically and on context exit
+```
 
-Evidence writes are buffered and flushed periodically. On shutdown, the engine
-forces a final flush to prevent data loss.
+### 3. Graceful Shutdown
+
+The engine handles shutdown gracefully:
+
+```python
+engine = EleanorEngineV8(config=config)
+await engine._setup_resources()
+
+try:
+    # Process requests...
+    pass
+finally:
+    await engine.shutdown(timeout=30.0)
+```
+
+**Shutdown Process:**
+1. Signal all components to stop
+2. Flush evidence buffer (critical - no data loss)
+3. Close database/cache connections
+4. Cancel pending background tasks
+5. Log shutdown completion with timing
+
+### 4. Signal Handling
+
+For production deployments, use `ShutdownHandler`:
+
+```python
+from engine.resource_manager import ShutdownHandler
+
+engine = EleanorEngineV8(config=config)
+
+async def shutdown():
+    await engine.shutdown()
+
+handler = ShutdownHandler(shutdown)
+handler.setup_handlers()  # Registers SIGTERM and SIGINT
+
+# Run your application
+# Shutdown will be triggered on Ctrl+C or container stop
+```
+
+### 5. Timeout Protection
+
+Protect operations from hanging:
+
+```python
+from engine.resource_manager import TimeoutProtection
+
+result = await TimeoutProtection.with_timeout(
+    some_operation(),
+    timeout=10.0,
+    operation="critic_evaluation",
+    raise_on_timeout=True
+)
+```
 
 ## Configuration
 
-Evidence flush interval and buffer size can be configured:
+Configure resource management in `config/resource_management.yaml`:
+
+```yaml
+resource_management:
+  shutdown:
+    graceful_timeout: 30.0
+    
+  evidence_recorder:
+    buffer_size: 1000
+    flush_interval: 5.0
+    
+  timeouts:
+    critic_evaluation: 10.0
+    router_selection: 5.0
+```
+
+## Production Deployment
+
+### Docker/Kubernetes
+
+```python
+# main.py
+import asyncio
+import signal
+from engine.engine import EleanorEngineV8
+from engine.resource_manager import ShutdownHandler
+
+async def main():
+    engine = EleanorEngineV8(config=...)
+    
+    # Setup signal handlers
+    handler = ShutdownHandler(lambda: engine.shutdown())
+    handler.setup_handlers()
+    
+    async with engine:
+        # Run your API server
+        await serve_api(engine)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Kubernetes Lifecycle
+
+```yaml
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: eleanor-v8
+    lifecycle:
+      preStop:
+        exec:
+          command: ["/bin/sh", "-c", "sleep 5"]  # Allow time for graceful shutdown
+    terminationGracePeriodSeconds: 35  # Match shutdown timeout + buffer
+```
+
+## Testing
+
+Run resource management tests:
 
 ```bash
-ELEANOR_EVIDENCE__BUFFER_SIZE=1000
-ELEANOR_EVIDENCE__FLUSH_INTERVAL=5.0
+pytest tests/test_async_resource_management.py -v
 ```
+
+**Test Coverage:**
+- ✅ Context manager initialization and cleanup
+- ✅ Evidence recorder buffering and flushing
+- ✅ Auto-flush on buffer full
+- ✅ Final flush on close
+- ✅ Task tracking and cancellation
+- ✅ Timeout protection
+- ✅ Signal handler registration
+
+## Troubleshooting
+
+### Evidence Not Flushed
+
+**Symptom**: Data missing from `evidence.jsonl`
+
+**Solution**: Always use context manager or call `shutdown()` explicitly:
+
+```python
+# ✅ Good
+async with engine:
+    ...
+
+# ❌ Bad - may lose buffered data
+engine = EleanorEngineV8()
+# ... use engine without cleanup
+```
+
+### Shutdown Timeout
+
+**Symptom**: "Shutdown exceeded timeout" warning
+
+**Solution**: Increase timeout or investigate slow operations:
+
+```python
+await engine.shutdown(timeout=60.0)  # Increase timeout
+```
+
+### Resource Leaks
+
+**Symptom**: Open file handles or connections after shutdown
+
+**Solution**: Verify all resources implement cleanup:
+
+```python
+# Check if resource has cleanup method
+if hasattr(resource, 'close'):
+    await resource.close()
+```
+
+## Migration Guide
+
+### From Sync Evidence Recorder
+
+**Before:**
+```python
+recorder = EvidenceRecorder("evidence.jsonl")
+recorder.record(...)  # Sync, blocks event loop
+```
+
+**After:**
+```python
+recorder = AsyncEvidenceRecorder("evidence.jsonl")
+await recorder.initialize()
+await recorder.record(...)  # Async, non-blocking
+await recorder.close()
+```
+
+### Adding Context Manager Support
+
+**Before:**
+```python
+engine = EleanorEngineV8(config=config)
+result = await engine.run(text="...")
+# No cleanup!
+```
+
+**After:**
+```python
+async with EleanorEngineV8(config=config) as engine:
+    result = await engine.run(text="...")
+    # Automatic cleanup
+```
+
+## Best Practices
+
+1. **Always Use Context Managers**: Ensures cleanup even on exceptions
+2. **Configure Appropriate Timeouts**: Balance responsiveness vs. completion
+3. **Monitor Flush Intervals**: Adjust based on evidence volume
+4. **Test Shutdown Paths**: Verify data integrity under all exit conditions
+5. **Log Resource Lifecycle**: Track initialization and cleanup for debugging
+
+## Future Enhancements
+
+- [ ] Redis connection pool management
+- [ ] Database connection pool management
+- [ ] Health check endpoint for resource status
+- [ ] Metrics for buffer size and flush frequency
+- [ ] Automatic resource leak detection
+- [ ] Circuit breakers for external dependencies
+
+## Related Issues
+
+- #19: Async Resource Management (this implementation)
+- #14: Circuit Breakers and Graceful Degradation
+- #17: Observability and Structured Logging
+- #18: Resilience Patterns
+```
+
+This version removes all conflict markers and fully supersedes the partial “Async Resource Management” stub that exists on `main`.[1]
+
+[1](https://github.com/eleanor-project/V8/pull/28/conflicts)
