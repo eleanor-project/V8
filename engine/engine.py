@@ -13,11 +13,14 @@ import json
 import logging
 import uuid
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, AsyncGenerator, Callable, cast
+from typing import Any, Dict, List, Optional, AsyncGenerator, Callable, cast, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:  # pragma: no cover
+    from engine.config.settings import EleanorSettings
 
 from engine.factory import DependencyFactory, EngineDependencies
 from engine.exceptions import (
@@ -142,6 +145,10 @@ class EngineConfig(BaseModel):
 
     jsonl_evidence_path: Optional[str] = "evidence.jsonl"
 
+    @classmethod
+    def from_settings(cls, settings: "EleanorSettings") -> "EngineConfig":
+        return cls(**settings.to_legacy_engine_config())
+
 
 # ---------------------------------------------------------
 # Output Models
@@ -214,7 +221,23 @@ class EleanorEngineV8:
         dependencies: Optional[EngineDependencies] = None,
         error_monitor: Optional[Callable[[Exception, Dict[str, Any]], None]] = None,
     ):
-        self.config = config or EngineConfig()
+        if config is None:
+            try:
+                from engine.config import ConfigManager
+
+                settings = ConfigManager().settings
+                config = EngineConfig.from_settings(settings)
+                logger.info(
+                    "Loaded engine configuration from ConfigManager",
+                    extra={"environment": settings.environment},
+                )
+            except Exception as exc:
+                logger.warning(
+                    "ConfigManager unavailable; using default EngineConfig",
+                    extra={"error": str(exc)},
+                )
+                config = EngineConfig()
+        self.config = config
         self.instance_id = str(uuid.uuid4())
 
         deps = _resolve_dependencies(
@@ -271,7 +294,7 @@ class EleanorEngineV8:
             "trace_id": trace_id,
             "critic": critic,
             "exception_type": type(exc).__name__,
-            "message": str(exc),
+            "error_message": str(exc),
         }
         if context is not None:
             payload["context_keys"] = list(context.keys())
@@ -279,6 +302,9 @@ class EleanorEngineV8:
             payload.update(exc.details)
         if extra:
             payload.update(extra)
+
+        if "message" in payload:
+            payload["error_message"] = payload.pop("message")
 
         logger.error("engine_error", extra=payload, exc_info=True)
 

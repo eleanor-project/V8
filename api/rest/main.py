@@ -168,12 +168,19 @@ def enable_prometheus_middleware(app: FastAPI):
 # Configuration
 # ---------------------------------------------
 
+def _resolve_environment() -> str:
+    return (
+        os.getenv("ELEANOR_ENVIRONMENT")
+        or os.getenv("ELEANOR_ENV")
+        or "development"
+    )
+
 def get_cors_origins() -> list:
     """Get allowed CORS origins from environment."""
     origins_str = os.getenv("CORS_ORIGINS", "")
     if not origins_str:
         # Default to localhost in development
-        env = os.getenv("ELEANOR_ENV", "development")
+        env = _resolve_environment()
         if env == "development":
             return ["http://localhost:3000", "http://localhost:8080", "http://127.0.0.1:3000"]
         # In production, require explicit configuration
@@ -198,7 +205,12 @@ def check_content_length(request: Request, max_bytes: Optional[int] = None):
 
 def get_constitutional_config() -> dict:
     """Load constitutional configuration from YAML file."""
-    config_path = os.getenv("CONSTITUTIONAL_CONFIG_PATH", "governance/constitutional.yaml")
+    try:
+        from engine.config import ConfigManager
+
+        config_path = ConfigManager().settings.constitutional_config_path
+    except Exception:
+        config_path = os.getenv("CONSTITUTIONAL_CONFIG_PATH", "governance/constitutional.yaml")
     return load_constitutional_config(config_path)
 
 
@@ -215,7 +227,7 @@ def run_readiness_checks() -> Dict[str, str]:
     Run startup readiness checks for security and storage dependencies.
     Raises RuntimeError if a required check fails.
     """
-    env = os.getenv("ELEANOR_ENV", "development")
+    env = _resolve_environment()
     results: Dict[str, str] = {}
     issues = []
 
@@ -236,6 +248,19 @@ def run_readiness_checks() -> Dict[str, str]:
     except Exception as exc:
         results["rate_limit"] = f"error:{exc}"
         issues.append(f"rate_limit_error:{exc}")
+
+    # Configuration validation
+    try:
+        from engine.config import ConfigManager
+
+        config_manager = ConfigManager()
+        validation = config_manager.validate()
+        results["config"] = "ok" if validation.get("valid", False) else "invalid"
+        if not validation.get("valid", False):
+            issues.append("config_invalid")
+    except Exception as exc:
+        results["config"] = f"error:{exc}"
+        issues.append(f"config_error:{exc}")
 
     # CORS configuration
     try:
@@ -1497,6 +1522,27 @@ async def metrics():
 # Admin Endpoints (router health + critic bindings)
 # ---------------------------------------------
 
+@app.get("/admin/config/health", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def config_health():
+    """Expose configuration validation status for operators."""
+    try:
+        from engine.config import ConfigManager
+
+        manager = ConfigManager()
+        validation = manager.validate()
+        return {
+            "environment": manager.settings.environment,
+            "valid": validation.get("valid", False),
+            "warnings": validation.get("warnings", []),
+            "errors": validation.get("errors", []),
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Config validation failed: {exc}",
+        )
+
 @app.get("/admin/router/health", tags=["Admin"])
 @require_role(ADMIN_ROLE)
 async def router_health():
@@ -1621,5 +1667,5 @@ if __name__ == "__main__":
         "api.rest.main:app",
         host=host,
         port=port,
-        reload=os.getenv("ELEANOR_ENV", "development") == "development",
+        reload=_resolve_environment() == "development",
     )

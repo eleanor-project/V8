@@ -5,7 +5,8 @@ echo "🧠 Starting ELEANOR — Ethical Living Engine for Normative Oversight & 
 echo "------------------------------------------------------------"
 
 # ---- CONFIG ----
-export ELEANOR_ENV=local
+export ELEANOR_ENV="${ELEANOR_ENV:-local}"
+export ELEANOR_ENVIRONMENT="${ELEANOR_ENVIRONMENT:-$ELEANOR_ENV}"
 export ELEANOR_LOG_LEVEL=INFO
 export ELEANOR_CONFIG=./config/eleanor.yaml
 

@@ -186,6 +186,19 @@ class InputValidator:
         return text
 
 
+def sanitize_for_logging(
+    text: str,
+    max_length: int = 500,
+    mask_patterns: Optional[list] = None
+) -> str:
+    """Module-level helper for log sanitization."""
+    return InputValidator.sanitize_for_logging(
+        text,
+        max_length=max_length,
+        mask_patterns=mask_patterns,
+    )
+
+
 def validate_trace_id(trace_id: Optional[str]) -> str:
     """Validate or generate a trace ID.
     

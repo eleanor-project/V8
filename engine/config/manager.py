@@ -67,6 +67,10 @@ class ConfigManager:
                 f"Configuration loaded successfully. "
                 f"Environment: {self._settings.environment}"
             )
+            logger.info(
+                "Configuration audit",
+                extra={"summary": self.audit_summary()},
+            )
         except Exception as e:
             logger.error(f"Failed to load configuration: {e}")
             raise
@@ -146,6 +150,19 @@ class ConfigManager:
             result["errors"].append(str(e))
         
         return result
+
+    def audit_summary(self) -> Dict[str, Any]:
+        """Return a redacted summary for audit logging."""
+        settings = self.settings
+        return {
+            "environment": settings.environment,
+            "detail_level": settings.detail_level,
+            "enabled_critics": settings.enabled_critics,
+            "precedent_backend": settings.precedent.backend,
+            "evidence_path": settings.evidence.jsonl_path,
+            "cache_enabled": settings.cache.enabled,
+            "tracing_enabled": settings.observability.enable_tracing,
+        }
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert settings to dictionary."""

@@ -70,7 +70,11 @@ class RateLimitConfig:
     @classmethod
     def from_env(cls) -> "RateLimitConfig":
         """Load configuration from environment variables."""
-        env = os.getenv("ELEANOR_ENV", "development")
+        env = (
+            os.getenv("ELEANOR_ENVIRONMENT")
+            or os.getenv("ELEANOR_ENV")
+            or "development"
+        )
         enabled = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
         if env != "development" and not enabled:
             raise ValueError("RATE_LIMIT_ENABLED cannot be false in production environments")
@@ -350,3 +354,7 @@ class RateLimitMiddleware:
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
+
+
+# Backwards-compatible alias for older imports.
+RateLimiter = TokenBucketRateLimiter
