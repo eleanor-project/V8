@@ -1,0 +1,15 @@
+# ELEANOR V8 - Optional GPU Optimization Dependencies
+# Install for maximum performance
+
+# Memory optimization
+flash-attn>=2.5.0  # FlashAttention (CUDA only)
+bitsandbytes>=0.41.0  # Quantization support
+triton>=2.1.0  # CUDA kernel optimization
+
+# Multi-GPU support
+accelerate>=0.25.0  # Hugging Face distributed training
+deepspeed>=0.12.0  # Advanced parallelization (optional)
+
+# High-performance inference (optional)
+# vllm>=0.2.7  # vLLM for production inference
+# tensorrt>=8.6.0  # NVIDIA TensorRT optimization
