@@ -1,0 +1,4 @@
+# file: /Users/billp/Documents/GitHub/V8/engine/types.py
+# hypothesis_version: 6.148.9
+
+[0.0, 1.0, 100000, 1000000, 'AggregatedResult', 'Alignment analysis', 'Critic identifier', 'CriticEvaluation', 'CriticViolation', 'DetailLevel', 'DissentRecord', 'EngineResult', 'EscalationClause', 'EscalationSignal', 'EscalationTier', 'Evidence record IDs', 'EvidenceRecord', 'ISO timestamp', 'Input text', 'ModelAdapter', 'ModelInfo', 'Overall severity', 'Overall uncertainty', 'PrecedentAlignment', 'PrecedentCase', 'UncertaintyMeasure', 'UncertaintySource', 'ValidatedInput', 'acknowledge', 'aggregation', 'competence_boundary', 'context', 'critic_disagreement', 'critic_evaluation', 'defer', 'escalate', 'escalation', 'human_review', 'model_ambiguity', 'moral_pluralism', 'precedent_absence', 'precedent_conflict', 'precedent_lookup', 'proceed', 'text']

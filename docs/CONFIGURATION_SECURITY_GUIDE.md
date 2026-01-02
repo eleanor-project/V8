@@ -69,7 +69,7 @@ ELEANOR V8 requires secure configuration across multiple layers:
 ┌─────────────────────────────────────────────────────┐
 │         Environment Configuration (.env)            │
 ├─────────────────────────────────────────────────────┤
-│  • ELEANOR_ENV=production                           │
+│  • ELEANOR_ENVIRONMENT=production                   │
 │  • OPA governance settings                          │
 │  • CORS policy                                      │
 │  • Rate limiting                                    │
@@ -93,7 +93,8 @@ ELEANOR V8 requires secure configuration across multiple layers:
 
 These items are **NON-NEGOTIABLE** for production deployment:
 
-- [ ] **`ELEANOR_ENV=production`** (NOT development)
+- [ ] **`ELEANOR_ENVIRONMENT=production`** (NOT development)
+- [ ] **`ELEANOR_SECURITY__SECRET_PROVIDER`** is `aws` or `vault` (NOT `env`)
 - [ ] **`JWT_SECRET`** is 32+ characters, cryptographically random
 - [ ] **At least ONE LLM API key** configured (OpenAI, Anthropic, XAI, or Gemini)
 - [ ] **`POSTGRES_PASSWORD`** changed from default "postgres"
@@ -108,7 +109,7 @@ These items are **NON-NEGOTIABLE** for production deployment:
 
 | Component | Development | Staging | Production |
 |-----------|-------------|---------|------------|
-| `ELEANOR_ENV` | development | staging | **production** |
+| `ELEANOR_ENVIRONMENT` | development | staging | **production** |
 | `JWT_SECRET` | Can use weak | Strong (32+ chars) | **Cryptographic (32+ chars)** |
 | LLM API Keys | Test keys OK | Isolated keys | **Production keys** |
 | Database Password | Simple OK | Strong | **Complex (20+ chars)** |
@@ -253,8 +254,8 @@ Run the validation script to verify all security requirements:
 1. Checking .env file existence...
 ✅ .env file exists
 
-2. Checking ELEANOR_ENV setting...
-✅ ELEANOR_ENV=production (correct for production)
+2. Checking ELEANOR_ENVIRONMENT setting...
+✅ ELEANOR_ENVIRONMENT=production (correct for production)
 
 3. Checking JWT_SECRET...
 ✅ JWT_SECRET is set and sufficiently long (44 chars)
@@ -490,6 +491,23 @@ networks:
     internal: true  # No external access
   external:
     # Public-facing services only
+```
+
+### 7. Input Validation & Context Hygiene
+
+- Enforce text length limits (≤ 100KB) and context size limits (≤ 1MB).
+- Keep context JSON-serializable and shallow (depth ≤ 5) to prevent payload abuse.
+- Use safe override keys only (`skip_router` requires `model_output`).
+- Normalize Unicode and strip control characters before processing.
+
+Example safe context:
+
+```json
+{
+  "domain": "finance",
+  "priority": "high",
+  "constraints": {"max_risk_score": 0.4}
+}
 ```
 
 ---

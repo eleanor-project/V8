@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict
+from typing import Any, Dict, cast
 
 import requests
 
@@ -24,7 +24,7 @@ class XAIClient(LLMClient):
             raise RuntimeError("XAI_KEY is required for the xAI backend.")
         self.base_url = os.getenv("XAI_BASE_URL", base_url)
 
-    def invoke(self, system_prompt: str, user_prompt: str) -> Dict:
+    def invoke(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -44,6 +44,6 @@ class XAIClient(LLMClient):
 
         content = resp.json()["choices"][0]["message"]["content"]
         try:
-            return json.loads(content)
+            return cast(Dict[str, Any], json.loads(content))
         except json.JSONDecodeError as exc:
             raise RuntimeError("xAI response was not valid JSON") from exc

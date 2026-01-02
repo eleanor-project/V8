@@ -30,6 +30,7 @@ import asyncio
 import logging
 
 from engine.utils.circuit_breaker import CircuitBreakerRegistry, CircuitBreakerOpen
+from engine.exceptions import RouterSelectionError
 
 logger = logging.getLogger(__name__)
 
@@ -349,7 +350,7 @@ class RouterV8:
                     }
 
         # If no model succeeded
-        return {
+        failure_payload = {
             "success": False,
             "response_text": None,
             "model_output": None,
@@ -359,8 +360,17 @@ class RouterV8:
             "health_score": 0.0,
             "cost": None,
             "used_adapter": None,
-            "diagnostics": {"attempts": attempts},
+            "diagnostics": {
+                "attempts": attempts,
+                "candidates": candidates,
+                "primary": primary,
+                "fallbacks": fallbacks,
+            },
         }
+        raise RouterSelectionError(
+            str(failure_payload["reason"]),
+            details=failure_payload,
+        )
 
     def route(
         self, text: str, context: Optional[Dict[str, Any]] = None

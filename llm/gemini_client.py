@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict
+from typing import Any, Dict, cast
 
 import requests
 
@@ -24,7 +24,7 @@ class GeminiClient(LLMClient):
             raise RuntimeError("GEMINI_KEY/GOOGLE_API_KEY is required for the Gemini backend.")
         self.base_url = os.getenv("GEMINI_BASE_URL", base_url)
 
-    def invoke(self, system_prompt: str, user_prompt: str) -> Dict:
+    def invoke(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"
         payload = {
             "system_instruction": {
@@ -49,6 +49,6 @@ class GeminiClient(LLMClient):
             raise RuntimeError(f"Unexpected Gemini response structure: {data}") from exc
 
         try:
-            return json.loads(text)
+            return cast(Dict[str, Any], json.loads(text))
         except json.JSONDecodeError as exc:
             raise RuntimeError("Gemini response was not valid JSON") from exc

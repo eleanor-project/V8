@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import json
 import os
+from types import ModuleType
 from pathlib import Path
 from typing import Optional
 
 from engine.schemas.escalation import AuditRecord
 
+_fcntl: Optional[ModuleType]
 try:
-    import fcntl  # type: ignore
+    import fcntl as _fcntl  # type: ignore
 except Exception:  # pragma: no cover - platform specific
-    fcntl = None
+    _fcntl = None
+
+fcntl: Optional[ModuleType] = _fcntl
 
 
 def _audit_path() -> Path:

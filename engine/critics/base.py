@@ -10,6 +10,7 @@ from engine.schemas.escalation import (
     Concern,
     EscalationSignal,
 )
+from engine.schemas.pipeline_types import CriticResult
 
 class BaseCriticV8:
     """
@@ -100,7 +101,7 @@ class BaseCriticV8:
         # Priority 4: No model configured
         return None
 
-    async def evaluate(self, model, input_text: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def evaluate(self, model, input_text: str, context: Dict[str, Any]) -> CriticResult:
         """
         Every critic must implement this.
 

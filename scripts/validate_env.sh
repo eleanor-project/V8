@@ -70,18 +70,20 @@ load_env() {
 # Validate ELEANOR_ENV
 check_eleanor_env() {
     echo ""
-    echo "2. Checking ELEANOR_ENV setting..."
+    echo "2. Checking ELEANOR_ENVIRONMENT setting..."
 
-    if [ -z "${ELEANOR_ENV:-}" ]; then
-        log_error "ELEANOR_ENV is not set"
+    local env_value="${ELEANOR_ENVIRONMENT:-${ELEANOR_ENV:-}}"
+
+    if [ -z "$env_value" ]; then
+        log_error "ELEANOR_ENVIRONMENT (or ELEANOR_ENV) is not set"
         echo "   Set to 'production' for production deployment"
-    elif [ "$ELEANOR_ENV" = "development" ]; then
-        log_warning "ELEANOR_ENV is set to 'development'"
-        echo "   For production, set: ELEANOR_ENV=production"
-    elif [ "$ELEANOR_ENV" = "production" ]; then
-        log_success "ELEANOR_ENV=production (correct for production)"
+    elif [ "$env_value" = "development" ]; then
+        log_warning "ELEANOR_ENVIRONMENT is set to 'development'"
+        echo "   For production, set: ELEANOR_ENVIRONMENT=production"
+    elif [ "$env_value" = "production" ]; then
+        log_success "ELEANOR_ENVIRONMENT=production (correct for production)"
     else
-        log_warning "ELEANOR_ENV='$ELEANOR_ENV' (unexpected value)"
+        log_warning "ELEANOR_ENVIRONMENT='$env_value' (unexpected value)"
         echo "   Expected: 'production' or 'development'"
     fi
 }

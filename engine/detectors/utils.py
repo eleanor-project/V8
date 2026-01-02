@@ -58,9 +58,14 @@ def simple_pattern_detector(
     confidence = min(1.0, 0.2 * total_hits + 0.3 * len(high_hits))
 
     return DetectorSignal(
-        violation=violation,
+        detector_name=name,
         severity=severity,
         description=f"{name} risk detected" if violation else f"No {name} indicators detected",
         confidence=confidence,
-        metadata={"matches": matches, "high_impact_hits": high_hits},
+        violations=[name] if violation else [],
+        evidence={
+            "matches": matches,
+            "high_impact_hits": high_hits,
+            "violation": violation,
+        },
     )

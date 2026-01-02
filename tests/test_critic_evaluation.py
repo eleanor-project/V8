@@ -25,7 +25,7 @@ class TestCriticEvaluation:
         critic = RightsCriticV8()
         
         result = await critic.evaluate(
-            model_adapter=mock_model_adapter,
+            model=mock_model_adapter,
             input_text="Process user data for marketing",
             context={"domain": "data_processing"}
         )
@@ -41,7 +41,7 @@ class TestCriticEvaluation:
         critic = RiskCriticV8()
         
         result = await critic.evaluate(
-            model_adapter=mock_model_adapter,
+            model=mock_model_adapter,
             input_text="Deploy experimental AI model to production",
             context={"domain": "deployment"}
         )
@@ -63,7 +63,7 @@ class TestCriticEvaluation:
         with pytest.raises((asyncio.TimeoutError, CriticEvaluationError)):
             await asyncio.wait_for(
                 critic.evaluate(
-                    model_adapter=mock_model_adapter,
+                    model=mock_model_adapter,
                     input_text="Test input",
                     context={}
                 ),
@@ -78,7 +78,7 @@ class TestCriticEvaluation:
         
         critic = RightsCriticV8()
         result = await critic.evaluate(
-            model_adapter=adapter,
+            model=adapter,
             input_text="Test",
             context={}
         )
@@ -117,7 +117,7 @@ class TestCriticConcurrency:
         
         tasks = [
             critic.evaluate(
-                model_adapter=adapter,
+                model=adapter,
                 input_text="Test input",
                 context={}
             )
@@ -141,7 +141,7 @@ class TestCriticConcurrency:
         # Run same critic multiple times concurrently
         tasks = [
             critic.evaluate(
-                model_adapter=adapter,
+                model=adapter,
                 input_text=f"Test {i}",
                 context={"id": i}
             )
@@ -169,7 +169,7 @@ class TestCriticDisagreement:
         results = []
         for critic in critics:
             result = await critic.evaluate(
-                model_adapter=adapter,
+                model=adapter,
                 input_text="Deploy AI without testing",
                 context={}
             )

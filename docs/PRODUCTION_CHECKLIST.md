@@ -16,10 +16,15 @@ Use this checklist to ensure your ELEANOR V8 deployment is production-ready. Che
 
 ### 1.1 Environment Settings
 
-- [ ] **`ELEANOR_ENV=production`** (CRITICAL: NOT `development`)
+- [ ] **`ELEANOR_ENVIRONMENT=production`** (CRITICAL: NOT `development`)
   - **Location:** `.env` file
   - **Why:** Ensures production security defaults are active
-  - **Verify:** `grep "^ELEANOR_ENV=" .env`
+  - **Verify:** `grep -E "^ELEANOR_ENVIRONMENT=|^ELEANOR_ENV=" .env`
+
+- [ ] **`ELEANOR_SECURITY__SECRET_PROVIDER` is `aws` or `vault`** (NOT `env`)
+  - **Location:** `.env` file
+  - **Why:** Prevents production secrets from relying on environment variables
+  - **Verify:** `grep "^ELEANOR_SECURITY__SECRET_PROVIDER=" .env`
 
 ### 1.2 JWT Secret
 
@@ -472,11 +477,11 @@ echo "======================================"
 
 ERRORS=0
 
-# 1. Check ELEANOR_ENV
-if grep -q "^ELEANOR_ENV=production" .env; then
-  echo "✅ ELEANOR_ENV is set to production"
+# 1. Check ELEANOR_ENVIRONMENT
+if grep -Eq "^ELEANOR_ENVIRONMENT=production|^ELEANOR_ENV=production" .env; then
+  echo "✅ ELEANOR_ENVIRONMENT is set to production"
 else
-  echo "❌ ELEANOR_ENV must be 'production'"
+  echo "❌ ELEANOR_ENVIRONMENT must be 'production'"
   ERRORS=$((ERRORS + 1))
 fi
 
@@ -622,7 +627,7 @@ fi
 ### All Critical Items Must Pass
 
 **CRITICAL** items marked with ⚠️ in sections above:
-- [ ] `ELEANOR_ENV=production`
+- [ ] `ELEANOR_ENVIRONMENT=production`
 - [ ] `JWT_SECRET` is strong and unique
 - [ ] Grafana admin password changed
 - [ ] At least one LLM API key configured

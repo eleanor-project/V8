@@ -9,6 +9,8 @@ Provides security-focused input validation to prevent:
 import re
 from typing import Any, Dict, Optional
 
+from engine.security.sanitizer import CredentialSanitizer
+
 from engine.exceptions import InputValidationError
 
 
@@ -172,7 +174,9 @@ class InputValidator:
         # Truncate if needed
         if len(text) > max_length:
             text = text[:max_length] + "... [truncated]"
-        
+
+        text = CredentialSanitizer.sanitize_text(text)
+
         # Mask sensitive patterns
         if mask_patterns:
             for pattern in mask_patterns:
@@ -184,6 +188,19 @@ class InputValidator:
         text = re.sub(r'password[\s:=]+\S+', 'password=[REDACTED]', text, flags=re.IGNORECASE)
         
         return text
+
+
+def sanitize_for_logging(
+    text: str,
+    max_length: int = 500,
+    mask_patterns: Optional[list] = None
+) -> str:
+    """Module-level helper for log sanitization."""
+    return InputValidator.sanitize_for_logging(
+        text,
+        max_length=max_length,
+        mask_patterns=mask_patterns,
+    )
 
 
 def validate_trace_id(trace_id: Optional[str]) -> str:
@@ -207,16 +224,17 @@ def validate_trace_id(trace_id: Optional[str]) -> str:
         raise InputValidationError(f"trace_id must be a string, got {type(trace_id).__name__}")
     
     # Validate UUID format if it looks like a UUID
-    if len(trace_id) == 36 and '-' in trace_id:
+    uuid_like = trace_id.count("-") >= 4 or (len(trace_id) == 36 and "-" in trace_id)
+    if uuid_like:
         try:
             uuid.UUID(trace_id)
         except ValueError:
             raise InputValidationError(f"trace_id is not a valid UUID: {trace_id}")
     
     # Otherwise just check it's a reasonable identifier
-    if not re.match(r'^[a-zA-Z0-9_-]{1,64}$', trace_id):
+    if not re.match(r'^[a-zA-Z0-9_-]{1,128}$', trace_id):
         raise InputValidationError(
-            f"trace_id must be alphanumeric with hyphens/underscores, max 64 chars"
+            "trace_id must be alphanumeric with hyphens/underscores, max 128 chars"
         )
     
     return trace_id
