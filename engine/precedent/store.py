@@ -309,8 +309,8 @@ class PgVectorStore(BasePrecedentStore):
     def _get_connection(self):
         """Get a database connection."""
         try:
-            import psycopg2
-            from psycopg2.extras import RealDictCursor
+            import psycopg2  # type: ignore[import-untyped]
+            from psycopg2.extras import RealDictCursor  # type: ignore[import-untyped]
             return psycopg2.connect(self.connection_string, cursor_factory=RealDictCursor)
         except ImportError:
             raise ImportError("psycopg2 not installed. Run: pip install psycopg2-binary")
@@ -510,8 +510,8 @@ class ChromaStore(BasePrecedentStore):
             persist_directory: Directory for persistent storage (None for in-memory)
         """
         try:
-            import chromadb
-            from chromadb.config import Settings
+            import chromadb  # type: ignore[import-not-found]
+            from chromadb.config import Settings  # type: ignore[import-not-found]
         except ImportError:
             raise ImportError("chromadb not installed. Run: pip install chromadb")
 
