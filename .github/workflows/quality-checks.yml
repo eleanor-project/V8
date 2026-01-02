@@ -1,0 +1,165 @@
+name: Code Quality & Security Checks
+
+on:
+  push:
+    branches: [ main, development, enhancement/** ]
+  pull_request:
+    branches: [ main, development ]
+
+jobs:
+  lint-and-type-check:
+    name: Linting and Type Checking
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      
+      - name: Run Ruff linter
+        run: ruff check .
+        continue-on-error: false
+      
+      - name: Run Ruff formatter check
+        run: ruff format --check .
+      
+      - name: Run mypy type checker
+        run: mypy engine/ api/
+        continue-on-error: true  # Don't block on type errors initially
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      
+      - name: Run Bandit security scanner
+        run: |
+          bandit -r engine/ api/ -f json -o bandit-report.json
+          bandit -r engine/ api/ -f screen
+        continue-on-error: true
+      
+      - name: Run Safety vulnerability check
+        run: safety check --json
+        continue-on-error: true
+      
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: bandit-report.json
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      
+      - name: Run pytest with coverage
+        run: |
+          pytest --cov=engine --cov=api --cov-report=xml --cov-report=term-missing
+      
+      - name: Check coverage threshold
+        run: |
+          coverage report --fail-under=70
+        continue-on-error: true
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: matrix.python-version == '3.11'
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+
+  constitutional-compliance:
+    name: Constitutional Governance Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "."
+      
+      - name: Validate constitutional invariants
+        run: |
+          python validate_eleanor_repo.py
+        continue-on-error: false
+      
+      - name: Check governance documentation
+        run: |
+          test -f docs/CRITIC_INDEPENDENCE_AND_ESCALATION.md || exit 1
+          test -f docs/ESCALATION_Tiers_Human_Review_Doctrine.md || exit 1
+          echo "✓ Governance documentation present"
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+
+  build-validation:
+    name: Build Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      
+      - name: Build package
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+      
+      - name: Check package metadata
+        run: |
+          python -m pip install twine
+          twine check dist/*
