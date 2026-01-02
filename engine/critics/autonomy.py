@@ -11,6 +11,7 @@ import re
 from typing import Any, Dict, List, Optional, cast
 
 from .base import BaseCriticV8
+from engine.schemas.pipeline_types import CriticResult
 
 
 class AutonomyCriticV8(BaseCriticV8):
@@ -122,7 +123,7 @@ class AutonomyCriticV8(BaseCriticV8):
             flags.append("consent_bypass_detected")
         return flags
 
-    async def evaluate(self, model, input_text: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def evaluate(self, model, input_text: str, context: Dict[str, Any]) -> CriticResult:
         output = await model.generate(input_text, context=context)
         combined = f"{input_text}\n{output}"
 
@@ -153,8 +154,8 @@ class AutonomyCriticV8(BaseCriticV8):
         violations: Optional[List[str]] = None,
         justification: Optional[str] = None,
         **kwargs,
-    ) -> Dict[str, Any]:
-        base: Dict[str, Any] = cast(Dict[str, Any], super().build_evidence(**kwargs))
+    ) -> CriticResult:
+        base: CriticResult = cast(CriticResult, super().build_evidence(**kwargs))
         if severity is not None:
             base["severity"] = severity
         if violations is not None:

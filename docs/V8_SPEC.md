@@ -142,6 +142,45 @@ engine = EleanorEngineV8(
 )
 ```
 
+### Error Monitoring Hook
+Provide an error monitor callback to capture structured error events.
+
+```python
+def on_error(exc, payload):
+    # Send payload to your monitoring system
+    pass
+
+engine = EleanorEngineV8(
+    config=EngineConfig(),
+    error_monitor=on_error,
+)
+```
+
+### Pipeline Schemas
+Core pipeline shapes are defined in `engine/schemas/pipeline_types.py`:
+
+```python
+CriticResult = {
+    "critic": "rights",
+    "severity": 0.8,
+    "violations": [{"principle": "dignity", "severity": 0.8}],
+    "justification": "...",
+}
+
+PrecedentAlignmentResult = {
+    "alignment_score": 0.3,
+    "support_strength": 0.2,
+    "conflict_level": 0.7,
+    "is_novel": True,
+}
+
+UncertaintyResult = {
+    "overall_uncertainty": 0.62,
+    "needs_escalation": True,
+    "explanation": "...",
+}
+```
+
 ### Streaming Support
 ```python
 async for chunk in engine.run_stream(user_text):

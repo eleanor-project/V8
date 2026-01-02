@@ -15,7 +15,7 @@ from pydantic import (
     model_validator,
     ConfigDict,
 )
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict  # type: ignore[import-not-found]
 import warnings
 
 

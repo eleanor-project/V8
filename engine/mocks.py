@@ -91,7 +91,11 @@ class MockPrecedentEngine:
             "support_strength": 0.0,
             "conflict_level": 0.0,
             "drift_score": 0.0,
-            "clusters": [],
+            "clusters": {
+                "supportive": [],
+                "neutral": [],
+                "contradictory": [],
+            },
             "is_novel": True,
             "analysis": "mock precedent analysis",
         }

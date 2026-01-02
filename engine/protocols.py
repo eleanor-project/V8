@@ -8,6 +8,13 @@ dependency injection, testing with mocks, and loose coupling.
 from typing import Protocol, Any, Dict, List, Optional, runtime_checkable
 from abc import abstractmethod
 
+from engine.schemas.pipeline_types import (
+    AggregationOutput,
+    CriticResult,
+    PrecedentAlignmentResult,
+    PrecedentRetrievalResult,
+    UncertaintyResult,
+)
 
 @runtime_checkable
 class RouterProtocol(Protocol):
@@ -44,7 +51,7 @@ class CriticProtocol(Protocol):
         model_adapter: Any,
         input_text: str,
         context: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> CriticResult:
         """Evaluate model output against critic's principles.
         
         Args:
@@ -150,7 +157,7 @@ class PrecedentEngineProtocol(Protocol):
         critics: Dict[str, Any],
         precedent_cases: List[Dict[str, Any]],
         query_embedding: List[float],
-    ) -> Dict[str, Any]:
+    ) -> PrecedentAlignmentResult:
         """Analyze precedent alignment.
         
         Args:
@@ -176,9 +183,9 @@ class PrecedentRetrieverProtocol(Protocol):
     def retrieve(
         self,
         query: str,
-        critic_results: List[Dict[str, Any]],
+        critic_results: List[CriticResult],
         top_k: int = 5,
-    ) -> Dict[str, Any]:
+    ) -> PrecedentRetrievalResult:
         """Retrieve relevant precedent cases.
         
         Args:
@@ -202,10 +209,10 @@ class UncertaintyEngineProtocol(Protocol):
     @abstractmethod
     def compute(
         self,
-        critics: Dict[str, Any],
+        critics: Dict[str, CriticResult],
         model_used: str,
-        precedent_alignment: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        precedent_alignment: PrecedentAlignmentResult,
+    ) -> UncertaintyResult:
         """Compute uncertainty metrics.
         
         Args:
@@ -230,11 +237,11 @@ class AggregatorProtocol(Protocol):
     @abstractmethod
     def aggregate(
         self,
-        critics: Dict[str, Any],
-        precedent: Dict[str, Any],
-        uncertainty: Dict[str, Any],
+        critics: Dict[str, CriticResult],
+        precedent: PrecedentAlignmentResult,
+        uncertainty: UncertaintyResult,
         model_output: str,
-    ) -> Dict[str, Any]:
+    ) -> AggregationOutput:
         """Aggregate all analysis results.
         
         Args:

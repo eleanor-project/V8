@@ -6,6 +6,7 @@ Quarantined cases:
 """
 
 from datetime import datetime
+from typing import Any
 from replay_store import load_human_reviews
 
 
@@ -33,7 +34,7 @@ def list_quarantined_cases() -> list[dict]:
     import json
     import os
 
-    results = []
+    results: list[dict[str, Any]] = []
     if not os.path.exists(REVIEW_RECORD_DIR):
         return results
 

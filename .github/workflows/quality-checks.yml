@@ -35,6 +35,10 @@ jobs:
         run: mypy engine/ api/
         continue-on-error: true  # Don't block on type errors initially
 
+      - name: Run pyright type checker
+        run: pyright
+        continue-on-error: true  # Keep non-blocking while types are tightened
+
   security-scan:
     name: Security Scanning
     runs-on: ubuntu-latest

@@ -9,18 +9,45 @@ from typing import Any, Dict, Optional
 class EleanorV8Exception(Exception):
     """Base exception for all ELEANOR V8 errors."""
 
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ):
         super().__init__(message)
         self.message = message
-        self.details = details or {}
+        merged: Dict[str, Any] = dict(details or {})
+        merged.update(kwargs)
+        self.details = merged
+
+
+class EleanorEngineError(EleanorV8Exception):
+    """Compatibility alias for engine-wide errors."""
+
+    pass
 
 
 class CriticEvaluationError(EleanorV8Exception):
     """Raised when a critic fails to evaluate properly."""
 
-    def __init__(self, critic_name: str, message: str, details: Optional[Dict[str, Any]] = None):
-        super().__init__(message, details)
+    def __init__(
+        self,
+        critic_name: str,
+        message: str,
+        trace_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ):
+        super().__init__(
+            message,
+            details,
+            critic_name=critic_name,
+            trace_id=trace_id,
+            **kwargs,
+        )
         self.critic_name = critic_name
+        self.trace_id = trace_id
 
 
 class RouterSelectionError(EleanorV8Exception):
