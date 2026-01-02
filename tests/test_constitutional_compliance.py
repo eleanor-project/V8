@@ -13,9 +13,6 @@ Critical Requirements Tested:
 5. Tier and human action mappings
 """
 
-import sys
-sys.path.insert(0, '/Users/billp/documents/github/v8')
-
 from engine.critics.consistency import ConsistencyEngine, CharterViolationType
 from engine.critics.redundancy import RedundancyEngine, validate_no_cross_critic_suppression
 from engine.critics.privacy import PrivacyIdentityCritic
