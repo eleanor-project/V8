@@ -1,10 +1,10 @@
 """
 Secrets Management for ELEANOR V8
 
-Provides secure credential storage and retrieval with multiple backend providers:
-- Environment variables (development)
-- AWS Secrets Manager (production)
-- HashiCorp Vault (production)
+Provides pluggable secrets providers:
+- EnvironmentSecretsProvider: Development (env vars)
+- AWSSecretsProvider: Production (AWS Secrets Manager)
+- VaultSecretsProvider: Production (HashiCorp Vault)
 """
 
 import logging
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class SecretsProvider(ABC):
-    """Abstract base class for secrets management providers"""
+    """Abstract base for secrets management providers"""
 
     @abstractmethod
     def get_secret(self, key: str) -> Optional[str]:
@@ -29,299 +29,298 @@ class SecretsProvider(ABC):
         """List available secret keys (not values)"""
         pass
 
-    def get_secret_or_fail(self, key: str) -> str:
-        """Get secret or raise error if not found"""
+    def get_secret_or_raise(self, key: str) -> str:
+        """Get secret or raise ValueError if missing"""
         secret = self.get_secret(key)
         if secret is None:
-            raise ValueError(f"Secret '{key}' not found")
+            raise ValueError(f"Required secret not found: {key}")
         return secret
 
 
 class EnvironmentSecretsProvider(SecretsProvider):
-    """Development: Use environment variables for secrets"""
+    """
+    Development secrets provider using environment variables.
+    
+    Warning: Not recommended for production use.
+    """
 
     def __init__(self, prefix: str = "ELEANOR_"):
         """
         Args:
-            prefix: Environment variable prefix to filter by
+            prefix: Only consider env vars with this prefix
         """
         self.prefix = prefix
         logger.info(
             "environment_secrets_provider_initialized",
             extra={"prefix": prefix}
         )
+        logger.warning(
+            "Using environment variables for secrets. "
+            "Configure AWS Secrets Manager or Vault for production."
+        )
 
     def get_secret(self, key: str) -> Optional[str]:
-        """Retrieve secret from environment variable"""
-        value = os.getenv(key)
+        """Get secret from environment variable"""
+        # Try with prefix first, then without
+        value = os.getenv(f"{self.prefix}{key}")
+        if value is None:
+            value = os.getenv(key)
+        
         if value:
             logger.debug(
-                "secret_retrieved",
-                extra={"key": key, "source": "environment"}
+                "secret_retrieved_from_environment",
+                extra={"key": key}
             )
+        else:
+            logger.debug(
+                "secret_not_found_in_environment",
+                extra={"key": key}
+            )
+        
         return value
 
     def list_secrets(self) -> List[str]:
-        """List environment variables matching prefix"""
+        """List all environment variables with prefix"""
         return [
-            key for key in os.environ.keys()
-            if key.startswith(self.prefix)
+            k.replace(self.prefix, "", 1) if k.startswith(self.prefix) else k
+            for k in os.environ.keys()
+            if k.startswith(self.prefix)
         ]
 
 
 class AWSSecretsProvider(SecretsProvider):
-    """Production: Use AWS Secrets Manager"""
+    """
+    Production secrets provider using AWS Secrets Manager.
+    
+    Features:
+    - Automatic secret rotation support
+    - Caching with TTL
+    - IAM-based access control
+    """
 
     def __init__(
         self,
         region_name: str = "us-west-2",
         cache_ttl: int = 300,
+        prefix: str = "eleanor/",
     ):
         """
         Args:
             region_name: AWS region for Secrets Manager
-            cache_ttl: Cache TTL in seconds (default: 5 minutes)
+            cache_ttl: Seconds to cache secrets (default: 5 minutes)
+            prefix: Prefix for all secret names
         """
         try:
             import boto3
-            self.client = boto3.client(
-                "secretsmanager",
-                region_name=region_name
-            )
+            from botocore.exceptions import ClientError
+            
+            self.boto3 = boto3
+            self.ClientError = ClientError
         except ImportError:
             raise ImportError(
-                "boto3 not installed. Install with: pip install boto3"
+                "boto3 required for AWSSecretsProvider. "
+                "Install with: pip install boto3"
             )
 
         self.region_name = region_name
         self.cache_ttl = cache_ttl
-        self._cache: Dict[str, tuple[str, float]] = {}  # {key: (value, expiry)}
-
+        self.prefix = prefix
+        
+        self.client = self.boto3.client(
+            "secretsmanager",
+            region_name=region_name
+        )
+        
+        # Cache: {key: (value, timestamp)}
+        self._cache: Dict[str, tuple[str, float]] = {}
+        
         logger.info(
             "aws_secrets_provider_initialized",
             extra={
                 "region": region_name,
                 "cache_ttl": cache_ttl,
+                "prefix": prefix,
             }
         )
 
+    def _is_cache_valid(self, key: str) -> bool:
+        """Check if cached value is still valid"""
+        if key not in self._cache:
+            return False
+        
+        _, timestamp = self._cache[key]
+        age = time.time() - timestamp
+        return age < self.cache_ttl
+
     def get_secret(self, key: str) -> Optional[str]:
-        """Retrieve secret from AWS Secrets Manager with caching"""
+        """Get secret from AWS Secrets Manager with caching"""
         # Check cache
-        if key in self._cache:
-            value, expiry = self._cache[key]
-            if time.time() < expiry:
-                logger.debug(
-                    "secret_retrieved_from_cache",
-                    extra={"key": key}
-                )
-                return value
-            else:
-                # Expired
-                del self._cache[key]
-
+        if self._is_cache_valid(key):
+            logger.debug(
+                "secret_retrieved_from_cache",
+                extra={"key": key}
+            )
+            value, _ = self._cache[key]
+            return value
+        
         # Fetch from AWS
+        secret_name = f"{self.prefix}{key}"
+        
         try:
-            response = self.client.get_secret_value(SecretId=key)
+            response = self.client.get_secret_value(SecretId=secret_name)
             secret = response["SecretString"]
-
-            # Cache with TTL
-            expiry = time.time() + self.cache_ttl
-            self._cache[key] = (secret, expiry)
-
+            
+            # Cache it
+            self._cache[key] = (secret, time.time())
+            
             logger.info(
-                "secret_retrieved",
-                extra={
-                    "key": key,
-                    "source": "aws_secrets_manager",
-                    "region": self.region_name,
-                }
+                "secret_retrieved_from_aws",
+                extra={"key": key, "secret_name": secret_name}
             )
+            
             return secret
-
-        except self.client.exceptions.ResourceNotFoundException:
-            logger.warning(
-                "secret_not_found",
-                extra={"key": key, "source": "aws_secrets_manager"}
-            )
-            return None
-        except Exception as exc:
-            logger.error(
-                "secret_retrieval_failed",
-                extra={
-                    "key": key,
-                    "error": str(exc),
-                    "source": "aws_secrets_manager",
-                },
-                exc_info=True,
-            )
+            
+        except self.ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            
+            if error_code == "ResourceNotFoundException":
+                logger.warning(
+                    "secret_not_found_in_aws",
+                    extra={"key": key, "secret_name": secret_name}
+                )
+            else:
+                logger.error(
+                    "aws_secrets_error",
+                    extra={
+                        "key": key,
+                        "error_code": error_code,
+                        "error": str(e),
+                    },
+                    exc_info=True,
+                )
+            
             return None
 
     def list_secrets(self) -> List[str]:
-        """List all secret names in AWS Secrets Manager"""
+        """List all secrets with prefix"""
         try:
-            response = self.client.list_secrets()
-            return [s["Name"] for s in response["SecretList"]]
-        except Exception as exc:
+            paginator = self.client.get_paginator("list_secrets")
+            secrets = []
+            
+            for page in paginator.paginate():
+                for secret in page["SecretList"]:
+                    name = secret["Name"]
+                    if name.startswith(self.prefix):
+                        # Remove prefix
+                        secrets.append(name.replace(self.prefix, "", 1))
+            
+            return secrets
+            
+        except Exception as e:
             logger.error(
-                "list_secrets_failed",
-                extra={"error": str(exc)},
+                "failed_to_list_aws_secrets",
+                extra={"error": str(e)},
                 exc_info=True,
             )
             return []
 
 
 class VaultSecretsProvider(SecretsProvider):
-    """Production: Use HashiCorp Vault"""
+    """
+    Production secrets provider using HashiCorp Vault.
+    
+    Features:
+    - Dynamic secrets generation
+    - Automatic secret rotation
+    - Audit logging
+    - Fine-grained access control
+    """
 
     def __init__(
         self,
         vault_addr: str,
-        vault_token: str,
-        mount_point: str = "secret",
-        cache_ttl: int = 300,
+        vault_token: Optional[str] = None,
+        mount_point: str = "eleanor",
     ):
         """
         Args:
             vault_addr: Vault server address (e.g., https://vault.example.com)
-            vault_token: Vault authentication token
-            mount_point: KV secrets engine mount point
-            cache_ttl: Cache TTL in seconds (default: 5 minutes)
+            vault_token: Vault authentication token (or use VAULT_TOKEN env)
+            mount_point: KV secrets mount point
         """
         try:
             import hvac
-            self.client = hvac.Client(url=vault_addr, token=vault_token)
-            
-            # Verify connection
-            if not self.client.is_authenticated():
-                raise ValueError("Failed to authenticate with Vault")
-                
+            self.hvac = hvac
         except ImportError:
             raise ImportError(
-                "hvac not installed. Install with: pip install hvac"
+                "hvac required for VaultSecretsProvider. "
+                "Install with: pip install hvac"
             )
 
         self.vault_addr = vault_addr
         self.mount_point = mount_point
-        self.cache_ttl = cache_ttl
-        self._cache: Dict[str, tuple[str, float]] = {}
-
+        
+        token = vault_token or os.getenv("VAULT_TOKEN")
+        if not token:
+            raise ValueError(
+                "Vault token required. Set VAULT_TOKEN env var or pass vault_token parameter."
+            )
+        
+        self.client = self.hvac.Client(url=vault_addr, token=token)
+        
+        if not self.client.is_authenticated():
+            raise ValueError("Failed to authenticate with Vault")
+        
         logger.info(
             "vault_secrets_provider_initialized",
             extra={
                 "vault_addr": vault_addr,
                 "mount_point": mount_point,
-                "cache_ttl": cache_ttl,
             }
         )
 
     def get_secret(self, key: str) -> Optional[str]:
-        """Retrieve secret from Vault with caching"""
-        # Check cache
-        if key in self._cache:
-            value, expiry = self._cache[key]
-            if time.time() < expiry:
-                logger.debug(
-                    "secret_retrieved_from_cache",
-                    extra={"key": key}
-                )
-                return value
-            else:
-                del self._cache[key]
-
-        # Fetch from Vault
+        """Get secret from Vault KV v2"""
         try:
-            secret_response = self.client.secrets.kv.v2.read_secret_version(
+            # Read from KV v2 (versioned)
+            secret = self.client.secrets.kv.v2.read_secret_version(
                 path=key,
                 mount_point=self.mount_point,
             )
-            secret = secret_response["data"]["data"]["value"]
-
-            # Cache with TTL
-            expiry = time.time() + self.cache_ttl
-            self._cache[key] = (secret, expiry)
-
+            
+            value = secret["data"]["data"].get("value")
+            
             logger.info(
-                "secret_retrieved",
-                extra={
-                    "key": key,
-                    "source": "vault",
-                    "mount_point": self.mount_point,
-                }
+                "secret_retrieved_from_vault",
+                extra={"key": key, "mount_point": self.mount_point}
             )
-            return secret
-
-        except Exception as exc:
+            
+            return value
+            
+        except Exception as e:
             logger.error(
-                "secret_retrieval_failed",
+                "vault_secrets_error",
                 extra={
                     "key": key,
-                    "error": str(exc),
-                    "source": "vault",
+                    "error": str(e),
                 },
                 exc_info=True,
             )
             return None
 
     def list_secrets(self) -> List[str]:
-        """List all secret paths in Vault"""
+        """List all secrets in mount point"""
         try:
             response = self.client.secrets.kv.v2.list_secrets(
                 path="",
                 mount_point=self.mount_point,
             )
             return response["data"]["keys"]
-        except Exception as exc:
+            
+        except Exception as e:
             logger.error(
-                "list_secrets_failed",
-                extra={"error": str(exc)},
+                "failed_to_list_vault_secrets",
+                extra={"error": str(e)},
                 exc_info=True,
             )
             return []
-
-
-def auto_detect_secrets_provider() -> SecretsProvider:
-    """
-    Auto-detect and initialize the appropriate secrets provider.
-
-    Detection order:
-    1. AWS Secrets Manager (if AWS_SECRETS_MANAGER=true)
-    2. HashiCorp Vault (if VAULT_ADDR is set)
-    3. Environment variables (fallback)
-
-    Returns:
-        Configured SecretsProvider instance
-    """
-    # Check for AWS Secrets Manager
-    if os.getenv("AWS_SECRETS_MANAGER", "").lower() == "true":
-        region = os.getenv("AWS_REGION", "us-west-2")
-        logger.info(
-            "auto_detected_secrets_provider",
-            extra={"provider": "aws", "region": region}
-        )
-        return AWSSecretsProvider(region_name=region)
-
-    # Check for HashiCorp Vault
-    vault_addr = os.getenv("VAULT_ADDR")
-    vault_token = os.getenv("VAULT_TOKEN")
-    if vault_addr and vault_token:
-        logger.info(
-            "auto_detected_secrets_provider",
-            extra={"provider": "vault", "vault_addr": vault_addr}
-        )
-        return VaultSecretsProvider(
-            vault_addr=vault_addr,
-            vault_token=vault_token,
-        )
-
-    # Fallback to environment variables
-    logger.warning(
-        "using_environment_secrets_provider",
-        extra={
-            "message": (
-                "Using environment variables for secrets. "
-                "Configure AWS Secrets Manager or Vault for production."
-            )
-        }
-    )
-    return EnvironmentSecretsProvider()
