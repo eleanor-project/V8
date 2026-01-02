@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from collections import defaultdict
 
 from .base import BaseCriticV8
+from engine.schemas.pipeline_types import CriticResult
 
 
 @dataclass
@@ -214,7 +215,7 @@ class FairnessCriticV8(BaseCriticV8):
         model,
         input_text: str,
         context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    ) -> CriticResult:
         """
         Evaluate input and model output for fairness violations.
 
@@ -320,9 +321,9 @@ class FairnessCriticV8(BaseCriticV8):
         violations: Optional[List[str]] = None,
         justification: Optional[str] = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> CriticResult:
         """Extended build_evidence with additional fields for aggregator."""
-        base: Dict[str, Any] = cast(Dict[str, Any], super().build_evidence(**kwargs))
+        base: CriticResult = cast(CriticResult, super().build_evidence(**kwargs))
 
         if severity is not None:
             base["severity"] = severity

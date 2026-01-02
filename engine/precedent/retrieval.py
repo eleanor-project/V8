@@ -23,6 +23,11 @@ Output:
 from typing import Dict, Any, List, Optional
 import math
 
+from engine.schemas.pipeline_types import (
+    CriticResult,
+    PrecedentRetrievalResult,
+    PrecedentCaseResult,
+)
 
 class PrecedentRetrievalV8:
 
@@ -37,7 +42,7 @@ class PrecedentRetrievalV8:
     # ---------------------------------------------------------------
     #  Semantic + normative alignment scoring
     # ---------------------------------------------------------------
-    def _score_alignment(self, case: Dict[str, Any], critic_outputs: List[Dict[str, Any]]) -> float:
+    def _score_alignment(self, case: PrecedentCaseResult, critic_outputs: List[CriticResult]) -> float:
         """
         Compute a rough alignment score based on:
           - overlap of values invoked
@@ -47,7 +52,11 @@ class PrecedentRetrievalV8:
         Returns float between 0 and 1.
         """
         case_values = set(case.get("values", []))
-        current_values = set(o["value"] for o in critic_outputs if o["value"])
+        current_values = set()
+        for output in critic_outputs:
+            value = output.get("value")
+            if value:
+                current_values.add(value)
 
         # Value overlap ratio
         if not current_values:
@@ -69,7 +78,12 @@ class PrecedentRetrievalV8:
     # ---------------------------------------------------------------
     #  Main retrieval function
     # ---------------------------------------------------------------
-    def retrieve(self, query_text: str, critic_outputs: List[Dict[str, Any]], top_k: int = 5) -> Dict[str, Any]:
+    def retrieve(
+        self,
+        query_text: str,
+        critic_outputs: List[CriticResult],
+        top_k: int = 5,
+    ) -> PrecedentRetrievalResult:
 
         results = self.store.search(query_text, top_k=top_k) or []
 
@@ -77,7 +91,8 @@ class PrecedentRetrievalV8:
             return {
                 "precedent_cases": [],
                 "alignment_score": 1.0,  # neutral when no precedent exists
-                "top_case": None
+                "top_case": None,
+                "query_embedding": [],
             }
 
         scored = []
@@ -92,5 +107,6 @@ class PrecedentRetrievalV8:
         return {
             "precedent_cases": [c for c, s in scored],
             "alignment_score": float(top_score),
-            "top_case": top_case
+            "top_case": top_case,
+            "query_embedding": [],
         }

@@ -5,6 +5,8 @@ from api.replay_store import (
     list_review_packets,
     store_human_review,
     store_review_packet,
+    REVIEW_PACKET_DIR,
+    REVIEW_RECORD_DIR,
 )
 
 __all__ = [
@@ -14,4 +16,6 @@ __all__ = [
     "load_review_packet",
     "list_review_packets",
     "load_human_reviews",
+    "REVIEW_PACKET_DIR",
+    "REVIEW_RECORD_DIR",
 ]

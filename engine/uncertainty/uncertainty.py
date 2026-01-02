@@ -28,6 +28,7 @@ from typing import Dict, Any
 import statistics
 import math
 
+from engine.schemas.pipeline_types import UncertaintyResult, PrecedentAlignmentResult, CriticResult
 
 
 class UncertaintyEngineV8:
@@ -40,10 +41,10 @@ class UncertaintyEngineV8:
     # ============================================================
     def compute(
         self,
-        critics: Dict[str, Dict[str, Any]],
+        critics: Dict[str, CriticResult],
         model_used: str,
-        precedent_alignment: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        precedent_alignment: PrecedentAlignmentResult
+    ) -> UncertaintyResult:
         """
         Compute all uncertainty dimensions.
         """

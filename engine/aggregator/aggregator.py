@@ -20,6 +20,13 @@ from typing import Dict, Any, List
 import statistics
 
 from engine.schemas.escalation import CriticEvaluation
+from engine.schemas.pipeline_types import (
+    AggregationOutput,
+    AggregationScore,
+    CriticResult,
+    PrecedentAlignmentResult,
+    UncertaintyResult,
+)
 from engine.utils.critic_names import canonicalize_critic_map
 from engine.aggregator.escalation import resolve_escalation
 
@@ -58,11 +65,11 @@ class AggregatorV8:
     # ----------------------------------------------------------
     def aggregate(
         self,
-        critics: Dict[str, Dict[str, Any]],
-        precedent: Dict[str, Any],
-        uncertainty: Dict[str, Any],
+        critics: Dict[str, CriticResult],
+        precedent: PrecedentAlignmentResult,
+        uncertainty: UncertaintyResult,
         model_output: str = "",
-    ) -> Dict[str, Any]:
+    ) -> AggregationOutput:
         """
         critics: dict critic_name -> critic_output
         precedent: { "cases": [...], "alignment_score": float }
@@ -127,7 +134,7 @@ class AggregatorV8:
             "decision": decision,
             "score": score,
             "critics": adjusted,
-            "lexicographic_violations": lex,
+            "lexicographic_violations": lex.get("violations", []),
             "precedent": precedent,
             "uncertainty": uncertainty,
             "final_output": model_output,
@@ -141,7 +148,7 @@ class AggregatorV8:
     # ----------------------------------------------------------
     # STEP 1: Normalize critic outputs
     # ----------------------------------------------------------
-    def _normalize_critics(self, critics: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    def _normalize_critics(self, critics: Dict[str, CriticResult]) -> Dict[str, Dict[str, Any]]:
         """
         Expected critic schema:
            {
@@ -282,7 +289,7 @@ class AggregatorV8:
     # ----------------------------------------------------------
     # STEP 5: Compute final constitutional score
     # ----------------------------------------------------------
-    def _final_score(self, critics_final, lex_info) -> Dict[str, float]:
+    def _final_score(self, critics_final, lex_info) -> AggregationScore:
         """
         Produces:
             • weighted_total

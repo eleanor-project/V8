@@ -43,6 +43,8 @@ from typing import List, Dict, Any
 import math
 import statistics
 
+from engine.schemas.pipeline_types import PrecedentAlignmentResult, CriticResult
+
 
 # ============================================================
 # Utility: cosine similarity
@@ -73,10 +75,10 @@ class PrecedentAlignmentEngineV8:
     # ----------------------------------------------------------
     def analyze(
         self,
-        critics: Dict[str, Dict[str, Any]],
+        critics: Dict[str, CriticResult],
         precedent_cases: List[Dict[str, Any]],
         query_embedding: List[float],
-    ) -> Dict[str, Any]:
+    ) -> PrecedentAlignmentResult:
         """
         Returns full structured precedent analysis.
         """
@@ -126,13 +128,17 @@ class PrecedentAlignmentEngineV8:
     # ----------------------------------------------------------
     # NOVEL CASE HANDLER
     # ----------------------------------------------------------
-    def _novel_case(self) -> Dict[str, Any]:
+    def _novel_case(self) -> PrecedentAlignmentResult:
         return {
             "alignment_score": 0.0,
             "support_strength": 0.0,
             "conflict_level": 0.0,
             "drift_score": 0.0,
-            "clusters": [],
+            "clusters": {
+                "supportive": [],
+                "neutral": [],
+                "contradictory": [],
+            },
             "is_novel": True,
             "analysis": "No relevant precedent found; treat as novel case."
         }
@@ -254,7 +260,11 @@ class PrecedentAlignmentEngineV8:
     # ----------------------------------------------------------
     # STEP 5: Precedent clustering metadata
     # ----------------------------------------------------------
-    def _cluster_cases(self, cases, similarities):
+    def _cluster_cases(
+        self,
+        cases: List[Dict[str, Any]],
+        similarities: List[float],
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Lightweight cluster labeling based on decision distribution.
         """
