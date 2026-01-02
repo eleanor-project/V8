@@ -12,7 +12,7 @@ Configuration via environment variables:
 
 import os
 import time
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, cast
 from types import ModuleType
 from dataclasses import dataclass
 from functools import wraps
@@ -246,4 +246,4 @@ def create_token(
         "scopes": scopes or []
     }
 
-    return jwt.encode(payload, config.secret, algorithm=config.algorithm)
+    return cast(str, jwt.encode(payload, config.secret, algorithm=config.algorithm))

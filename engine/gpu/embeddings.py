@@ -82,11 +82,13 @@ class GPUEmbeddingCache:
         
         # Convert to GPU tensor if needed
         if self.gpu_manager.torch_available:
-            if not isinstance(embedding, self.gpu_manager.torch.Tensor):
-                embedding = self.gpu_manager.torch.tensor(
+            torch = self.gpu_manager.torch
+            assert torch is not None
+            if not isinstance(embedding, torch.Tensor):
+                embedding = torch.tensor(
                     embedding, 
                     device=self.device,
-                    dtype=self.gpu_manager.torch.float16 if self.gpu_manager.config.mixed_precision else self.gpu_manager.torch.float32
+                    dtype=torch.float16 if self.gpu_manager.config.mixed_precision else torch.float32
                 )
             elif embedding.device != self.device:
                 embedding = embedding.to(self.device)
@@ -122,6 +124,7 @@ class GPUEmbeddingCache:
         
         # GPU-accelerated computation
         torch = self.gpu_manager.torch
+        assert torch is not None
         
         # Ensure on GPU
         if not isinstance(query_embedding, torch.Tensor):
@@ -160,6 +163,7 @@ class GPUEmbeddingCache:
             ])
         
         torch = self.gpu_manager.torch
+        assert torch is not None
         
         # Stack queries
         query_batch = torch.stack([
@@ -197,7 +201,9 @@ class GPUEmbeddingCache:
         
         if self.gpu_manager.torch_available:
             # GPU topk operation
-            top_scores, top_indices = self.gpu_manager.torch.topk(similarities, k)
+            torch = self.gpu_manager.torch
+            assert torch is not None
+            top_scores, top_indices = torch.topk(similarities, k)
             return top_indices.cpu().numpy(), top_scores.cpu().numpy()
         else:
             # NumPy fallback

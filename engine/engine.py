@@ -515,7 +515,7 @@ class EleanorEngineV8:
                 )
                 self._emit_error(error, stage="evidence", trace_id=trace_id, critic=name)
 
-            return evaluation_result
+            return cast(CriticResult, evaluation_result)
 
 
     async def _run_critics_parallel(
@@ -1015,24 +1015,25 @@ class EleanorEngineV8:
         evidence_count = len(buffer) if buffer else None
 
         # Base kwargs
-        result_kwargs = {
-            "trace_id": trace_id,
-            "output_text": aggregated.get("final_output") or model_response,
-            "model_info": engine_model_info,
-            "critic_findings": {
-                k: EngineCriticFinding(
-                    critic=k,
-                    violations=list(v.get("violations", [])),
-                    duration_ms=v.get("duration_ms"),
-                    evaluated_rules=cast(Optional[List[str]], v.get("evaluated_rules")),
-                )
-                for k, v in critic_results.items()
-            },
-            "aggregated": aggregated,
-            "uncertainty": uncertainty_data,
-            "precedent_alignment": precedent_data,
-            "evidence_count": evidence_count,
+        critic_findings = {
+            k: EngineCriticFinding(
+                critic=k,
+                violations=list(v.get("violations", [])),
+                duration_ms=v.get("duration_ms"),
+                evaluated_rules=cast(Optional[List[str]], v.get("evaluated_rules")),
+            )
+            for k, v in critic_results.items()
         }
+        base_result = EngineResult(
+            trace_id=trace_id,
+            output_text=aggregated.get("final_output") or model_response,
+            model_info=engine_model_info,
+            critic_findings=critic_findings,
+            aggregated=aggregated,
+            uncertainty=uncertainty_data,
+            precedent_alignment=precedent_data,
+            evidence_count=evidence_count,
+        )
 
         # ---------------------------
         # DETAIL LEVEL 1
@@ -1048,7 +1049,7 @@ class EleanorEngineV8:
         # DETAIL LEVEL 2
         # ---------------------------
         if level == 2:
-            return EngineResult(**result_kwargs)
+            return base_result
 
         # ---------------------------
         # DETAIL LEVEL 3 — FORENSIC
@@ -1069,7 +1070,14 @@ class EleanorEngineV8:
             )
 
             return EngineResult(
-                **result_kwargs,
+                trace_id=base_result.trace_id,
+                output_text=base_result.output_text,
+                model_info=base_result.model_info,
+                critic_findings=base_result.critic_findings,
+                aggregated=base_result.aggregated,
+                uncertainty=base_result.uncertainty,
+                precedent_alignment=base_result.precedent_alignment,
+                evidence_count=base_result.evidence_count,
                 forensic=forensic_data,
             )
 
@@ -1197,15 +1205,15 @@ class EleanorEngineV8:
         async def _run_and_return(name, critic_ref):
             return await self._run_single_critic(name, critic_ref, model_response, critic_input_text, context, trace_id)
 
-        task_map = {}
+        task_map: Dict[asyncio.Future[Any], str] = {}
         for name, critic_ref in self.critics.items():
             task = asyncio.create_task(_run_and_return(name, critic_ref))
             task_map[task] = name
 
-        for task in asyncio.as_completed(task_map):
-            critic_name = task_map[task]
+        for future in asyncio.as_completed(task_map):
+            critic_name = task_map[future]
             try:
-                res = await task
+                res = await future
             except CriticEvaluationError as exc:
                 self._emit_error(
                     exc,
