@@ -1,66 +1,9 @@
-# ELEANOR V8 - GPU Acceleration Requirements
-# PyTorch and GPU optimization dependencies
+# ELEANOR V8 - GPU Acceleration Dependencies
 
 # Core GPU support
-# Install CPU version first, then upgrade to GPU if needed:
-#   pip install torch torchvision
-# For CUDA 11.8:
-#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-# For CUDA 12.1:
-#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 torch>=2.1.0
 torchvision>=0.16.0
 
-# GPU monitoring and management
-nvidia-ml-py>=12.535.0  # NVIDIA Management Library (nvidia-smi Python bindings)
-gputil>=1.4.0  # GPU utilization monitoring
-
-# ============================================================================
-# OPTIONAL PERFORMANCE OPTIMIZATIONS
-# Uncomment packages below for enhanced performance
-# ============================================================================
-
-# Memory optimization
-# flash-attn>=2.5.0  # FlashAttention for memory-efficient attention
-# bitsandbytes>=0.41.0  # 4-bit and 8-bit quantization
-# triton>=2.1.0  # Optimized CUDA kernels
-
-# Multi-GPU support
-# accelerate>=0.25.0  # Hugging Face multi-GPU utilities
-# deepspeed>=0.12.0  # Advanced distributed training/inference
-
-# High-performance inference engines (production)
-# vllm>=0.2.7  # Optimized LLM inference with PagedAttention
-# tensorrt>=8.6.0  # NVIDIA TensorRT for optimized inference
-
-# ============================================================================
-# PLATFORM-SPECIFIC NOTES
-# ============================================================================
-
-# Apple Silicon (M1/M2/M3):
-#   - PyTorch automatically uses Metal Performance Shaders (MPS)
-#   - Install: pip install torch torchvision
-#   - No CUDA packages needed
-
-# NVIDIA GPUs:
-#   - Install appropriate CUDA toolkit first
-#   - Match PyTorch CUDA version to system CUDA version
-#   - Check CUDA version: nvidia-smi
-
-# CPU-only (no GPU):
-#   - Only install: torch>=2.1.0 torchvision>=0.16.0
-#   - Skip nvidia-ml-py and gputil
-
-# ============================================================================
-# COMPATIBILITY
-# ============================================================================
-
-# PyTorch CUDA Compatibility:
-# - CUDA 11.8: torch 2.1.0+ (most compatible)
-# - CUDA 12.1: torch 2.1.0+
-# - CUDA 12.4: torch 2.3.0+
-
-# Minimum GPU Requirements:
-# - NVIDIA: GTX 1660 (6GB VRAM) or better
-# - Apple: M1/M2/M3 with 8GB+ unified memory
-# - Recommended: RTX 4090 (24GB) or A100 (40GB+)
+# GPU utilities
+nvidia-ml-py3>=7.352.0  # GPU monitoring (NVIDIA only)
+gputil>=1.4.0  # Cross-platform GPU utilities
