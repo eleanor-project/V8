@@ -12,7 +12,8 @@ Configuration via environment variables:
 
 import os
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from types import ModuleType
 from dataclasses import dataclass
 from functools import wraps
 
@@ -20,12 +21,15 @@ from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 # JWT library - graceful import
+_jwt: Optional[ModuleType]
 try:
-    import jwt
+    import jwt as _jwt
     JWT_AVAILABLE = True
 except ImportError:
     JWT_AVAILABLE = False
-    jwt = None
+    _jwt = None
+
+jwt: Optional[ModuleType] = _jwt
 
 
 @dataclass
@@ -117,6 +121,7 @@ def decode_token(token: str, config: AuthConfig) -> TokenPayload:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="JWT library not installed. Run: pip install PyJWT"
         )
+    assert jwt is not None
 
     try:
         payload = jwt.decode(
@@ -217,9 +222,9 @@ def require_scope(scope: str):
 
 def create_token(
     user_id: str,
-    roles: list = None,
-    scopes: list = None,
-    config: AuthConfig = None
+    roles: Optional[List[str]] = None,
+    scopes: Optional[List[str]] = None,
+    config: Optional[AuthConfig] = None
 ) -> str:
     """
     Create a new JWT token.
@@ -229,6 +234,7 @@ def create_token(
     """
     if not JWT_AVAILABLE:
         raise RuntimeError("JWT library not installed. Run: pip install PyJWT")
+    assert jwt is not None
 
     config = config or get_auth_config()
 

@@ -53,7 +53,7 @@ class RateLimiter:
     For distributed deployments, use Redis-backed rate limiting.
     """
 
-    def __init__(self, config: RateLimitConfig = None):
+    def __init__(self, config: Optional[RateLimitConfig] = None):
         self.config = config or RateLimitConfig.from_env()
         self._requests: Dict[str, list] = defaultdict(list)
         self._lock = threading.Lock()
@@ -114,7 +114,7 @@ class RateLimiter:
 
             return True, headers
 
-    def reset(self, client_id: str = None) -> None:
+    def reset(self, client_id: Optional[str] = None) -> None:
         """Reset rate limit counters. Useful for testing."""
         with self._lock:
             if client_id:
@@ -159,8 +159,8 @@ async def check_rate_limit(request: Request) -> None:
 
 
 def rate_limit(
-    requests_per_window: int = None,
-    window_seconds: int = None
+    requests_per_window: Optional[int] = None,
+    window_seconds: Optional[int] = None
 ):
     """
     Decorator for rate limiting specific endpoints.
@@ -207,7 +207,7 @@ class RateLimitMiddleware:
     Adds rate limit headers to all responses.
     """
 
-    def __init__(self, app, limiter: RateLimiter = None):
+    def __init__(self, app, limiter: Optional[RateLimiter] = None):
         self.app = app
         self.limiter = limiter or get_rate_limiter()
 

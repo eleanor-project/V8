@@ -1,4 +1,6 @@
+from typing import cast
 from llm.factory import get_llm
+from critics.llm import LLMClient as CriticsLLMClient
 from critics.truth import truth_critic
 from critics.fairness import fairness_critic
 from critics.risk import risk_critic
@@ -9,7 +11,7 @@ def run_critics(prompt: str):
     """
     Execute all constitutional critics independently.
     """
-    llm = get_llm()
+    llm = cast(CriticsLLMClient, get_llm())
 
     return [
         truth_critic(prompt, llm),
