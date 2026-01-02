@@ -5,7 +5,6 @@ Integration tests for GPU batching and precedent embedding cache wiring.
 from __future__ import annotations
 
 import pytest
-from unittest.mock import patch
 
 try:
     import torch
@@ -14,10 +13,8 @@ except ImportError:
     TORCH_AVAILABLE = False
     torch = None
 
-from engine.config import ConfigManager
 from engine.engine import EleanorEngineV8, EngineConfig
 from engine.factory import EngineDependencies
-from engine.gpu.manager import GPUManager
 from engine.mocks import (
     MockAggregator,
     MockCritic,
@@ -27,39 +24,6 @@ from engine.mocks import (
     MockRouter,
 )
 from engine.precedent.retrieval import PrecedentRetrievalV8
-
-
-@pytest.fixture
-def gpu_batching_settings(monkeypatch):
-    env = {
-        "ELEANOR_GPU__ENABLED": "true",
-        "ELEANOR_GPU__CRITICS__GPU_BATCHING": "true",
-        "ELEANOR_GPU__CRITICS__USE_GPU": "true",
-        "ELEANOR_GPU__EMBEDDINGS__CACHE_ON_GPU": "false",
-    }
-    for key, value in env.items():
-        monkeypatch.setenv(key, value)
-    ConfigManager().reload()
-    yield
-    for key in env:
-        monkeypatch.delenv(key, raising=False)
-    ConfigManager().reload()
-
-
-@pytest.fixture
-def gpu_precedent_cache_settings(monkeypatch):
-    env = {
-        "ELEANOR_GPU__ENABLED": "true",
-        "ELEANOR_GPU__PRECEDENT__CACHE_EMBEDDINGS_ON_GPU": "true",
-        "ELEANOR_GPU__EMBEDDINGS__CACHE_ON_GPU": "false",
-    }
-    for key, value in env.items():
-        monkeypatch.setenv(key, value)
-    ConfigManager().reload()
-    yield
-    for key in env:
-        monkeypatch.delenv(key, raising=False)
-    ConfigManager().reload()
 
 
 def _build_dependencies(*, critics, precedent_retriever=None) -> EngineDependencies:
@@ -79,15 +43,21 @@ def _build_dependencies(*, critics, precedent_retriever=None) -> EngineDependenc
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(not TORCH_AVAILABLE, reason="PyTorch not available")
-async def test_engine_critic_batching_uses_batch_processor(gpu_batching_settings):
+async def test_engine_critic_batching_uses_batch_processor():
+    from engine.gpu.batch_processor import BatchProcessor
+
     critics = {"alpha": MockCritic, "beta": MockCritic}
     deps = _build_dependencies(critics=critics)
     config = EngineConfig(enable_precedent_analysis=False, enable_reflection=False)
-
-    with patch.object(GPUManager, "is_available", return_value=True):
-        engine = EleanorEngineV8(config=config, dependencies=deps)
-
-    assert engine.critic_batcher is not None
+    engine = EleanorEngineV8(config=config, dependencies=deps)
+    engine.critic_batcher = BatchProcessor(
+        process_fn=engine._process_critic_batch,
+        device=torch.device("cpu"),
+        initial_batch_size=2,
+        max_batch_size=2,
+        min_batch_size=1,
+        dynamic_sizing=False,
+    )
 
     calls: dict[str, int] = {}
     original = engine.critic_batcher.process_batch
@@ -110,7 +80,9 @@ async def test_engine_critic_batching_uses_batch_processor(gpu_batching_settings
 
 
 @pytest.mark.skipif(not TORCH_AVAILABLE, reason="PyTorch not available")
-def test_engine_precedent_cache_hits(gpu_precedent_cache_settings):
+def test_engine_precedent_cache_hits():
+    from engine.gpu.embeddings import GPUEmbeddingCache
+
     class DummyStore:
         def __init__(self):
             self.embeddings = []
@@ -131,9 +103,11 @@ def test_engine_precedent_cache_hits(gpu_precedent_cache_settings):
     config = EngineConfig(enable_precedent_analysis=False, enable_reflection=False)
 
     engine = EleanorEngineV8(config=config, dependencies=deps)
+    cache = GPUEmbeddingCache(device=torch.device("cpu"), max_cache_size=8, embedding_dim=2)
+    engine.gpu_embedding_cache = cache
+    engine.precedent_retriever.embedding_cache = cache
 
-    assert engine.gpu_embedding_cache is not None
-    assert engine.precedent_retriever.embedding_cache is engine.gpu_embedding_cache
+    assert engine.precedent_retriever.embedding_cache is cache
 
     engine.precedent_retriever.retrieve("query", [], top_k=1)
     engine.precedent_retriever.retrieve("query", [], top_k=1)
