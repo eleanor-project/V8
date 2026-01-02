@@ -28,31 +28,26 @@ MANIFEST
 
 # Testing
 .coverage
-.coverage.*
-htmlcov/
 .pytest_cache/
-.hypothesis/
-coverage.xml
+*.egg-info/
+dist/
+build/
 
-# Runtime artifacts
-nohup.out
-*.log
-replay_log.jsonl
-replay_store.py
-safety_report.json
-*_report.json
-bandit-report.json
-evidence.jsonl
-logs/*.jsonl
-logs/*.log
-
-# Environment
+# Environment and secrets
 .env
 .env.local
-.venv/
-venv/
-ENV/
-env/
+.env.*.local
+*.pem
+*.key
+*.crt
+secrets/
+
+# Logs and evidence
+evidence.jsonl
+nohup.out
+*.log
+logs/
+*.jsonl
 
 # IDE
 .vscode/
@@ -60,23 +55,33 @@ env/
 *.swp
 *.swo
 *~
+
+# OS
 .DS_Store
+Thumbs.db
 
-# Type checking
-.mypy_cache/
-.pytype/
-.dmypy.json
-dmypy.json
+# Test coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
 
-# Profiling
-*.prof
+# Database
+*.db
+*.sqlite
+*.sqlite3
 
 # Temporary files
 *.tmp
 *.temp
+*.bak
+*.orig
 
-# OS files
-Thumbs.db
+# Docker
+.dockerignore
+docker-compose.override.yml
 
-# Keep empty log directories
-!logs/.gitkeep
+# Monitoring
+prometheus/
+grafana/
