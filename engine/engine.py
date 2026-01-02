@@ -162,6 +162,7 @@ class EngineConfig(BaseModel):
     circuit_breaker_threshold: int = 5
     circuit_breaker_timeout: float = 60.0
     enable_graceful_degradation: bool = True
+    shutdown_timeout_seconds: float = 30.0
 
     enable_reflection: bool = True
     enable_drift_check: bool = True
@@ -377,10 +378,12 @@ class EleanorEngineV8:
         if self.precedent_retriever:
             await _maybe_call(self.precedent_retriever, "connect")
 
-    async def shutdown(self, *, timeout: float = 30.0) -> None:
+    async def shutdown(self, *, timeout: Optional[float] = None) -> None:
         """Gracefully shutdown engine and cleanup resources."""
         logger.info("engine_shutdown_initiated", extra={"instance_id": self.instance_id})
         self._shutdown_event.set()
+        if timeout is None:
+            timeout = self.config.shutdown_timeout_seconds
 
         async def _close_resource(name: str, obj: Any, method_name: str) -> None:
             method = getattr(obj, method_name, None)
@@ -405,10 +408,13 @@ class EleanorEngineV8:
             cleanup_coros.append(_close_resource("cache_manager", self.cache_manager, "close"))
 
         if cleanup_coros:
-            try:
-                await asyncio.wait_for(asyncio.gather(*cleanup_coros), timeout=timeout)
-            except asyncio.TimeoutError:
-                logger.warning("engine_shutdown_timeout", extra={"timeout": timeout})
+            if timeout is None or timeout <= 0:
+                await asyncio.gather(*cleanup_coros)
+            else:
+                try:
+                    await asyncio.wait_for(asyncio.gather(*cleanup_coros), timeout=timeout)
+                except asyncio.TimeoutError:
+                    logger.warning("engine_shutdown_timeout", extra={"timeout": timeout})
 
         for task in list(self._cleanup_tasks):
             if not task.done():

@@ -25,9 +25,9 @@ await engine.shutdown()
 
 ## API Integration
 
-The FastAPI server uses its lifespan handler to call `engine.shutdown()` on
-shutdown signals (SIGTERM/SIGINT). This ensures cleanup during deployments or
-restarts.
+The FastAPI server uses its lifespan handler to initialize engine resources
+with `__aenter__()` on startup and call `engine.shutdown()` on shutdown signals
+(SIGTERM/SIGINT). This ensures cleanup during deployments or restarts.
 
 ## Evidence Recorder Flush
 
@@ -39,6 +39,7 @@ forces a final flush to prevent data loss.
 Evidence flush interval and buffer size can be configured:
 
 ```bash
+ELEANOR_RESOURCE_MANAGEMENT__SHUTDOWN__GRACEFUL_TIMEOUT=30
 ELEANOR_EVIDENCE__BUFFER_SIZE=1000
 ELEANOR_EVIDENCE__FLUSH_INTERVAL=5.0
 ```
