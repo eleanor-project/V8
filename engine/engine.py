@@ -1,5 +1,5 @@
 """
-ELEANOR V8 — Enterprise Constitutional Engine Runtime
+ELEANOR V8 â€” Enterprise Constitutional Engine Runtime
 Dual API (run + run_stream)
 Dependency Injection Ready
 Full Evidence Recorder Integration
@@ -1229,7 +1229,7 @@ class EleanorEngineV8:
                 details={"error": str(review_exc)},
             ) from review_exc
     # -----------------------------------------------------
-    # FULL STRUCTURED OUTPUT MODE — run()
+    # FULL STRUCTURED OUTPUT MODE â€” run()
     # -----------------------------------------------------
     async def run(
         self,
@@ -1543,7 +1543,7 @@ class EleanorEngineV8:
             return base_result
 
         # ---------------------------
-        # DETAIL LEVEL 3 — FORENSIC
+        # DETAIL LEVEL 3 â€” FORENSIC
         # ---------------------------
         forensic_data = None
         if level == 3:
@@ -1578,7 +1578,7 @@ class EleanorEngineV8:
 
 
     # -----------------------------------------------------
-    # STREAMING OUTPUT MODE — run_stream()
+    # STREAMING OUTPUT MODE â€” run_stream()
     # -----------------------------------------------------
     async def run_stream(
         self,
@@ -2059,7 +2059,7 @@ def create_engine(
         error_monitor=error_monitor,
     )
 
-    print(f"[ELEANOR ENGINE] create_engine() → Engine instance ready: {engine.instance_id}")
+    print(f"[ELEANOR ENGINE] create_engine() â†’ Engine instance ready: {engine.instance_id}")
     return engine
 
 

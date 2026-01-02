@@ -1,0 +1,40 @@
+# ELEANOR V8 - Resource Management Configuration
+
+resource_management:
+  # Graceful shutdown
+  shutdown:
+    graceful_timeout: 30.0  # Max seconds to wait for cleanup
+    force_timeout: 5.0      # Max seconds for forceful cleanup
+    
+  # Evidence recorder
+  evidence_recorder:
+    buffer_size: 1000        # Max records before auto-flush
+    flush_interval: 5.0      # Seconds between periodic flushes
+    close_timeout: 10.0      # Max seconds to wait for final flush
+    
+  # Connection pools (future implementation)
+  connection_pools:
+    redis:
+      min_connections: 1
+      max_connections: 10
+      connection_timeout: 5.0
+      idle_timeout: 300.0    # Close idle connections after 5 minutes
+      
+    database:
+      min_connections: 2
+      max_connections: 20
+      connection_timeout: 10.0
+      
+  # Operation timeouts
+  timeouts:
+    critic_evaluation: 10.0
+    router_selection: 5.0
+    evidence_flush: 3.0
+    precedent_retrieval: 8.0
+    uncertainty_computation: 5.0
+    aggregation: 3.0
+    
+  # Background task management
+  background_tasks:
+    cleanup_timeout: 5.0     # Max seconds to wait for task cancellation
+    grace_period: 2.0        # Seconds to allow graceful task completion
