@@ -151,7 +151,7 @@ class GPUManager:
         Returns:
             torch.device instance
         """
-        if not self.torch_available:
+        if not self.torch_available or self.torch is None:
             raise RuntimeError("PyTorch not available")
         
         if preferred_id is not None and self.cuda_available:
@@ -170,7 +170,7 @@ class GPUManager:
         Returns:
             Memory statistics or None if not available
         """
-        if not self.cuda_available or device_id >= self.device_count:
+        if not self.cuda_available or device_id >= self.device_count or self.torch is None:
             return None
         
         try:
@@ -202,18 +202,18 @@ class GPUManager:
     
     def reset_peak_memory_stats(self, device_id: int = 0) -> None:
         """Reset peak memory statistics."""
-        if self.cuda_available and device_id < self.device_count:
+        if self.cuda_available and self.torch is not None and device_id < self.device_count:
             self.torch.cuda.reset_peak_memory_stats(device_id)
     
     def empty_cache(self) -> None:
         """Empty CUDA cache to free memory."""
-        if self.cuda_available:
+        if self.cuda_available and self.torch is not None:
             self.torch.cuda.empty_cache()
             logger.debug("CUDA cache emptied")
     
     def _log_device_info(self) -> None:
         """Log detailed device information."""
-        if self.cuda_available:
+        if self.cuda_available and self.torch is not None:
             for i in range(self.device_count):
                 props = self.torch.cuda.get_device_properties(i)
                 logger.info(
@@ -238,7 +238,7 @@ class GPUManager:
     
     def synchronize(self, device_id: Optional[int] = None) -> None:
         """Synchronize CUDA device."""
-        if self.cuda_available:
+        if self.cuda_available and self.torch is not None:
             if device_id is not None:
                 self.torch.cuda.synchronize(device_id)
             else:

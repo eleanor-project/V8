@@ -93,7 +93,7 @@ logger = get_logger(__name__)
 # Metrics (optional Prometheus)
 # ---------------------------------------------
 try:
-    from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+    from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST  # type: ignore[import-not-found]
 
     DELIB_REQUESTS = Counter(
         "eleanor_deliberate_requests_total",
@@ -128,12 +128,14 @@ def enable_tracing(app: FastAPI):
     if os.getenv("ENABLE_OTEL", "").lower() not in ("1", "true", "yes"):
         return
     try:
-        from opentelemetry import trace
-        from opentelemetry.sdk.resources import Resource
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from opentelemetry import trace  # type: ignore[import-not-found]
+        from opentelemetry.sdk.resources import Resource  # type: ignore[import-not-found]
+        from opentelemetry.sdk.trace import TracerProvider  # type: ignore[import-not-found]
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor  # type: ignore[import-not-found]
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (  # type: ignore[import-not-found]
+            OTLPSpanExporter,
+        )
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # type: ignore[import-not-found]
 
         endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces")
         resource = Resource.create({"service.name": os.getenv("OTEL_SERVICE_NAME", "eleanor-v8-api")})
@@ -152,7 +154,7 @@ def enable_prometheus_middleware(app: FastAPI):
     if os.getenv("ENABLE_PROMETHEUS_MIDDLEWARE", "").lower() not in ("1", "true", "yes"):
         return
     try:
-        from prometheus_fastapi_instrumentator import Instrumentator
+        from prometheus_fastapi_instrumentator import Instrumentator  # type: ignore[import-not-found]
 
         Instrumentator().instrument(app).expose(app, include_in_schema=False)
         logger.info("Prometheus middleware instrumentation enabled")
@@ -177,7 +179,7 @@ def get_cors_origins() -> list:
     return [origin.strip() for origin in origins_str.split(",") if origin.strip()]
 
 
-def check_content_length(request: Request, max_bytes: int = None):
+def check_content_length(request: Request, max_bytes: Optional[int] = None):
     """Guardrail: reject overly large requests early."""
     max_allowed = max_bytes or int(os.getenv("MAX_REQUEST_BYTES", "1048576"))  # 1MB default
     content_length = request.headers.get("content-length")
@@ -198,7 +200,7 @@ def get_constitutional_config() -> dict:
     return load_constitutional_config(config_path)
 
 
-def _ensure_writable_path(path: str):
+def _ensure_writable_path(path: str | Path):
     """Check that a path is writable by attempting an atomic write."""
     Path(path).mkdir(parents=True, exist_ok=True)
     probe = Path(path) / ".write_probe"
@@ -454,13 +456,15 @@ def _map_decision(
     if not final_decision:
         return "ABSTAIN"
     decision = str(final_decision).lower()
-    mapping = {
-        "allow": "ALLOW",
-        "constrained_allow": "ALLOW_WITH_CONSTRAINTS",
-        "deny": "DENY",
-        "escalate": "ESCALATE",
-    }
-    return mapping.get(decision, "ABSTAIN")
+    if decision == "allow":
+        return "ALLOW"
+    if decision == "constrained_allow":
+        return "ALLOW_WITH_CONSTRAINTS"
+    if decision == "deny":
+        return "DENY"
+    if decision == "escalate":
+        return "ESCALATE"
+    return "ABSTAIN"
 
 
 def _build_constraints(critic_details: Dict[str, Any]) -> Optional[Dict[str, Any]]:

@@ -38,6 +38,7 @@ class AsyncGPUExecutor:
         
         # Create CUDA streams if available
         if gpu_manager.cuda_available:
+            assert gpu_manager.torch is not None
             self.streams = [
                 gpu_manager.torch.cuda.Stream()
                 for _ in range(num_streams)
@@ -76,6 +77,7 @@ class AsyncGPUExecutor:
             stream = self.get_next_stream()
         
         try:
+            assert self.gpu_manager.torch is not None
             with self.gpu_manager.torch.cuda.stream(stream):
                 yield stream
         finally:

@@ -15,7 +15,7 @@ import os
 import asyncio
 import inspect
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 import random
 
 import yaml
@@ -34,7 +34,11 @@ GOVERNANCE_SCHEMA_VERSION = "v1"
 
 def load_constitutional_config(path_override: Optional[str] = None) -> Dict[str, Any]:
     """Load constitutional configuration from YAML."""
-    config_path = path_override or os.getenv("CONSTITUTIONAL_CONFIG_PATH", "governance/constitutional.yaml")
+    config_path = (
+        path_override
+        or os.getenv("CONSTITUTIONAL_CONFIG_PATH")
+        or "governance/constitutional.yaml"
+    )
     path = Path(config_path)
 
     if not path.exists():
@@ -43,7 +47,7 @@ def load_constitutional_config(path_override: Optional[str] = None) -> Dict[str,
         raise ValueError(f"Constitutional config path is not a file: {config_path}")
 
     with path.open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return cast(Dict[str, Any], yaml.safe_load(f) or {})
 
 
 def _parse_critic_bindings(raw: Optional[str]) -> Dict[str, str]:
@@ -154,7 +158,11 @@ async def evaluate_opa(callback, payload: Dict[str, Any], fallback_strategy: Opt
     Call OPA callback regardless of sync/async implementation.
     fallback_strategy: "escalate" (default), "deny", or "allow" on failure.
     """
-    fallback = (fallback_strategy or os.getenv("OPA_FAIL_STRATEGY", "escalate")).lower()
+    fallback = (
+        fallback_strategy
+        or os.getenv("OPA_FAIL_STRATEGY")
+        or "escalate"
+    ).lower()
 
     if callback is None:
         if fallback == "allow":

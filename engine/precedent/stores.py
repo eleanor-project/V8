@@ -24,9 +24,9 @@ Returned objects MUST include:
 
 import json
 import re
-import psycopg2
-from psycopg2 import sql
-import weaviate
+import psycopg2  # type: ignore[import-untyped]
+from psycopg2 import sql  # type: ignore[import-untyped]
+import weaviate  # type: ignore[import-not-found]
 from typing import Any, Callable, Dict, List
 
 
