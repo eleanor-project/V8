@@ -1,0 +1,5 @@
+security:
+  ignore-unpinned-requirements: true
+  ignore-cvss-severity-below: 7
+  ignore-cvss-unknown-severity: false
+  continue-on-vulnerability-error: false

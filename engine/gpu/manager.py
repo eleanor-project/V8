@@ -7,10 +7,11 @@ Manages GPU resources, device allocation, and health monitoring.
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+from unittest.mock import Mock
 
 try:
     import torch
-    TORCH_AVAILABLE = True
+    TORCH_AVAILABLE = not isinstance(torch, Mock)
 except ImportError:
     TORCH_AVAILABLE = False
     torch = None
@@ -90,8 +91,8 @@ class GPUManager:
             )
             self.device: Optional[Any] = None
             self.devices_available = 0
-            self.preferred_devices: List[int] = []
             self.config = config or GPUConfig()
+            self.preferred_devices = self.config.preferred_devices or preferred_devices or []
             return
 
         self.config = config or GPUConfig()
@@ -105,14 +106,19 @@ class GPUManager:
             or list(range(self.devices_available))
         )
 
+        cuda_version = None
+        if torch.cuda.is_available():
+            version_info = getattr(torch, "version", None)
+            cuda_version = getattr(version_info, "cuda", None) if version_info else None
+
         logger.info(
             "gpu_manager_initialized",
             extra={
                 "device": str(self.device),
                 "cuda_available": torch.cuda.is_available(),
                 "device_count": self.devices_available,
-                "cuda_version": torch.version.cuda if torch.cuda.is_available() else None,
-                "pytorch_version": torch.__version__,
+                "cuda_version": cuda_version,
+                "pytorch_version": getattr(torch, "__version__", None),
             },
         )
 

@@ -27,6 +27,7 @@ from engine.exceptions import (
     EleanorV8Exception,
     EvidenceRecordingError,
     GovernanceEvaluationError,
+    InputValidationError,
     PrecedentRetrievalError,
     RouterSelectionError,
     UncertaintyComputationError,
@@ -52,6 +53,8 @@ from engine.schemas.pipeline_types import (
     ViolationEntry,
 )
 from engine.utils.critic_names import canonicalize_critic_map
+from engine.utils.validation import sanitize_for_logging
+from engine.validation import validate_input
 
 # Governance
 from governance.review_triggers import Case
@@ -159,10 +162,18 @@ class EngineModelInfo(BaseModel):
     health_score: Optional[float] = None
 
 
+def _default_uncertainty_result() -> UncertaintyResult:
+    return cast(UncertaintyResult, {})
+
+
+def _default_precedent_alignment() -> PrecedentAlignmentResult:
+    return cast(PrecedentAlignmentResult, {})
+
+
 class EngineForensicData(BaseModel):
     detector_metadata: Dict[str, Any] = Field(default_factory=dict)
-    uncertainty_graph: UncertaintyResult = Field(default_factory=dict)  # type: ignore[arg-type]
-    precedent_alignment: PrecedentAlignmentResult = Field(default_factory=dict)  # type: ignore[arg-type]
+    uncertainty_graph: UncertaintyResult = Field(default_factory=_default_uncertainty_result)
+    precedent_alignment: PrecedentAlignmentResult = Field(default_factory=_default_precedent_alignment)
     router_diagnostics: Dict[str, Any] = Field(default_factory=dict)
     timings: Dict[str, float] = Field(default_factory=dict)
     evidence_references: List[Dict[str, Any]] = Field(default_factory=list)
@@ -276,6 +287,53 @@ class EleanorEngineV8:
                 self.error_monitor(exc, payload)
             except Exception:
                 logger.debug("Error monitor hook failed", exc_info=True)
+
+    def _emit_validation_error(
+        self,
+        exc: InputValidationError,
+        *,
+        text: Any,
+        context: Any,
+        trace_id: Optional[str],
+    ) -> None:
+        safe_text = sanitize_for_logging(str(text), max_length=500)
+        if isinstance(context, dict):
+            safe_context_keys = context
+        else:
+            safe_context_keys = None
+        try:
+            context_payload = json.dumps(context, default=str, ensure_ascii=True)
+        except Exception:
+            context_payload = str(context)
+        safe_context_excerpt = sanitize_for_logging(context_payload, max_length=500)
+        self._emit_error(
+            exc,
+            stage="validation",
+            trace_id=trace_id,
+            context=safe_context_keys,
+            extra={
+                "input_excerpt": safe_text,
+                "context_excerpt": safe_context_excerpt,
+            },
+        )
+
+    def _validate_inputs(
+        self,
+        text: str,
+        context: Optional[dict],
+        trace_id: Optional[str],
+        detail_level: Optional[int],
+    ) -> tuple[str, Dict[str, Any], str, int]:
+        validated = validate_input(text, context=context, trace_id=trace_id)
+        level = detail_level or self.config.detail_level
+        if level not in (1, 2, 3):
+            raise InputValidationError(
+                "detail_level must be between 1 and 3",
+                validation_type="range_error",
+                field="detail_level",
+                context={"detail_level": level},
+            )
+        return validated.text, validated.context, validated.trace_id, level
 
     def _build_critic_error_result(
         self,
@@ -855,9 +913,25 @@ class EleanorEngineV8:
         trace_id: Optional[str] = None,
     ) -> EngineResult:
 
-        context = context or {}
-        trace_id = trace_id or str(uuid.uuid4())
-        level = detail_level or self.config.detail_level
+        raw_text = text
+        raw_context = context
+        raw_trace_id = trace_id
+        try:
+            text, context, trace_id, level = self._validate_inputs(
+                text,
+                context,
+                trace_id,
+                detail_level,
+            )
+        except InputValidationError as exc:
+            fallback_trace_id = str(raw_trace_id) if raw_trace_id else None
+            self._emit_validation_error(
+                exc,
+                text=raw_text,
+                context=raw_context,
+                trace_id=fallback_trace_id,
+            )
+            raise
 
         pipeline_start = asyncio.get_event_loop().time()
 
@@ -1096,9 +1170,25 @@ class EleanorEngineV8:
         trace_id: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
 
-        context = context or {}
-        trace_id = trace_id or str(uuid.uuid4())
-        level = detail_level or self.config.detail_level
+        raw_text = text
+        raw_context = context
+        raw_trace_id = trace_id
+        try:
+            text, context, trace_id, level = self._validate_inputs(
+                text,
+                context,
+                trace_id,
+                detail_level,
+            )
+        except InputValidationError as exc:
+            fallback_trace_id = str(raw_trace_id) if raw_trace_id else None
+            self._emit_validation_error(
+                exc,
+                text=raw_text,
+                context=raw_context,
+                trace_id=fallback_trace_id,
+            )
+            raise
 
         pipeline_start = asyncio.get_event_loop().time()
 
@@ -1224,23 +1314,27 @@ class EleanorEngineV8:
         for future in asyncio.as_completed(tasks):
             critic_name, res = await future
             if isinstance(res, CriticEvaluationError):
-                exc = res
+                crit_error = res
                 self._emit_error(
-                    exc,
+                    crit_error,
                     stage="critic",
                     trace_id=trace_id,
                     critic=critic_name,
                     context=context,
                 )
-                fallback = exc.details.get("result") if isinstance(exc.details, dict) else None
-                res = fallback or self._build_critic_error_result(critic_name, exc)
+                fallback = (
+                    crit_error.details.get("result")
+                    if isinstance(crit_error.details, dict)
+                    else None
+                )
+                res = fallback or self._build_critic_error_result(critic_name, crit_error)
             elif isinstance(res, Exception):
-                exc = res
+                unknown_error = res
                 critic_error = CriticEvaluationError(
                     critic_name=critic_name,
-                    message=str(exc),
+                    message=str(unknown_error),
                     trace_id=trace_id,
-                    details={"error_type": type(exc).__name__},
+                    details={"error_type": type(unknown_error).__name__},
                 )
                 self._emit_error(
                     critic_error,
@@ -1249,7 +1343,7 @@ class EleanorEngineV8:
                     critic=critic_name,
                     context=context,
                 )
-                res = self._build_critic_error_result(critic_name, exc)
+                res = self._build_critic_error_result(critic_name, unknown_error)
             res = cast(CriticResult, res)
             critic_results[res.get("critic", critic_name)] = res
 

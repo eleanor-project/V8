@@ -492,6 +492,23 @@ networks:
     # Public-facing services only
 ```
 
+### 7. Input Validation & Context Hygiene
+
+- Enforce text length limits (≤ 100KB) and context size limits (≤ 1MB).
+- Keep context JSON-serializable and shallow (depth ≤ 5) to prevent payload abuse.
+- Use safe override keys only (`skip_router` requires `model_output`).
+- Normalize Unicode and strip control characters before processing.
+
+Example safe context:
+
+```json
+{
+  "domain": "finance",
+  "priority": "high",
+  "constraints": {"max_risk_score": 0.4}
+}
+```
+
 ---
 
 ## Troubleshooting

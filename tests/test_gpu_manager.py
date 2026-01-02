@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch, MagicMock
 # Mock torch if not available
 try:
     import torch
-    TORCH_AVAILABLE = True
+    TORCH_AVAILABLE = not isinstance(torch, MagicMock)
 except ImportError:
     TORCH_AVAILABLE = False
     torch = MagicMock()

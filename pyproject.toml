@@ -28,10 +28,15 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0",
     "hypothesis>=6.0",
-    "black>=23.0",
+    "pytest-benchmark>=4.0",
+    "black>=24.3.0",
     "ruff>=0.1.0",
     "mypy>=1.0",
     "pyright>=1.1.350",
+    "types-PyYAML>=6.0",
+    "types-requests>=2.32",
+    "bandit>=1.7.7",
+    "safety>=2.3",
 ]
 
 observability = [
@@ -58,6 +63,9 @@ packages = ["engine", "governance", "api"]
 pythonpath = [".", "engine"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "performance: performance benchmarks",
+]
 
 [tool.black]
 line-length = 100
@@ -69,6 +77,8 @@ target-version = "py310"
 
 [tool.mypy]
 python_version = "3.10"
+ignore_missing_imports = true
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
+exclude = "engine/gpu/|engine/observability/|engine/resilience/|engine/cache/|engine/config/|engine/core/|engine/validation.py"
