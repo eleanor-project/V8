@@ -63,6 +63,10 @@ packages = ["engine", "governance", "api"]
 pythonpath = [".", "engine"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+filterwarnings = [
+    "ignore:'asyncio.iscoroutinefunction' is deprecated.*:DeprecationWarning:pytest_asyncio.plugin",
+    "ignore:'asyncio.get_event_loop_policy' is deprecated.*:DeprecationWarning:pytest_asyncio.plugin",
+]
 markers = [
     "performance: performance benchmarks",
 ]

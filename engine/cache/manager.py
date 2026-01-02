@@ -5,6 +5,7 @@ Multi-level caching with L1 (in-memory LRU) and L2 (Redis) support.
 """
 
 import asyncio
+import inspect
 import hashlib
 import json
 import logging
@@ -243,7 +244,7 @@ class CacheManager:
         
         # Compute value
         start_time = time.time()
-        if asyncio.iscoroutinefunction(compute_fn):
+        if inspect.iscoroutinefunction(compute_fn):
             value = await compute_fn(*args, **kwargs)
         else:
             value = compute_fn(*args, **kwargs)

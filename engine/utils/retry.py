@@ -19,6 +19,7 @@ Usage:
 """
 
 import asyncio
+import inspect
 import random
 import time
 from dataclasses import dataclass, field
@@ -269,7 +270,7 @@ def retry_with_backoff(
             )
 
         # Return appropriate wrapper based on function type
-        if asyncio.iscoroutinefunction(func):
+        if inspect.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
 
@@ -302,7 +303,7 @@ async def retry_async(
 
     for attempt in range(config.max_retries + 1):
         try:
-            if asyncio.iscoroutinefunction(func):
+            if inspect.iscoroutinefunction(func):
                 return await func(*args, **kwargs)
             return func(*args, **kwargs)
 

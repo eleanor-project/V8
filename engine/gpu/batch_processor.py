@@ -7,6 +7,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING, Tuple, cast
 
 import asyncio
+import inspect
 import torch
 from collections import deque
 
@@ -256,7 +257,7 @@ class BatchProcessor:
             List of results
         """
         # If process_fn is async, await it
-        if asyncio.iscoroutinefunction(self.process_fn):
+        if inspect.iscoroutinefunction(self.process_fn):
             return await self.process_fn(items)
         else:
             # Run in executor to not block event loop
