@@ -118,9 +118,29 @@ Input → Router → [Detectors] → Critics → Precedent → Alignment → Unc
 
 ### Configuration
 - **EngineConfig**: toggles precedent analysis, reflection (uncertainty), and evidence jsonl path
-- **Router**: auto-discovery with default echo adapter for local use; supports injected adapters/policy
+- **Router**: defaults to `RouterV8`; override via injected router or `DependencyFactory`
 - **Forensic Mode**: detail_level 3 with timings, router diagnostics, uncertainty graph, and evidence references
 - **Detector Integration**: Optional `enable_detectors=True` flag to activate interpretive signal layer
+
+### Dependency Injection
+Use the dependency factory to supply explicit implementations or mocks.
+
+```python
+from engine.engine import EleanorEngineV8, EngineConfig
+from engine.factory import DependencyFactory
+
+deps = DependencyFactory.create_all_dependencies(
+    router_backend="mock",
+    enable_precedent=False,
+    enable_uncertainty=False,
+    mock_all=True,
+)
+
+engine = EleanorEngineV8(
+    config=EngineConfig(),
+    dependencies=deps,
+)
+```
 
 ### Streaming Support
 ```python
