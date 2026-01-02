@@ -269,8 +269,6 @@ class ConsistencyEngine:
         From Handbook Section 5: Each critic has "Owns" and "Must NOT" boundaries.
         """
         violations = []
-        charter = self.charter_boundaries[normalized_name]
-
         # Check justification and violations for boundary violations
         justification = evaluation.get("justification", "").lower()
         violations_text = " ".join(str(v).lower() for v in evaluation.get("violations", []))
