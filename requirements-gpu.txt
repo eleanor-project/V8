@@ -1,45 +1,66 @@
-# ELEANOR V8 GPU Requirements
-# Install with: pip install -r requirements-gpu.txt
+# ELEANOR V8 - GPU Acceleration Requirements
+# PyTorch and GPU optimization dependencies
 
-# Core GPU Support (CUDA 11.8)
-# For other CUDA versions, see: https://pytorch.org/get-started/locally/
+# Core GPU support
+# Install CPU version first, then upgrade to GPU if needed:
+#   pip install torch torchvision
+# For CUDA 11.8:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+# For CUDA 12.1:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 torch>=2.1.0
 torchvision>=0.16.0
-torchaudio>=2.1.0
 
-# For CUDA 11.8 (most common):
-# torch==2.1.2+cu118
-# torchvision==0.16.2+cu118
-# torchaudio==2.1.2+cu118
-# --extra-index-url https://download.pytorch.org/whl/cu118
+# GPU monitoring and management
+nvidia-ml-py>=12.535.0  # NVIDIA Management Library (nvidia-smi Python bindings)
+gputil>=1.4.0  # GPU utilization monitoring
 
-# For CUDA 12.1:
-# torch==2.1.2+cu121
-# --extra-index-url https://download.pytorch.org/whl/cu121
+# ============================================================================
+# OPTIONAL PERFORMANCE OPTIMIZATIONS
+# Uncomment packages below for enhanced performance
+# ============================================================================
 
-# For Apple Silicon (MPS):
-# torch==2.1.2
-# torchvision==0.16.2
-# torchaudio==2.1.2
+# Memory optimization
+# flash-attn>=2.5.0  # FlashAttention for memory-efficient attention
+# bitsandbytes>=0.41.0  # 4-bit and 8-bit quantization
+# triton>=2.1.0  # Optimized CUDA kernels
 
-# Optimized GPU Operations
-flash-attn>=2.5.0; platform_system != "Darwin"  # FlashAttention (CUDA only)
-triton>=2.1.0; platform_system != "Darwin"  # CUDA kernel optimization
+# Multi-GPU support
+# accelerate>=0.25.0  # Hugging Face multi-GPU utilities
+# deepspeed>=0.12.0  # Advanced distributed training/inference
 
-# Memory Optimization
-bitsandbytes>=0.41.0; platform_system != "Darwin"  # 4-bit/8-bit quantization
-acceler ate>=0.25.0  # Hugging Face multi-GPU utilities
+# High-performance inference engines (production)
+# vllm>=0.2.7  # Optimized LLM inference with PagedAttention
+# tensorrt>=8.6.0  # NVIDIA TensorRT for optimized inference
 
-# Optional: Advanced Inference Optimization
-# vllm>=0.2.7  # High-performance LLM inference (requires CUDA)
-# deepspeed>=0.12.0  # Advanced parallelization and optimization
-# tensorrt>=8.6.0  # NVIDIA TensorRT for maximum performance
+# ============================================================================
+# PLATFORM-SPECIFIC NOTES
+# ============================================================================
 
-# GPU Monitoring
-nvidia-ml-py3>=7.352.0; platform_system != "Darwin"  # NVIDIA Management Library
-gputil>=1.4.0  # GPU utility functions
+# Apple Silicon (M1/M2/M3):
+#   - PyTorch automatically uses Metal Performance Shaders (MPS)
+#   - Install: pip install torch torchvision
+#   - No CUDA packages needed
 
-# Tensor Operations
-einops>=0.7.0  # Readable tensor operations
+# NVIDIA GPUs:
+#   - Install appropriate CUDA toolkit first
+#   - Match PyTorch CUDA version to system CUDA version
+#   - Check CUDA version: nvidia-smi
 
-# Note: For CPU-only installation, use requirements.txt instead
+# CPU-only (no GPU):
+#   - Only install: torch>=2.1.0 torchvision>=0.16.0
+#   - Skip nvidia-ml-py and gputil
+
+# ============================================================================
+# COMPATIBILITY
+# ============================================================================
+
+# PyTorch CUDA Compatibility:
+# - CUDA 11.8: torch 2.1.0+ (most compatible)
+# - CUDA 12.1: torch 2.1.0+
+# - CUDA 12.4: torch 2.3.0+
+
+# Minimum GPU Requirements:
+# - NVIDIA: GTX 1660 (6GB VRAM) or better
+# - Apple: M1/M2/M3 with 8GB+ unified memory
+# - Recommended: RTX 4090 (24GB) or A100 (40GB+)
