@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict
+from typing import Any, Dict, cast
 
 import requests
 
@@ -29,7 +29,7 @@ class AnthropicClient(LLMClient):
         self.base_url = os.getenv("ANTHROPIC_BASE_URL", base_url)
         self.api_version = api_version
 
-    def invoke(self, system_prompt: str, user_prompt: str) -> Dict:
+    def invoke(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         headers = {
             "x-api-key": self.api_key,
             "anthropic-version": self.api_version,
@@ -52,6 +52,6 @@ class AnthropicClient(LLMClient):
         data = resp.json()
         content = data["content"][0]["text"]
         try:
-            return json.loads(content)
+            return cast(Dict[str, Any], json.loads(content))
         except json.JSONDecodeError as exc:
             raise RuntimeError("Anthropic response was not valid JSON") from exc

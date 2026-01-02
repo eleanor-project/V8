@@ -1,4 +1,5 @@
 import os
+from typing import Dict, Type
 from llm.base import LLMClient
 from llm.mock import MockLLM
 from llm.openai_client import OpenAIClient
@@ -17,7 +18,7 @@ def get_llm() -> LLMClient:
 
     backend = os.getenv("ELEANOR_LLM_BACKEND", "mock").lower()
 
-    adapters = {
+    adapters: Dict[str, Type[LLMClient]] = {
         "openai": OpenAIClient,
         "mock": MockLLM,
         "anthropic": AnthropicClient,

@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 from dataclasses import dataclass
 
 from .base import BaseCriticV8
+from engine.schemas.pipeline_types import CriticResult
 
 
 @dataclass
@@ -199,7 +200,7 @@ class RightsCriticV8(BaseCriticV8):
         model,
         input_text: str,
         context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    ) -> CriticResult:
         """
         Evaluate input and model output for rights violations.
 
@@ -219,6 +220,8 @@ class RightsCriticV8(BaseCriticV8):
 
         # Get model output
         output = await active_model.generate(input_text, context=context)
+        if not isinstance(output, str):
+            output = "" if output is None else str(output)
 
         # Analyze both input and output
         input_analysis = self._analyze_text(input_text, source="input")
@@ -298,9 +301,9 @@ class RightsCriticV8(BaseCriticV8):
         violations: Optional[List[str]] = None,
         justification: Optional[str] = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> CriticResult:
         """Extended build_evidence with additional fields for aggregator."""
-        base: Dict[str, Any] = cast(Dict[str, Any], super().build_evidence(**kwargs))
+        base: CriticResult = cast(CriticResult, super().build_evidence(**kwargs))
 
         # Add fields expected by aggregator
         if severity is not None:

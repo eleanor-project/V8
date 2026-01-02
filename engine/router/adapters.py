@@ -24,7 +24,7 @@ You may add new adapters without modifying the engine.
 import os
 import json
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Awaitable
 
 import httpx
 
@@ -61,7 +61,7 @@ except Exception:
     anthropic = None  # type: ignore[assignment]
 
 try:
-    from transformers import AutoTokenizer, AutoModelForCausalLM
+    from transformers import AutoTokenizer, AutoModelForCausalLM  # type: ignore[import-not-found]
     import torch
 except Exception:
     AutoTokenizer = AutoModelForCausalLM = torch = None  # type: ignore[assignment]
@@ -74,7 +74,7 @@ except Exception:
 class BaseLLMAdapter:
     """All adapters must subclass this and implement __call__."""
 
-    def __call__(self, prompt: str) -> str:
+    def __call__(self, prompt: str) -> str | Awaitable[str]:
         raise NotImplementedError
 
 

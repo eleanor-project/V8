@@ -98,7 +98,7 @@ class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
 
         # Try to import voyageai client
         try:
-            import voyageai
+            import voyageai  # type: ignore[import-not-found]
             self._voyage_client = voyageai.Client(api_key=self.api_key) if self.api_key else None
         except ImportError:
             self._voyage_client = None
@@ -175,7 +175,7 @@ class GrokEmbeddingAdapter(BaseEmbeddingAdapter):
 # ============================================================
 
 try:
-    from sentence_transformers import SentenceTransformer
+    from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
 except:
     SentenceTransformer = None
 

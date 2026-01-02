@@ -1,0 +1,25 @@
+# ELEANOR V8 - Observability Configuration
+
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  json_logs: true  # Use JSON format for production
+  development_mode: false  # Colored console for dev
+
+tracing:
+  enabled: true
+  service_name: eleanor-v8
+  jaeger_endpoint: localhost:6831  # Jaeger agent
+  otel_endpoint: null  # OpenTelemetry collector (optional)
+
+# Log output configuration
+log_destinations:
+  console: true
+  file: false
+  file_path: logs/eleanor.log
+  syslog: false
+
+# Metrics (for future Prometheus integration)
+metrics:
+  enabled: false
+  port: 9090
+  path: /metrics

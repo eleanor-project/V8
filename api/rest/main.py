@@ -31,7 +31,7 @@ import uuid
 import time
 import asyncio
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Literal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Depends, Request, status
@@ -77,13 +77,20 @@ from api.bootstrap import (
 )
 from api.replay_store import ReplayStore
 from engine.router.adapters import GPTAdapter, ClaudeAdapter, GrokAdapter, LlamaHFAdapter, OllamaAdapter
+from engine.security.secrets import (
+    EnvironmentSecretProvider,
+    build_secret_provider_from_settings,
+    get_llm_api_key,
+)
 from api.websocket.websocket_server import ws_router
 from pydantic import BaseModel
 from pathlib import Path
 from engine.execution.human_review import enforce_human_review
 from engine.schemas.escalation import AggregationResult, HumanAction, ExecutableDecision
+from engine.exceptions import InputValidationError
 from engine.version import ELEANOR_VERSION
 from engine.utils.critic_names import canonical_critic_name, canonicalize_critic_map
+from engine.utils.validation import sanitize_for_logging
 
 # Initialize logging
 configure_logging()
@@ -93,7 +100,7 @@ logger = get_logger(__name__)
 # Metrics (optional Prometheus)
 # ---------------------------------------------
 try:
-    from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+    from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST  # type: ignore[import-not-found]
 
     DELIB_REQUESTS = Counter(
         "eleanor_deliberate_requests_total",
@@ -128,12 +135,14 @@ def enable_tracing(app: FastAPI):
     if os.getenv("ENABLE_OTEL", "").lower() not in ("1", "true", "yes"):
         return
     try:
-        from opentelemetry import trace
-        from opentelemetry.sdk.resources import Resource
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from opentelemetry import trace  # type: ignore[import-not-found]
+        from opentelemetry.sdk.resources import Resource  # type: ignore[import-not-found]
+        from opentelemetry.sdk.trace import TracerProvider  # type: ignore[import-not-found]
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor  # type: ignore[import-not-found]
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (  # type: ignore[import-not-found]
+            OTLPSpanExporter,
+        )
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # type: ignore[import-not-found]
 
         endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces")
         resource = Resource.create({"service.name": os.getenv("OTEL_SERVICE_NAME", "eleanor-v8-api")})
@@ -152,7 +161,7 @@ def enable_prometheus_middleware(app: FastAPI):
     if os.getenv("ENABLE_PROMETHEUS_MIDDLEWARE", "").lower() not in ("1", "true", "yes"):
         return
     try:
-        from prometheus_fastapi_instrumentator import Instrumentator
+        from prometheus_fastapi_instrumentator import Instrumentator  # type: ignore[import-not-found]
 
         Instrumentator().instrument(app).expose(app, include_in_schema=False)
         logger.info("Prometheus middleware instrumentation enabled")
@@ -164,12 +173,19 @@ def enable_prometheus_middleware(app: FastAPI):
 # Configuration
 # ---------------------------------------------
 
+def _resolve_environment() -> str:
+    return (
+        os.getenv("ELEANOR_ENVIRONMENT")
+        or os.getenv("ELEANOR_ENV")
+        or "development"
+    )
+
 def get_cors_origins() -> list:
     """Get allowed CORS origins from environment."""
     origins_str = os.getenv("CORS_ORIGINS", "")
     if not origins_str:
         # Default to localhost in development
-        env = os.getenv("ELEANOR_ENV", "development")
+        env = _resolve_environment()
         if env == "development":
             return ["http://localhost:3000", "http://localhost:8080", "http://127.0.0.1:3000"]
         # In production, require explicit configuration
@@ -177,7 +193,7 @@ def get_cors_origins() -> list:
     return [origin.strip() for origin in origins_str.split(",") if origin.strip()]
 
 
-def check_content_length(request: Request, max_bytes: int = None):
+def check_content_length(request: Request, max_bytes: Optional[int] = None):
     """Guardrail: reject overly large requests early."""
     max_allowed = max_bytes or int(os.getenv("MAX_REQUEST_BYTES", "1048576"))  # 1MB default
     content_length = request.headers.get("content-length")
@@ -194,11 +210,16 @@ def check_content_length(request: Request, max_bytes: int = None):
 
 def get_constitutional_config() -> dict:
     """Load constitutional configuration from YAML file."""
-    config_path = os.getenv("CONSTITUTIONAL_CONFIG_PATH", "governance/constitutional.yaml")
+    try:
+        from engine.config import ConfigManager
+
+        config_path = ConfigManager().settings.constitutional_config_path
+    except Exception:
+        config_path = os.getenv("CONSTITUTIONAL_CONFIG_PATH", "governance/constitutional.yaml")
     return load_constitutional_config(config_path)
 
 
-def _ensure_writable_path(path: str):
+def _ensure_writable_path(path: str | Path):
     """Check that a path is writable by attempting an atomic write."""
     Path(path).mkdir(parents=True, exist_ok=True)
     probe = Path(path) / ".write_probe"
@@ -211,7 +232,7 @@ def run_readiness_checks() -> Dict[str, str]:
     Run startup readiness checks for security and storage dependencies.
     Raises RuntimeError if a required check fails.
     """
-    env = os.getenv("ELEANOR_ENV", "development")
+    env = _resolve_environment()
     results: Dict[str, str] = {}
     issues = []
 
@@ -232,6 +253,19 @@ def run_readiness_checks() -> Dict[str, str]:
     except Exception as exc:
         results["rate_limit"] = f"error:{exc}"
         issues.append(f"rate_limit_error:{exc}")
+
+    # Configuration validation
+    try:
+        from engine.config import ConfigManager
+
+        config_manager = ConfigManager()
+        validation = config_manager.validate()
+        results["config"] = "ok" if validation.get("valid", False) else "invalid"
+        if not validation.get("valid", False):
+            issues.append("config_invalid")
+    except Exception as exc:
+        results["config"] = f"error:{exc}"
+        issues.append(f"config_error:{exc}")
 
     # CORS configuration
     try:
@@ -269,10 +303,13 @@ def run_readiness_checks() -> Dict[str, str]:
         issues.append(f"storage_error:{exc}")
 
     if issues:
-        logger.error("Readiness checks failed", issues=issues, results=results)
+        logger.error(
+            "Readiness checks failed",
+            extra={"issues": issues, "results": results},
+        )
         raise RuntimeError(f"Readiness checks failed: {issues}")
 
-    logger.info("Readiness checks passed", results=results)
+    logger.info("Readiness checks passed", extra={"results": results})
     return results
 
 
@@ -283,11 +320,12 @@ def run_readiness_checks() -> Dict[str, str]:
 # Global engine instance
 engine = None
 replay_store = ReplayStore(path=os.getenv("REPLAY_LOG_PATH", "replay_log.jsonl"))
+secret_provider = None
 
 
 def initialize_engine():
     """Initialize the ELEANOR engine."""
-    global engine
+    global engine, secret_provider
 
     try:
         constitution = get_constitutional_config()
@@ -297,6 +335,32 @@ def initialize_engine():
         if os.getenv("ELEANOR_DISABLE_OPA", "").lower() in ("1", "true", "yes"):
             setattr(engine, "opa_callback", None)
             logger.info("OPA disabled via ELEANOR_DISABLE_OPA")
+
+        settings = getattr(engine, "settings", None)
+        if settings is None:
+            try:
+                from engine.config import ConfigManager
+
+                settings = ConfigManager().settings
+            except Exception:
+                settings = None
+
+        if settings is not None:
+            try:
+                secret_provider = build_secret_provider_from_settings(settings)
+            except Exception as exc:
+                if settings.environment == "production":
+                    raise
+                secret_provider = EnvironmentSecretProvider(
+                    cache_ttl=settings.security.secrets_cache_ttl
+                )
+                logger.warning(
+                    "Secret provider setup failed; using environment provider",
+                    extra={"error": str(exc)},
+                )
+        else:
+            secret_provider = EnvironmentSecretProvider(cache_ttl=300)
+
         logger.info("ELEANOR V8 engine initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize engine: {e}")
@@ -359,6 +423,11 @@ def normalize_engine_result(result_obj: Any, input_text: str, trace_id: str, con
     model_output = aggregated.get("final_output") if aggregated else None
     model_output = model_output or result.get("output_text")
 
+    degraded_components = result.get("degraded_components") or aggregated.get("degraded_components") or []
+    is_degraded = result.get("is_degraded")
+    if is_degraded is None:
+        is_degraded = aggregated.get("is_degraded", False)
+
     normalized = {
         "trace_id": result.get("trace_id", trace_id),
         "timestamp": time.time(),
@@ -371,6 +440,8 @@ def normalize_engine_result(result_obj: Any, input_text: str, trace_id: str, con
         "aggregator_output": aggregated,
         "input": input_text,
         "context": context,
+        "degraded_components": degraded_components,
+        "is_degraded": bool(is_degraded),
     }
     return normalized
 
@@ -405,7 +476,7 @@ def _severity_score(data: Dict[str, Any]) -> float:
     return 0.0
 
 
-def _critic_verdict(severity: float) -> str:
+def _critic_verdict(severity: float) -> Literal["PASS", "WARN", "FAIL"]:
     if severity >= 2.0:
         return "FAIL"
     if severity >= 1.0:
@@ -421,7 +492,7 @@ def _build_uncertainty_envelope(uncertainty: Dict[str, Any]) -> UncertaintyEnvel
         overall = 0.0
 
     if overall >= 0.6:
-        level = "HIGH"
+        level: Literal["LOW", "MEDIUM", "HIGH"] = "HIGH"
     elif overall >= 0.3:
         level = "MEDIUM"
     else:
@@ -445,17 +516,21 @@ def _confidence_from_uncertainty(uncertainty: Dict[str, Any]) -> float:
     return max(0.0, min(1.0, 1.0 - overall))
 
 
-def _map_decision(final_decision: Optional[str]) -> str:
+def _map_decision(
+    final_decision: Optional[str],
+) -> Literal["ALLOW", "ALLOW_WITH_CONSTRAINTS", "ABSTAIN", "ESCALATE", "DENY"]:
     if not final_decision:
         return "ABSTAIN"
     decision = str(final_decision).lower()
-    mapping = {
-        "allow": "ALLOW",
-        "constrained_allow": "ALLOW_WITH_CONSTRAINTS",
-        "deny": "DENY",
-        "escalate": "ESCALATE",
-    }
-    return mapping.get(decision, "ABSTAIN")
+    if decision == "allow":
+        return "ALLOW"
+    if decision == "constrained_allow":
+        return "ALLOW_WITH_CONSTRAINTS"
+    if decision == "deny":
+        return "DENY"
+    if decision == "escalate":
+        return "ESCALATE"
+    return "ABSTAIN"
 
 
 def _build_constraints(critic_details: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -595,7 +670,10 @@ def resolve_execution_decision(
     try:
         aggregation_result = AggregationResult.model_validate(aggregation_payload)
     except Exception as exc:
-        logger.error("Invalid aggregation_result payload", error=str(exc))
+        logger.error(
+            "Invalid aggregation_result payload",
+            extra={"error": str(exc)},
+        )
         raise RuntimeError("Invalid aggregation_result payload") from exc
     return enforce_human_review(aggregation_result=aggregation_result, human_action=human_action)
 
@@ -606,6 +684,17 @@ def apply_execution_gate(final_decision: str, execution_decision: Optional[Execu
     return final_decision
 
 
+async def _secret_refresh_loop(provider):
+    refresh_interval = max(getattr(provider, "cache_ttl", 300), 60)
+    while True:
+        await asyncio.sleep(refresh_interval)
+        try:
+            await provider.refresh_secrets()
+            logger.info("Secret cache refreshed")
+        except Exception as exc:
+            logger.error("Secret refresh failed", extra={"error": str(exc)})
+
+
 # Lifespan context manager for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -613,8 +702,19 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting ELEANOR V8 API server...")
     initialize_engine()
+    refresh_task = None
+    if secret_provider is not None:
+        refresh_task = asyncio.create_task(_secret_refresh_loop(secret_provider))
     yield
     # Shutdown
+    if engine is not None and hasattr(engine, "shutdown"):
+        await engine.shutdown()
+    if refresh_task is not None:
+        refresh_task.cancel()
+        try:
+            await refresh_task
+        except asyncio.CancelledError:
+            pass
     logger.info("Shutting down ELEANOR V8 API server...")
 
 
@@ -715,10 +815,12 @@ async def general_exception_handler(request: Request, exc: Exception):
     # Log the full error internally
     logger.error(
         "Unhandled exception",
-        trace_id=trace_id,
-        error=str(exc),
-        error_type=type(exc).__name__,
-        path=request.url.path,
+        extra={
+            "trace_id": trace_id,
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "path": request.url.path,
+        },
     )
 
     # Return sanitized error to client
@@ -835,9 +937,11 @@ async def deliberate(
 
     logger.info(
         "deliberation_started",
-        trace_id=trace_id,
-        user_id=user,
-        input_length=len(payload.input),
+        extra={
+            "trace_id": trace_id,
+            "user_id": user,
+            "input_length": len(payload.input),
+        },
     )
 
     if engine is None:
@@ -939,15 +1043,41 @@ async def deliberate(
 
         return response_payload
 
+    except InputValidationError as exc:
+        duration_ms = (time.time() - start_time) * 1000
+        safe_input = sanitize_for_logging(payload.input, max_length=300)
+
+        logger.warning(
+            "input_validation_failed",
+            extra={
+                "trace_id": trace_id,
+                "error": exc.message,
+                "validation_type": exc.details.get("validation_type"),
+                "field": exc.details.get("field"),
+                "input_excerpt": safe_input,
+                "duration_ms": duration_ms,
+            },
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_input",
+                "message": exc.message,
+                "details": exc.details,
+            },
+        )
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
 
         logger.error(
             "deliberation_failed",
-            trace_id=trace_id,
-            error=str(e),
-            error_type=type(e).__name__,
-            duration_ms=duration_ms,
+            extra={
+                "trace_id": trace_id,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "duration_ms": duration_ms,
+            },
         )
 
         raise HTTPException(
@@ -1034,7 +1164,10 @@ async def evaluate(
         try:
             execution_decision = resolve_execution_decision(aggregated, None)
         except Exception as exc:
-            logger.warning("Execution gate evaluation failed", error=str(exc))
+            logger.warning(
+                "Execution gate evaluation failed",
+                extra={"error": str(exc)},
+            )
 
         final_decision = apply_execution_gate(final_decision, execution_decision)
 
@@ -1089,12 +1222,32 @@ async def evaluate(
             errors=[],
         )
 
+    except InputValidationError as exc:
+        logger.warning(
+            "evaluation_input_validation_failed",
+            extra={
+                "request_id": payload.request_id,
+                "error": exc.message,
+                "validation_type": exc.details.get("validation_type"),
+                "field": exc.details.get("field"),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_input",
+                "message": exc.message,
+                "details": exc.details,
+            },
+        )
     except Exception as exc:
         logger.error(
             "evaluation_failed",
-            request_id=payload.request_id,
-            error=str(exc),
-            error_type=type(exc).__name__,
+            extra={
+                "request_id": payload.request_id,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            },
         )
 
         error = EvaluateError(code="E_ENGINE_ERROR", message=str(exc))
@@ -1430,6 +1583,77 @@ async def metrics():
 # Admin Endpoints (router health + critic bindings)
 # ---------------------------------------------
 
+@app.get("/admin/config/health", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def config_health():
+    """Expose configuration validation status for operators."""
+    try:
+        from engine.config import ConfigManager
+
+        manager = ConfigManager()
+        validation = manager.validate()
+        return {
+            "environment": manager.settings.environment,
+            "valid": validation.get("valid", False),
+            "warnings": validation.get("warnings", []),
+            "errors": validation.get("errors", []),
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Config validation failed: {exc}",
+        )
+
+@app.get("/admin/cache/health", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def cache_health():
+    """Expose cache statistics and adaptive concurrency status."""
+    if engine is None:
+        return {"enabled": False, "reason": "engine_not_initialized"}
+
+    cache_manager = getattr(engine, "cache_manager", None)
+    router_cache = getattr(engine, "router_cache", None)
+    concurrency = getattr(engine, "adaptive_concurrency", None)
+
+    if not cache_manager:
+        return {"enabled": False}
+
+    return {
+        "enabled": True,
+        "redis_enabled": cache_manager.redis is not None,
+        "stats": cache_manager.get_stats(),
+        "router_cache": router_cache.stats() if router_cache else None,
+        "concurrency": concurrency.get_stats() if concurrency else None,
+    }
+
+@app.get("/admin/resilience/health", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def resilience_health():
+    """Expose circuit breaker states for engine components."""
+    if engine is None:
+        return {"enabled": False, "reason": "engine_not_initialized"}
+
+    registry = getattr(engine, "circuit_breakers", None)
+    if registry is None:
+        return {"enabled": False}
+
+    components = registry.get_all_status()
+    open_count = sum(1 for status in components.values() if status.get("state") == "open")
+    if not components:
+        overall = "unknown"
+    elif open_count == 0:
+        overall = "healthy"
+    elif open_count < len(components) * 0.3:
+        overall = "degraded"
+    else:
+        overall = "unhealthy"
+
+    return {
+        "enabled": True,
+        "overall_health": overall,
+        "components": components,
+    }
+
 @app.get("/admin/router/health", tags=["Admin"])
 @require_role(ADMIN_ROLE)
 async def router_health():
@@ -1510,13 +1734,31 @@ async def register_adapter(adapter: AdapterRegistration):
         elif factory == "hf":
             adapters[adapter.name] = LlamaHFAdapter(model_path=adapter.model or adapter.name, device=adapter.device or "cpu")
         elif factory == "openai":
-            api_key = adapter.api_key or os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY")
+            api_key = adapter.api_key
+            if api_key is None and secret_provider is not None:
+                api_key = await get_llm_api_key("openai", secret_provider)
+            if api_key is None and _resolve_environment() != "production":
+                api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY")
+            if api_key is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI API key not available")
             adapters[adapter.name] = GPTAdapter(model=adapter.model or "gpt-4o-mini", api_key=api_key)
         elif factory == "claude":
-            api_key = adapter.api_key or os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_KEY")
+            api_key = adapter.api_key
+            if api_key is None and secret_provider is not None:
+                api_key = await get_llm_api_key("anthropic", secret_provider)
+            if api_key is None and _resolve_environment() != "production":
+                api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_KEY")
+            if api_key is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Anthropic API key not available")
             adapters[adapter.name] = ClaudeAdapter(model=adapter.model or "claude-3-5-sonnet-20241022", api_key=api_key)
         elif factory == "grok":
-            api_key = adapter.api_key or os.getenv("XAI_API_KEY") or os.getenv("XAI_KEY")
+            api_key = adapter.api_key
+            if api_key is None and secret_provider is not None:
+                api_key = await get_llm_api_key("xai", secret_provider)
+            if api_key is None and _resolve_environment() != "production":
+                api_key = os.getenv("XAI_API_KEY") or os.getenv("XAI_KEY")
+            if api_key is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="xAI API key not available")
             adapters[adapter.name] = GrokAdapter(model=adapter.model or "grok-beta", api_key=api_key)
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown adapter type '{adapter.type}'")
@@ -1554,5 +1796,5 @@ if __name__ == "__main__":
         "api.rest.main:app",
         host=host,
         port=port,
-        reload=os.getenv("ELEANOR_ENV", "development") == "development",
+        reload=_resolve_environment() == "development",
     )

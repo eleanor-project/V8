@@ -1,144 +1,84 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "eleanor-v8"
 version = "8.0.0"
-description = "ELEANOR V8 — Constitutional AI Governance Engine"
+description = "ELEANOR Constitutional AI Governance Engine V8"
 readme = "README.md"
-requires-python = ">=3.9"
-
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
 authors = [
-    { name = "William Parris" },
-    { name = "GPT-5 — Co-Architect" }
+    {name = "ELEANOR Project"},
 ]
 
-license = { text = "Apache-2.0" }
-
 dependencies = [
-    # Web Framework
-    "fastapi>=0.100",
-    "uvicorn>=0.23",
-    "websockets>=12.0",
-
-    # Data Validation
     "pydantic>=2.0",
-
-    # Configuration
+    "pydantic-settings>=2.0",
     "pyyaml>=6.0",
-
-    # Database Clients
-    "psycopg2-binary>=2.9",
-    "weaviate-client>=3.20",
-
-    # Authentication
-    "PyJWT>=2.8",
-
-    # Logging
-    "structlog>=23.0",
-
-    # HTTP Client (for OPA and external services)
-    "httpx>=0.24",
-    "requests>=2.31",
+    "httpx>=0.24.0",
+    "aiofiles>=23.0.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    # Testing
     "pytest>=7.0",
-    "pytest-asyncio>=0.21",
+    "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0",
     "hypothesis>=6.0",
-
-    # Type checking
+    "pytest-benchmark>=4.0",
+    "black>=24.3.0",
+    "ruff>=0.1.0",
     "mypy>=1.0",
-    "types-PyYAML",
-    "types-requests",
-
-    # Linting
-    "ruff>=0.1",
-
-    # Security scanning
-    "bandit>=1.7",
+    "pyright>=1.1.350",
+    "types-PyYAML>=6.0",
+    "types-requests>=2.32",
+    "bandit>=1.7.7",
     "safety>=2.3",
 ]
 
-production = [
-    # Monitoring
-    "prometheus-client>=0.17",
-    "opentelemetry-api>=1.20",
-    "opentelemetry-sdk>=1.20",
-    "opentelemetry-instrumentation-fastapi>=0.41b0",
-
-    # Process management
-    "gunicorn>=21.0",
+observability = [
+    "structlog>=23.0",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-jaeger>=1.20.0",
 ]
 
-# All optional dependencies
-all = [
-    "eleanor-v8[dev]",
-    "eleanor-v8[production]",
+cache = [
+    "redis>=5.0",
+    "cachetools>=5.0",
 ]
 
-[project.scripts]
-eleanor = "api.cli.cli:main"
+security = [
+    "boto3>=1.28.0",  # AWS Secrets Manager
+    "hvac>=1.2.0",    # HashiCorp Vault
+]
 
-[project.urls]
-Homepage = "https://github.com/eleanor-project/eleanor-v8"
-Documentation = "https://github.com/eleanor-project/eleanor-v8#readme"
-Repository = "https://github.com/eleanor-project/eleanor-v8"
-
-[tool.setuptools.packages.find]
-include = ["api*", "engine*", "governance*", "tests*"]
+[tool.hatch.build.targets.wheel]
+packages = ["engine", "governance", "api"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
+pythonpath = [".", "engine"]
 testpaths = ["tests"]
-addopts = "-v --cov=engine --cov=api --cov-report=term-missing"
-filterwarnings = [
-    "ignore::DeprecationWarning",
+asyncio_mode = "auto"
+markers = [
+    "performance: performance benchmarks",
 ]
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
-
-[tool.ruff.lint]
-select = [
-    "E",      # pycodestyle errors
-    "W",      # pycodestyle warnings
-    "F",      # Pyflakes
-    "I",      # isort
-    "B",      # flake8-bugbear
-    "C4",     # flake8-comprehensions
-    "UP",     # pyupgrade
-    "S",      # flake8-bandit (security)
-]
-ignore = [
-    "E501",   # line too long (handled by formatter)
-    "S101",   # assert usage (needed for tests)
-]
+target-version = "py310"
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
+ignore_missing_imports = true
 warn_return_any = true
 warn_unused_configs = true
-ignore_missing_imports = true
-
-[tool.bandit]
-exclude_dirs = ["tests", "scripts"]
-skips = ["B101"]  # assert_used
-
-[tool.coverage.run]
-source = ["engine", "api"]
-omit = ["*/tests/*", "*/__pycache__/*"]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "if TYPE_CHECKING:",
-]
+disallow_untyped_defs = false
+exclude = "engine/gpu/|engine/observability/|engine/resilience/|engine/cache/|engine/config/|engine/core/|engine/validation.py"

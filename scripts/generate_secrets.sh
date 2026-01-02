@@ -139,6 +139,7 @@ create_env_file() {
     # Use platform-agnostic sed syntax
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
+        sed -i '' "s|^ELEANOR_ENVIRONMENT=.*|ELEANOR_ENVIRONMENT=production|" "$env_file"
         sed -i '' "s|^ELEANOR_ENV=.*|ELEANOR_ENV=production|" "$env_file"
         sed -i '' "s|^JWT_SECRET=.*|JWT_SECRET=$JWT_SECRET|" "$env_file"
         sed -i '' "s|^GRAFANA_ADMIN_PASSWORD=.*|GRAFANA_ADMIN_PASSWORD=$GRAFANA_PASSWORD|" "$env_file"
@@ -153,6 +154,7 @@ create_env_file() {
         fi
     else
         # Linux
+        sed -i "s|^ELEANOR_ENVIRONMENT=.*|ELEANOR_ENVIRONMENT=production|" "$env_file"
         sed -i "s|^ELEANOR_ENV=.*|ELEANOR_ENV=production|" "$env_file"
         sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$JWT_SECRET|" "$env_file"
         sed -i "s|^GRAFANA_ADMIN_PASSWORD=.*|GRAFANA_ADMIN_PASSWORD=$GRAFANA_PASSWORD|" "$env_file"

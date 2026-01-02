@@ -4,6 +4,9 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+*.py[cod]
+*$py.class
+*.so
 
 # Build artifacts
 build/
@@ -11,28 +14,41 @@ dist/
 *.egg-info/
 eleanor_v8.egg-info/
 .eggs/
+develop-eggs/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+.installed.cfg
+*.egg
+MANIFEST
 
 # Testing
 .coverage
-.coverage.*
-htmlcov/
 .pytest_cache/
 .hypothesis/
+*.egg-info/
+dist/
+build/
 
-# Runtime artifacts
-nohup.out
-replay_log.jsonl
-safety_report.json
-evidence.jsonl
-logs/*.jsonl
-logs/*.log
-
-# Environment
+# Environment and secrets
 .env
 .env.local
-.venv/
-venv/
-ENV/
+.env.*.local
+*.pem
+*.key
+*.crt
+secrets/
+
+# Logs and evidence
+evidence.jsonl
+nohup.out
+*.log
+logs/
+*.jsonl
 
 # IDE
 .vscode/
@@ -40,23 +56,33 @@ ENV/
 *.swp
 *.swo
 *~
+
+# OS
 .DS_Store
+Thumbs.db
 
-# Type checking
-.mypy_cache/
-.pytype/
-.dmypy.json
-dmypy.json
+# Test coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
 
-# Profiling
-*.prof
+# Database
+*.db
+*.sqlite
+*.sqlite3
 
 # Temporary files
 *.tmp
 *.temp
+*.bak
+*.orig
 
-# OS files
-Thumbs.db
+# Docker
+.dockerignore
+docker-compose.override.yml
 
-# Keep empty log directories
-!logs/.gitkeep
+# Monitoring
+prometheus/
+grafana/

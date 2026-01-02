@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Any, Dict
 from llm.base import LLMClient
 
 
@@ -11,7 +11,7 @@ class MockLLM(LLMClient):
     allow Eleanor's critic and aggregation logic to be exercised safely.
     """
 
-    def invoke(self, system_prompt: str, user_prompt: str) -> Dict:
+    def invoke(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         # NOTE:
         # We intentionally ignore the specific text of the system prompt here.
         # Real implementations will not.

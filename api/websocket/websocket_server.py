@@ -26,6 +26,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from api.bootstrap import build_engine, evaluate_opa
 from api.middleware.auth import decode_token, get_auth_config
+from engine.exceptions import InputValidationError
 from engine.logging_config import get_logger
 from engine.execution.human_review import enforce_human_review
 from engine.schemas.escalation import AggregationResult, HumanAction, ExecutableDecision
@@ -234,6 +235,10 @@ async def ws_deliberate(ws: WebSocket):
     except WebSocketDisconnect:
         # client closed connection
         return
+
+    except InputValidationError as exc:
+        await ws_send(ws, "error", {"message": exc.message, "details": exc.details})
+        await ws.close()
 
     except Exception as e:
         await ws_send(ws, "error", {"message": str(e)})

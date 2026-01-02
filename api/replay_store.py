@@ -15,12 +15,16 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
+from types import ModuleType
 from uuid import uuid4
 
+_fcntl: Optional[ModuleType]
 try:
-    import fcntl  # type: ignore
+    import fcntl as _fcntl  # type: ignore
 except Exception:  # pragma: no cover - platform specific
-    fcntl = None
+    _fcntl = None
+
+fcntl: Optional[ModuleType] = _fcntl
 
 
 REVIEW_PACKET_DIR = "logs/review_packets"
@@ -232,4 +236,6 @@ __all__ = [
     "load_review_packet",
     "list_review_packets",
     "load_human_reviews",
+    "REVIEW_PACKET_DIR",
+    "REVIEW_RECORD_DIR",
 ]

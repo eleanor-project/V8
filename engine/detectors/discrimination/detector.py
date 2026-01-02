@@ -214,7 +214,7 @@ class DiscriminationDetector(Detector):
         if not violations:
             return 0.0
 
-        total_score = sum(v["severity_score"] for v in violations)
+        total_score = sum(float(v.get("severity_score", 0.0)) for v in violations)
 
         # Explicit discrimination is always critical
         has_explicit = any(v["category"] == "explicit_discrimination" for v in violations)

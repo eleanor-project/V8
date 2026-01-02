@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict
+from typing import Any, Dict
 
 
 class LLMClient(ABC):
@@ -13,7 +13,7 @@ class LLMClient(ABC):
     """
 
     @abstractmethod
-    def invoke(self, system_prompt: str, user_prompt: str) -> Dict:
+    def invoke(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         """
         Execute a single reasoning call.
 

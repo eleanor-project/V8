@@ -1,0 +1,126 @@
+# ELEANOR V8 - GPU Acceleration Configuration
+# Complete configuration for GPU-accelerated inference and embeddings
+
+gpu:
+  # Enable GPU acceleration
+  # Set to false to disable GPU and use CPU only
+  enabled: true
+  
+  # Device preference order (first available is used)
+  # Options: "cuda" (NVIDIA), "mps" (Apple Silicon), "cpu"
+  device_preference: ["cuda", "mps", "cpu"]
+  
+  # Multi-GPU settings
+  multi_gpu:
+    enabled: false
+    
+    # Which GPU device IDs to use (empty = all available)
+    device_ids: []  # e.g., [0, 1, 2, 3]
+    
+    # Parallelization strategy
+    # Options: "data_parallel", "model_parallel", "pipeline_parallel"
+    strategy: "data_parallel"
+  
+  # Memory optimization
+  memory:
+    # Mixed precision inference (FP16/BF16 for speed/memory)
+    mixed_precision: true
+    precision: "fp16"  # Options: "fp16", "bf16", "fp32"
+    
+    # Model quantization for reduced memory footprint
+    quantization:
+      enabled: false
+      bits: 8  # Options: 4, 8, or 16
+      method: "dynamic"  # Options: "dynamic" or "static"
+    
+    # Memory limits per GPU
+    max_memory_per_gpu: "24GB"
+    
+    # Offload to CPU when GPU memory is low
+    offload_to_cpu: false
+    
+    # KV cache size for attention mechanisms
+    kv_cache_size: "4GB"
+  
+  # Batch processing
+  batching:
+    enabled: true
+    default_batch_size: 8
+    max_batch_size: 32
+    
+    # Dynamically adjust batch size based on available memory
+    dynamic_batching: true
+  
+  # Async GPU operations
+  async:
+    # Number of CUDA streams for parallel operations
+    # More streams = better parallelization (up to hardware limit)
+    num_streams: 4
+    
+    # Prefetch next batch while processing current batch
+    prefetch: true
+  
+  # Monitoring and debugging
+  monitoring:
+    # Log GPU memory statistics
+    log_memory_stats: true
+    
+    # How often to check GPU memory (seconds)
+    memory_check_interval: 60
+    
+    # Enable detailed performance profiling
+    # WARNING: Adds overhead, disable in production
+    enable_profiling: false
+
+# LLM Backend GPU Configuration (Ollama)
+ollama:
+  # Number of GPU layers to load (-1 = all, 0 = CPU only)
+  gpu_layers: -1
+  
+  # Number of GPUs to use per model instance
+  num_gpu: 1
+  
+  # Maximum fraction of GPU memory to use (0.0-1.0)
+  gpu_memory_utilization: 0.9
+  
+  # Enable GPU for Ollama inference
+  enable_gpu: true
+
+# Embedding Model GPU Settings
+embeddings:
+  # Device for embedding computation
+  device: "cuda"  # Options: "cuda", "mps", "cpu"
+  
+  # Batch size for embedding generation
+  batch_size: 32
+  
+  # Keep embedding cache on GPU memory for fast similarity search
+  cache_on_gpu: true
+  
+  # Maximum embedding cache size (GPU memory)
+  max_cache_size_gb: 2
+  
+  # Use mixed precision for embeddings
+  mixed_precision: true
+
+# Critic GPU Settings
+critics:
+  # Enable GPU batching for critic evaluation
+  gpu_batching: true
+  
+  # Batch size for critic execution
+  batch_size: 8
+  
+  # Use GPU for critic model inference
+  use_gpu: true
+
+# Precedent Retrieval GPU Settings
+precedent:
+  # Use GPU for similarity search
+  gpu_similarity_search: true
+  
+  # Keep precedent embeddings on GPU
+  cache_embeddings_on_gpu: true
+  
+  # Maximum number of precedents to cache on GPU
+  max_cached_precedents: 10000

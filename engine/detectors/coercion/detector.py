@@ -226,7 +226,7 @@ class CoercionDetector(Detector):
         if not violations:
             return 0.0
 
-        total_score = sum(v["severity_score"] for v in violations)
+        total_score = sum(float(v.get("severity_score", 0.0)) for v in violations)
 
         # Direct threats are always critical
         has_direct_threat = any(v["category"] == "direct_threats" for v in violations)
