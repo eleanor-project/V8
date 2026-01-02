@@ -8,7 +8,8 @@ command -v python3 >/dev/null 2>&1 || { echo "python3 is required"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm (Node 18+) is required"; exit 1; }
 
 # Local defaults
-export ELEANOR_ENV=${ELEANOR_ENV:-development}
+export ELEANOR_ENVIRONMENT="${ELEANOR_ENVIRONMENT:-${ELEANOR_ENV:-development}}"
+export ELEANOR_ENV="${ELEANOR_ENV:-$ELEANOR_ENVIRONMENT}"
 export AUTH_ENABLED=${AUTH_ENABLED:-false}
 export JWT_SECRET=${JWT_SECRET:-dev-secret}
 export ELEANOR_CONFIG=${ELEANOR_CONFIG:-./config/eleanor.yaml}

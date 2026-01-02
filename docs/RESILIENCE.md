@@ -143,9 +143,29 @@ if unhealthy:
     print(f"Degraded components: {unhealthy}")
 ```
 
+### API Endpoint
+
+The API exposes circuit breaker status at:
+
+```
+GET /admin/resilience/health
+```
+
+Response includes per-component state, failure counts, and an overall health
+summary (`healthy`, `degraded`, or `unhealthy`).
+
 ## Configuration
 
-See `config/resilience.yaml` for circuit breaker thresholds and timeouts.
+Configuration is controlled via `ELEANOR_RESILIENCE__*` settings:
+
+```bash
+ELEANOR_RESILIENCE__ENABLE_CIRCUIT_BREAKERS=true
+ELEANOR_RESILIENCE__CIRCUIT_BREAKER_THRESHOLD=5
+ELEANOR_RESILIENCE__CIRCUIT_BREAKER_TIMEOUT=60
+ELEANOR_RESILIENCE__ENABLE_GRACEFUL_DEGRADATION=true
+```
+
+`config/resilience.yaml` remains a reference template.
 
 ## Failure Scenarios
 
@@ -162,6 +182,12 @@ See `config/resilience.yaml` for circuit breaker thresholds and timeouts.
 - Fallback: Use default model (llama3.2:3b)
 - Result includes `degradation_reason`
 - Pipeline completes with fallback model
+
+### Result Signaling
+
+All pipeline results include:
+- `degraded_components`: list of components in degraded mode
+- `is_degraded`: boolean indicating degraded operation
 
 ### Scenario 3: Single Critic Fails
 

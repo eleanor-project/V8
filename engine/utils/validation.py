@@ -9,6 +9,8 @@ Provides security-focused input validation to prevent:
 import re
 from typing import Any, Dict, Optional
 
+from engine.security.sanitizer import CredentialSanitizer
+
 from engine.exceptions import InputValidationError
 
 
@@ -172,7 +174,9 @@ class InputValidator:
         # Truncate if needed
         if len(text) > max_length:
             text = text[:max_length] + "... [truncated]"
-        
+
+        text = CredentialSanitizer.sanitize_text(text)
+
         # Mask sensitive patterns
         if mask_patterns:
             for pattern in mask_patterns:
@@ -184,6 +188,19 @@ class InputValidator:
         text = re.sub(r'password[\s:=]+\S+', 'password=[REDACTED]', text, flags=re.IGNORECASE)
         
         return text
+
+
+def sanitize_for_logging(
+    text: str,
+    max_length: int = 500,
+    mask_patterns: Optional[list] = None
+) -> str:
+    """Module-level helper for log sanitization."""
+    return InputValidator.sanitize_for_logging(
+        text,
+        max_length=max_length,
+        mask_patterns=mask_patterns,
+    )
 
 
 def validate_trace_id(trace_id: Optional[str]) -> str:

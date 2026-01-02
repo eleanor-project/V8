@@ -49,7 +49,8 @@ Request → L1 (memory) → L2 (Redis) → Compute → Cache result
 
 ## Configuration
 
-See `config/caching.yaml` for configuration options.
+Caching is configured via the `ELEANOR_CACHE__*` settings (see `docs/configuration.md`).
+`config/caching.yaml` remains a reference template for sizing and TTL defaults.
 
 ## Usage
 
@@ -105,7 +106,8 @@ concurrency.record_latency(latency_ms)
 
 ## Monitoring
 
-Cache statistics are exposed via structured logging:
+Cache statistics are exposed via the admin endpoint `GET /admin/cache/health` and
+via structured logging:
 
 ```json
 {

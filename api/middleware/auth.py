@@ -44,7 +44,11 @@ class AuthConfig:
     @classmethod
     def from_env(cls) -> "AuthConfig":
         """Load configuration from environment variables."""
-        env = os.getenv("ELEANOR_ENV", "development").lower()
+        env = (
+            os.getenv("ELEANOR_ENVIRONMENT")
+            or os.getenv("ELEANOR_ENV")
+            or "development"
+        ).lower()
         is_dev = env in ("development", "dev", "local")
 
         default_enabled = "false" if is_dev else "true"

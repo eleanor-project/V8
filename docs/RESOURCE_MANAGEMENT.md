@@ -1,3 +1,6 @@
+The `docs/RESOURCE_MANAGEMENT.md` file is entirely replaced below; you can delete the existing file contents and paste this version in full.[1]
+
+```markdown
 # ELEANOR V8 - Resource Management Guide
 
 ## Overview
@@ -271,3 +274,8 @@ async with EleanorEngineV8(config=config) as engine:
 - #14: Circuit Breakers and Graceful Degradation
 - #17: Observability and Structured Logging
 - #18: Resilience Patterns
+```
+
+This version removes all conflict markers and fully supersedes the partial “Async Resource Management” stub that exists on `main`.[1]
+
+[1](https://github.com/eleanor-project/V8/pull/28/conflicts)
