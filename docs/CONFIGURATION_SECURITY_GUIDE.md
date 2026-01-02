@@ -94,6 +94,7 @@ ELEANOR V8 requires secure configuration across multiple layers:
 These items are **NON-NEGOTIABLE** for production deployment:
 
 - [ ] **`ELEANOR_ENVIRONMENT=production`** (NOT development)
+- [ ] **`ELEANOR_SECURITY__SECRET_PROVIDER`** is `aws` or `vault` (NOT `env`)
 - [ ] **`JWT_SECRET`** is 32+ characters, cryptographically random
 - [ ] **At least ONE LLM API key** configured (OpenAI, Anthropic, XAI, or Gemini)
 - [ ] **`POSTGRES_PASSWORD`** changed from default "postgres"

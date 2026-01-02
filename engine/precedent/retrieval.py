@@ -21,6 +21,7 @@ Output:
 """
 
 from typing import Dict, Any, List, Optional
+import inspect
 import math
 
 from engine.schemas.pipeline_types import (
@@ -110,3 +111,11 @@ class PrecedentRetrievalV8:
             "top_case": top_case,
             "query_embedding": [],
         }
+
+    async def close(self) -> None:
+        """Close underlying store connection if supported."""
+        close_fn = getattr(self.store, "close", None)
+        if callable(close_fn):
+            result = close_fn()
+            if inspect.isawaitable(result):
+                await result

@@ -137,6 +137,12 @@ class ConfigManager:
                     result["warnings"].append(
                         "Circuit breakers disabled in production"
                     )
+
+                if settings.security.secret_provider == "env":
+                    result["errors"].append(
+                        "Environment secrets are not allowed in production"
+                    )
+                    result["valid"] = False
             
             # Check file paths
             evidence_path = Path(settings.evidence.jsonl_path)

@@ -21,6 +21,11 @@ Use this checklist to ensure your ELEANOR V8 deployment is production-ready. Che
   - **Why:** Ensures production security defaults are active
   - **Verify:** `grep -E "^ELEANOR_ENVIRONMENT=|^ELEANOR_ENV=" .env`
 
+- [ ] **`ELEANOR_SECURITY__SECRET_PROVIDER` is `aws` or `vault`** (NOT `env`)
+  - **Location:** `.env` file
+  - **Why:** Prevents production secrets from relying on environment variables
+  - **Verify:** `grep "^ELEANOR_SECURITY__SECRET_PROVIDER=" .env`
+
 ### 1.2 JWT Secret
 
 - [ ] **`JWT_SECRET` is set to a strong random value** (CRITICAL)

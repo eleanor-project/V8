@@ -117,9 +117,9 @@ class CacheManager:
             'detector': 1200,
         }
         
-        self.l1_sizes = l1_sizes or default_l1_sizes
-        self.l1_ttls = l1_ttls or default_l1_ttls
-        self.l2_ttls = l2_ttls or default_l2_ttls
+        self.l1_sizes = {**default_l1_sizes, **(l1_sizes or {})}
+        self.l1_ttls = {**default_l1_ttls, **(l1_ttls or {})}
+        self.l2_ttls = {**default_l2_ttls, **(l2_ttls or {})}
         
         # L1 caches by prefix
         self.l1_caches: Dict[str, TTLCache] = {}
@@ -289,6 +289,26 @@ class CacheManager:
             prefix: stats.to_dict()
             for prefix, stats in self.stats.items()
         }
+
+    async def connect(self) -> None:
+        """Initialize cache connections (no-op for in-memory cache)."""
+        return
+
+    async def close(self) -> None:
+        """Close cache connections."""
+        if self.redis is None:
+            return
+        try:
+            close_fn = getattr(self.redis, "close", None)
+            if callable(close_fn):
+                result = close_fn()
+                if asyncio.iscoroutine(result):
+                    await result
+            pool = getattr(self.redis, "connection_pool", None)
+            if pool and hasattr(pool, "disconnect"):
+                pool.disconnect()
+        except Exception as exc:
+            logger.warning("cache_manager_close_failed", extra={"error": str(exc)})
     
     def clear_l1(self, prefix: Optional[str] = None) -> None:
         """Clear L1 cache for prefix or all prefixes."""

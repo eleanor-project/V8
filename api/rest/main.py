@@ -77,6 +77,11 @@ from api.bootstrap import (
 )
 from api.replay_store import ReplayStore
 from engine.router.adapters import GPTAdapter, ClaudeAdapter, GrokAdapter, LlamaHFAdapter, OllamaAdapter
+from engine.security.secrets import (
+    EnvironmentSecretProvider,
+    build_secret_provider_from_settings,
+    get_llm_api_key,
+)
 from api.websocket.websocket_server import ws_router
 from pydantic import BaseModel
 from pathlib import Path
@@ -315,11 +320,12 @@ def run_readiness_checks() -> Dict[str, str]:
 # Global engine instance
 engine = None
 replay_store = ReplayStore(path=os.getenv("REPLAY_LOG_PATH", "replay_log.jsonl"))
+secret_provider = None
 
 
 def initialize_engine():
     """Initialize the ELEANOR engine."""
-    global engine
+    global engine, secret_provider
 
     try:
         constitution = get_constitutional_config()
@@ -329,6 +335,32 @@ def initialize_engine():
         if os.getenv("ELEANOR_DISABLE_OPA", "").lower() in ("1", "true", "yes"):
             setattr(engine, "opa_callback", None)
             logger.info("OPA disabled via ELEANOR_DISABLE_OPA")
+
+        settings = getattr(engine, "settings", None)
+        if settings is None:
+            try:
+                from engine.config import ConfigManager
+
+                settings = ConfigManager().settings
+            except Exception:
+                settings = None
+
+        if settings is not None:
+            try:
+                secret_provider = build_secret_provider_from_settings(settings)
+            except Exception as exc:
+                if settings.environment == "production":
+                    raise
+                secret_provider = EnvironmentSecretProvider(
+                    cache_ttl=settings.security.secrets_cache_ttl
+                )
+                logger.warning(
+                    "Secret provider setup failed; using environment provider",
+                    extra={"error": str(exc)},
+                )
+        else:
+            secret_provider = EnvironmentSecretProvider(cache_ttl=300)
+
         logger.info("ELEANOR V8 engine initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize engine: {e}")
@@ -391,6 +423,11 @@ def normalize_engine_result(result_obj: Any, input_text: str, trace_id: str, con
     model_output = aggregated.get("final_output") if aggregated else None
     model_output = model_output or result.get("output_text")
 
+    degraded_components = result.get("degraded_components") or aggregated.get("degraded_components") or []
+    is_degraded = result.get("is_degraded")
+    if is_degraded is None:
+        is_degraded = aggregated.get("is_degraded", False)
+
     normalized = {
         "trace_id": result.get("trace_id", trace_id),
         "timestamp": time.time(),
@@ -403,6 +440,8 @@ def normalize_engine_result(result_obj: Any, input_text: str, trace_id: str, con
         "aggregator_output": aggregated,
         "input": input_text,
         "context": context,
+        "degraded_components": degraded_components,
+        "is_degraded": bool(is_degraded),
     }
     return normalized
 
@@ -645,6 +684,17 @@ def apply_execution_gate(final_decision: str, execution_decision: Optional[Execu
     return final_decision
 
 
+async def _secret_refresh_loop(provider):
+    refresh_interval = max(getattr(provider, "cache_ttl", 300), 60)
+    while True:
+        await asyncio.sleep(refresh_interval)
+        try:
+            await provider.refresh_secrets()
+            logger.info("Secret cache refreshed")
+        except Exception as exc:
+            logger.error("Secret refresh failed", extra={"error": str(exc)})
+
+
 # Lifespan context manager for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -652,8 +702,19 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting ELEANOR V8 API server...")
     initialize_engine()
+    refresh_task = None
+    if secret_provider is not None:
+        refresh_task = asyncio.create_task(_secret_refresh_loop(secret_provider))
     yield
     # Shutdown
+    if engine is not None and hasattr(engine, "shutdown"):
+        await engine.shutdown()
+    if refresh_task is not None:
+        refresh_task.cancel()
+        try:
+            await refresh_task
+        except asyncio.CancelledError:
+            pass
     logger.info("Shutting down ELEANOR V8 API server...")
 
 
@@ -1543,6 +1604,56 @@ async def config_health():
             detail=f"Config validation failed: {exc}",
         )
 
+@app.get("/admin/cache/health", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def cache_health():
+    """Expose cache statistics and adaptive concurrency status."""
+    if engine is None:
+        return {"enabled": False, "reason": "engine_not_initialized"}
+
+    cache_manager = getattr(engine, "cache_manager", None)
+    router_cache = getattr(engine, "router_cache", None)
+    concurrency = getattr(engine, "adaptive_concurrency", None)
+
+    if not cache_manager:
+        return {"enabled": False}
+
+    return {
+        "enabled": True,
+        "redis_enabled": cache_manager.redis is not None,
+        "stats": cache_manager.get_stats(),
+        "router_cache": router_cache.stats() if router_cache else None,
+        "concurrency": concurrency.get_stats() if concurrency else None,
+    }
+
+@app.get("/admin/resilience/health", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def resilience_health():
+    """Expose circuit breaker states for engine components."""
+    if engine is None:
+        return {"enabled": False, "reason": "engine_not_initialized"}
+
+    registry = getattr(engine, "circuit_breakers", None)
+    if registry is None:
+        return {"enabled": False}
+
+    components = registry.get_all_status()
+    open_count = sum(1 for status in components.values() if status.get("state") == "open")
+    if not components:
+        overall = "unknown"
+    elif open_count == 0:
+        overall = "healthy"
+    elif open_count < len(components) * 0.3:
+        overall = "degraded"
+    else:
+        overall = "unhealthy"
+
+    return {
+        "enabled": True,
+        "overall_health": overall,
+        "components": components,
+    }
+
 @app.get("/admin/router/health", tags=["Admin"])
 @require_role(ADMIN_ROLE)
 async def router_health():
@@ -1623,13 +1734,31 @@ async def register_adapter(adapter: AdapterRegistration):
         elif factory == "hf":
             adapters[adapter.name] = LlamaHFAdapter(model_path=adapter.model or adapter.name, device=adapter.device or "cpu")
         elif factory == "openai":
-            api_key = adapter.api_key or os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY")
+            api_key = adapter.api_key
+            if api_key is None and secret_provider is not None:
+                api_key = await get_llm_api_key("openai", secret_provider)
+            if api_key is None and _resolve_environment() != "production":
+                api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY")
+            if api_key is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI API key not available")
             adapters[adapter.name] = GPTAdapter(model=adapter.model or "gpt-4o-mini", api_key=api_key)
         elif factory == "claude":
-            api_key = adapter.api_key or os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_KEY")
+            api_key = adapter.api_key
+            if api_key is None and secret_provider is not None:
+                api_key = await get_llm_api_key("anthropic", secret_provider)
+            if api_key is None and _resolve_environment() != "production":
+                api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_KEY")
+            if api_key is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Anthropic API key not available")
             adapters[adapter.name] = ClaudeAdapter(model=adapter.model or "claude-3-5-sonnet-20241022", api_key=api_key)
         elif factory == "grok":
-            api_key = adapter.api_key or os.getenv("XAI_API_KEY") or os.getenv("XAI_KEY")
+            api_key = adapter.api_key
+            if api_key is None and secret_provider is not None:
+                api_key = await get_llm_api_key("xai", secret_provider)
+            if api_key is None and _resolve_environment() != "production":
+                api_key = os.getenv("XAI_API_KEY") or os.getenv("XAI_KEY")
+            if api_key is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="xAI API key not available")
             adapters[adapter.name] = GrokAdapter(model=adapter.model or "grok-beta", api_key=api_key)
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown adapter type '{adapter.type}'")

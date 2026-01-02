@@ -25,8 +25,56 @@ except ImportError:
 if TYPE_CHECKING:  # pragma: no cover
     from structlog.stdlib import BoundLogger  # type: ignore[misc]
 
+from engine.security.sanitizer import CredentialSanitizer
+
 
 Processor = Callable[[Any, str, MutableMapping[str, Any]], Any]
+
+
+class CredentialSanitizerFilter(logging.Filter):
+    """Redact credential-like content from log records."""
+
+    _reserved_keys = {
+        "name",
+        "msg",
+        "args",
+        "levelname",
+        "levelno",
+        "pathname",
+        "filename",
+        "module",
+        "exc_info",
+        "exc_text",
+        "stack_info",
+        "lineno",
+        "funcName",
+        "created",
+        "msecs",
+        "relativeCreated",
+        "thread",
+        "threadName",
+        "processName",
+        "process",
+    }
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            record.msg = CredentialSanitizer.sanitize_text(str(record.msg))
+            if record.args:
+                record.args = tuple(
+                    CredentialSanitizer.sanitize_value(arg) for arg in record.args
+                )
+
+            for key, value in list(record.__dict__.items()):
+                if key in self._reserved_keys:
+                    continue
+                if isinstance(value, dict):
+                    record.__dict__[key] = CredentialSanitizer.sanitize_dict(value)
+                elif isinstance(value, str):
+                    record.__dict__[key] = CredentialSanitizer.sanitize_text(value)
+        except Exception:
+            pass
+        return True
 
 
 def get_log_level() -> int:
@@ -61,6 +109,7 @@ def configure_logging() -> None:
         stream=sys.stdout,
         level=log_level,
     )
+    logging.getLogger().addFilter(CredentialSanitizerFilter())
 
     if not STRUCTLOG_AVAILABLE:
         logging.warning(

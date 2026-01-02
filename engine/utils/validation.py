@@ -9,6 +9,8 @@ Provides security-focused input validation to prevent:
 import re
 from typing import Any, Dict, Optional
 
+from engine.security.sanitizer import CredentialSanitizer
+
 from engine.exceptions import InputValidationError
 
 
@@ -172,7 +174,9 @@ class InputValidator:
         # Truncate if needed
         if len(text) > max_length:
             text = text[:max_length] + "... [truncated]"
-        
+
+        text = CredentialSanitizer.sanitize_text(text)
+
         # Mask sensitive patterns
         if mask_patterns:
             for pattern in mask_patterns:
