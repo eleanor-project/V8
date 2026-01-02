@@ -3,8 +3,6 @@ Comprehensive tests for hybrid model configuration system.
 """
 
 import pytest
-import asyncio
-from pathlib import Path
 
 from engine.models import ModelRegistry, ModelTier, ModelConfig
 from engine.models import cost_optimizer_strategy, priority_based_strategy
@@ -279,7 +277,7 @@ class TestIntegration:
         # Note: evaluate() requires a model that has generate()
         # In real use, this would be a proper LLM model instance
         try:
-            result = await critic.evaluate(
+            await critic.evaluate(
                 model=mock_model,
                 input_text="test input",
                 context={}

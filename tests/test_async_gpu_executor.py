@@ -3,9 +3,8 @@ Tests for Async GPU Executor
 """
 
 import pytest
-import asyncio
 import sys
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, MagicMock
 
 # Mock torch if not available
 try:

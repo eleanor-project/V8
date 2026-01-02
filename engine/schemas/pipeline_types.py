@@ -4,7 +4,8 @@ These types provide explicit shapes for critic, precedent, uncertainty,
 and aggregation outputs without enforcing runtime validation.
 """
 
-from typing import Dict, List, Optional, Sequence, TypedDict, Union
+from typing import Dict, List, Optional, Sequence, Union
+from typing_extensions import TypedDict
 
 from engine.types import CriticViolation
 

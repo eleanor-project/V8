@@ -17,8 +17,6 @@ from typing import Any, Dict, List, Optional, AsyncGenerator, Callable, cast, TY
 
 from pydantic import BaseModel, Field
 
-logger = logging.getLogger(__name__)
-
 if TYPE_CHECKING:  # pragma: no cover
     from engine.config.settings import EleanorSettings
 
@@ -66,6 +64,8 @@ from engine.validation import validate_input
 from governance.review_triggers import Case
 from governance.review_packets import build_review_packet
 from replay_store import store_review_packet
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------

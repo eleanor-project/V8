@@ -40,6 +40,7 @@ except Exception:
 __all__ = [
     "GPUManager",
     "GPUConfig",
+    "GPUMemoryStats",
     "AsyncGPUExecutor",
     "collect_gpu_metrics",
 ]

@@ -250,7 +250,8 @@ class TestEmbedder:
         """Test embedder initialization."""
         from engine.precedent.stores import Embedder
 
-        embed_fn = lambda x: [0.1, 0.2, 0.3]
+        def embed_fn(text):
+            return [0.1, 0.2, 0.3]
         embedder = Embedder(embed_fn)
 
         assert embedder.embed_fn == embed_fn
@@ -259,7 +260,8 @@ class TestEmbedder:
         """Test embedder embed method."""
         from engine.precedent.stores import Embedder
 
-        embed_fn = lambda x: [0.1, 0.2, 0.3, len(x)]
+        def embed_fn(text):
+            return [0.1, 0.2, 0.3, len(text)]
         embedder = Embedder(embed_fn)
 
         result = embedder.embed("test")
@@ -274,7 +276,8 @@ class TestWeaviatePrecedentStore:
         from engine.precedent.stores import WeaviatePrecedentStore
 
         mock_client = Mock()
-        embed_fn = lambda x: [0.1, 0.2]
+        def embed_fn(text):
+            return [0.1, 0.2]
 
         store = WeaviatePrecedentStore(mock_client, class_name="TestClass", embed_fn=embed_fn)
 
@@ -287,7 +290,8 @@ class TestWeaviatePrecedentStore:
         from engine.precedent.stores import WeaviatePrecedentStore
 
         mock_client = Mock()
-        embed_fn = lambda x: [0.1, 0.2, 0.3]
+        def embed_fn(text):
+            return [0.1, 0.2, 0.3]
 
         # Mock Weaviate query chain
         mock_query = Mock()
@@ -323,7 +327,8 @@ class TestWeaviatePrecedentStore:
         from engine.precedent.stores import WeaviatePrecedentStore
 
         mock_client = Mock()
-        embed_fn = lambda x: [0.1, 0.2]
+        def embed_fn(text):
+            return [0.1, 0.2]
 
         # Mock empty response
         mock_query = Mock()
@@ -353,7 +358,8 @@ class TestPGVectorPrecedentStore:
         with patch('engine.precedent.stores.psycopg2.connect') as mock_connect:
             mock_conn = Mock()
             mock_connect.return_value = mock_conn
-            embed_fn = lambda x: [0.1, 0.2]
+            def embed_fn(text):
+                return [0.1, 0.2]
 
             store = PGVectorPrecedentStore("dbname=test", table_name="precedent", embed_fn=embed_fn)
 
@@ -366,7 +372,8 @@ class TestPGVectorPrecedentStore:
         from engine.precedent.stores import PGVectorPrecedentStore
 
         with patch('engine.precedent.stores.psycopg2.connect'):
-            embed_fn = lambda x: [0.1, 0.2]
+            def embed_fn(text):
+                return [0.1, 0.2]
 
             # SQL injection attempts
             with pytest.raises(ValueError, match="Invalid table name"):
@@ -395,7 +402,8 @@ class TestPGVectorPrecedentStore:
                 ("Case 2 text", json.dumps({"decision": "deny"}))
             ]
 
-            embed_fn = lambda x: [0.1, 0.2, 0.3]
+            def embed_fn(text):
+                return [0.1, 0.2, 0.3]
             store = PGVectorPrecedentStore("dbname=test", embed_fn=embed_fn)
 
             results = store.search("test query", top_k=2)
@@ -419,7 +427,8 @@ class TestPGVectorPrecedentStore:
             mock_cursor.__enter__.return_value = mock_cursor
             mock_cursor.fetchall.return_value = []
 
-            embed_fn = lambda x: [0.1, 0.2]
+            def embed_fn(text):
+                return [0.1, 0.2]
             store = PGVectorPrecedentStore("dbname=test", embed_fn=embed_fn)
 
             results = store.search("test query", top_k=5)
@@ -434,7 +443,8 @@ class TestPGVectorPrecedentStore:
             mock_conn = Mock()
             mock_connect.return_value = mock_conn
 
-            embed_fn = lambda x: [0.1]
+            def embed_fn(text):
+                return [0.1]
 
             with PGVectorPrecedentStore("dbname=test", embed_fn=embed_fn) as store:
                 assert store.conn == mock_conn
@@ -450,7 +460,8 @@ class TestPGVectorPrecedentStore:
             mock_conn = Mock()
             mock_connect.return_value = mock_conn
 
-            embed_fn = lambda x: [0.1]
+            def embed_fn(text):
+                return [0.1]
             store = PGVectorPrecedentStore("dbname=test", embed_fn=embed_fn)
             store.close()
 

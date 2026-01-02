@@ -12,16 +12,14 @@ These are NOT unit tests of implementation details - they are property tests
 of constitutional invariants that must hold regardless of implementation.
 """
 
-import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 from hypothesis import given, strategies as st
 from pydantic import ValidationError
 
 from engine.exceptions import (
     EscalationRequired,
     UncertaintyBoundaryExceeded,
-    DissentPreservationRequired,
     is_constitutional_signal,
 )
 from engine.types import (

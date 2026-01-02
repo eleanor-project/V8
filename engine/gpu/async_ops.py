@@ -7,13 +7,9 @@ Coordinate async GPU operations with CPU tasks using CUDA streams.
 import asyncio
 import logging
 import time
-from typing import Any, Callable, List, Optional, Tuple, TYPE_CHECKING
-from contextlib import asynccontextmanager
+from typing import Any, Callable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from .manager import GPUManager
 
 try:
     import torch

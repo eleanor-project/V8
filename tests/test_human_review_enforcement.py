@@ -2,7 +2,6 @@ import pytest
 
 from engine.aggregator.escalation import resolve_escalation
 from engine.execution.human_review import enforce_human_review
-from engine.schemas.escalation import HumanActionType
 
 
 def test_tier2_blocks_without_human_ack(critic_eval_tier2):

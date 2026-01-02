@@ -158,7 +158,7 @@ def test_redundancy_constitutional_validator():
     }
 
     validation = validate_no_cross_critic_suppression(original, processed_compliant)
-    assert validation["compliant"] == True, "❌ False positive: compliant case flagged"
+    assert validation["compliant"], "❌ False positive: compliant case flagged"
     assert validation["status"] == "PASS", "❌ Status should be PASS"
     print("✓ Validator correctly identifies compliant processing")
 
@@ -177,7 +177,7 @@ def test_redundancy_constitutional_validator():
     }
 
     validation = validate_no_cross_critic_suppression(original, processed_violation1)
-    assert validation["compliant"] == False, "❌ Failed to detect escalation suppression"
+    assert not validation["compliant"], "❌ Failed to detect escalation suppression"
     assert validation["status"] == "FAIL", "❌ Status should be FAIL"
     assert len(validation["violations"]) > 0, "❌ Should report violations"
     assert any(v["type"] == "escalation_suppressed" for v in validation["violations"]), \
@@ -199,7 +199,7 @@ def test_redundancy_constitutional_validator():
     }
 
     validation = validate_no_cross_critic_suppression(original, processed_violation2)
-    assert validation["compliant"] == False, "❌ Failed to detect severity reduction"
+    assert not validation["compliant"], "❌ Failed to detect severity reduction"
     assert any(v["type"] == "severity_reduced" for v in validation["violations"]), \
         "❌ Should flag severity_reduced"
     print("✓ Validator correctly detects severity reduction")
@@ -215,7 +215,7 @@ def test_redundancy_constitutional_validator():
     }
 
     validation = validate_no_cross_critic_suppression(original, processed_violation3)
-    assert validation["compliant"] == False, "❌ Failed to detect critic removal"
+    assert not validation["compliant"], "❌ Failed to detect critic removal"
     assert any(v["type"] == "critic_removed" for v in validation["violations"]), \
         "❌ Should flag critic_removed"
     print("✓ Validator correctly detects critic removal")
@@ -263,7 +263,7 @@ def test_consistency_charter_boundary_validation():
 
     result = engine.validate_charter_compliance(compliant_critics)
 
-    assert result["compliant"] == True, "❌ False positive: compliant critics flagged"
+    assert result["compliant"], "❌ False positive: compliant critics flagged"
     assert result["total_violations"] == 0, "❌ Should have zero violations"
     print("✓ Correctly validates compliant critics")
 
@@ -281,7 +281,7 @@ def test_consistency_charter_boundary_validation():
     }
 
     result = engine.validate_charter_compliance(missing_clause_id)
-    assert result["compliant"] == False, "❌ Failed to detect missing clause_id"
+    assert not result["compliant"], "❌ Failed to detect missing clause_id"
     violations = [v for v in result["violations"] if v["type"] == CharterViolationType.MISSING_CLAUSE_ID.value]
     assert len(violations) > 0, "❌ Should flag missing clause_id"
     print("✓ Correctly detects missing clause_id")
@@ -300,7 +300,7 @@ def test_consistency_charter_boundary_validation():
     }
 
     result = engine.validate_charter_compliance(invalid_clause_id)
-    assert result["compliant"] == False, "❌ Failed to detect invalid clause_id"
+    assert not result["compliant"], "❌ Failed to detect invalid clause_id"
     violations = [v for v in result["violations"] if v["type"] == CharterViolationType.INVALID_CLAUSE_ID.value]
     assert len(violations) > 0, "❌ Should flag invalid clause_id"
     print("✓ Correctly detects invalid clause_id for critic")
@@ -319,7 +319,7 @@ def test_consistency_charter_boundary_validation():
     }
 
     result = engine.validate_charter_compliance(missing_tier)
-    assert result["compliant"] == False, "❌ Failed to detect missing tier"
+    assert not result["compliant"], "❌ Failed to detect missing tier"
     violations = [v for v in result["violations"] if v["type"] == CharterViolationType.MISSING_TIER.value]
     assert len(violations) > 0, "❌ Should flag missing tier"
     print("✓ Correctly detects missing tier")
@@ -342,7 +342,7 @@ def test_consistency_charter_boundary_validation():
 
     result = engine.validate_charter_compliance(intentional_overlap)
     # Should NOT flag this as a violation
-    assert result["compliant"] == True, "❌ False positive: intentional overlap flagged as violation"
+    assert result["compliant"], "❌ False positive: intentional overlap flagged as violation"
 
     # Should document the overlap
     overlaps = result["intentional_overlaps"]
@@ -393,7 +393,7 @@ def test_clauses_registry_completeness():
     assert len(missing_clauses) == 0, \
         f"❌ Missing clauses in registry: {missing_clauses}"
 
-    print(f"✓ All 22 constitutional clauses present in registry")
+    print("✓ All 22 constitutional clauses present in registry")
 
     # Get statistics
     stats = get_clause_statistics()
@@ -487,11 +487,11 @@ def test_clauses_utility_functions():
 
     # Test validate_clause_id
     validation = validate_clause_id("F1", CriticDomain.FAIRNESS)
-    assert validation["valid"] == True, "❌ F1 should be valid for Fairness"
+    assert validation["valid"], "❌ F1 should be valid for Fairness"
     print("✓ validate_clause_id('F1', FAIRNESS): valid")
 
     validation = validate_clause_id("D1", CriticDomain.FAIRNESS)
-    assert validation["valid"] == False, "❌ D1 should be invalid for Fairness"
+    assert not validation["valid"], "❌ D1 should be invalid for Fairness"
     assert "F1" in validation.get("suggestion", ""), "❌ Should suggest valid clauses"
     print("✓ validate_clause_id('D1', FAIRNESS): invalid (correctly rejected)")
 
@@ -714,7 +714,7 @@ def test_privacy_no_violations():
 
     print("✅ No privacy violations correctly handled")
     print(f"   - Severity: {result.severity_score}")
-    print(f"   - Escalation: None")
+    print("   - Escalation: None")
     print()
 
 
@@ -764,13 +764,13 @@ def main():
         print("=" * 70 + "\n")
 
     except AssertionError as e:
-        print(f"\n❌ CONSTITUTIONAL COMPLIANCE TEST FAILED:")
+        print("\n❌ CONSTITUTIONAL COMPLIANCE TEST FAILED:")
         print(f"   {str(e)}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ UNEXPECTED ERROR:")
+        print("\n❌ UNEXPECTED ERROR:")
         print(f"   {str(e)}")
         import traceback
         traceback.print_exc()

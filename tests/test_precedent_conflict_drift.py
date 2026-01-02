@@ -5,7 +5,6 @@ Tests for Precedent Conflict and Drift Detection
 Tests PrecedentConflictV8 and PrecedentDriftV8 modules.
 """
 
-import pytest
 from engine.precedent.conflict import PrecedentConflictV8
 from engine.precedent.drift import PrecedentDriftV8
 

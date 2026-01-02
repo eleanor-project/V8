@@ -1,5 +1,5 @@
 import re
-from typing import List, Sequence, Dict, Any
+from typing import List, Sequence
 
 from .signals import DetectorSignal
 

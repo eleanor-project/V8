@@ -17,7 +17,7 @@ from types import ModuleType
 from dataclasses import dataclass
 from functools import wraps
 
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 # JWT library - graceful import

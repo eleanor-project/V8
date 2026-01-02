@@ -4,8 +4,7 @@ Audit functions for human review records.
 Provides quality gates and traceability for human review process.
 """
 
-from typing import Dict, Any, List
-from pathlib import Path
+from typing import Dict, Any, Optional
 import json
 
 from .schemas import HumanReviewRecord, ReviewOutcome
@@ -114,9 +113,6 @@ def get_review_stats(case_id: Optional[str] = None) -> Dict[str, Any]:
         "avg_coverage_issues": total_coverage_issues / len(reviews),
         "severity_adjusted_pct": (severity_adjusted_count / len(reviews)) * 100,
     }
-
-
-from typing import Optional  # Add this import
 
 
 def validate_review_chain(case_id: str) -> Dict[str, Any]:

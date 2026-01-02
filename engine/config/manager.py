@@ -4,7 +4,6 @@ ELEANOR V8 — Configuration Manager
 Singleton configuration manager with hot-reload support.
 """
 
-import os
 import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, cast

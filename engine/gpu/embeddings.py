@@ -3,16 +3,12 @@ GPU-Accelerated Embeddings - Fast similarity search on GPU
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple
 
 import hashlib
 
-import numpy as np
 import torch
 import torch.nn.functional as F
-
-if TYPE_CHECKING:
-    from .manager import GPUManager
 
 logger = logging.getLogger(__name__)
 

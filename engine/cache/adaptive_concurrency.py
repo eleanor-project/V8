@@ -6,7 +6,6 @@ Dynamically adjust concurrency limits based on observed latency.
 
 import asyncio
 import logging
-from typing import List
 from collections import deque
 
 logger = logging.getLogger(__name__)
@@ -80,8 +79,6 @@ class AdaptiveConcurrencyManager:
         sorted_latencies = sorted(self.latencies)
         p50 = sorted_latencies[len(sorted_latencies) // 2]
         p95 = sorted_latencies[int(len(sorted_latencies) * 0.95)]
-        avg = sum(self.latencies) / len(self.latencies)
-        
         old_limit = self.current_limit
         
         # Decision logic

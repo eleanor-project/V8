@@ -22,7 +22,7 @@ The Router DOES NOT:
 It ONLY handles model selection + call orchestration.
 """
 
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Union, cast
+from typing import Any, Awaitable, Callable, Dict, Optional, Union, cast
 import inspect
 import traceback
 import time

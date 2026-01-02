@@ -4,7 +4,6 @@ ELEANOR V8 — Circuit Breaker Implementation
 Circuit breaker pattern for external dependencies.
 """
 
-import asyncio
 import inspect
 import logging
 from enum import Enum

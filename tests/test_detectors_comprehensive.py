@@ -10,8 +10,6 @@ Tests each detector's:
 """
 
 import pytest
-import asyncio
-from typing import Dict, Any
 
 
 @pytest.fixture
@@ -159,7 +157,7 @@ class TestDiscriminationDetector:
     @pytest.fixture
     async def detector(self):
         from engine.detectors.discrimination.detector import DiscriminationDetector
-        return DetectorSignal()
+        return DiscriminationDetector()
 
     @pytest.mark.asyncio
     async def test_discriminatory_language_detected(self):

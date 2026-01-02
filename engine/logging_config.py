@@ -4,15 +4,12 @@ import logging
 from typing import (
     Any,
     Callable,
-    Iterable,
     List,
-    Mapping,
     MutableMapping,
     Optional,
     TYPE_CHECKING,
     cast,
 )
-from datetime import datetime
 
 # Graceful import of structlog
 try:

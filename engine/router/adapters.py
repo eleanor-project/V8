@@ -22,13 +22,31 @@ You may add new adapters without modifying the engine.
 """
 
 import os
-import json
 import logging
-from typing import Any, Callable, Optional, Awaitable
+from typing import Any, Optional, Awaitable, TYPE_CHECKING
 
 import httpx
 
+if TYPE_CHECKING:
+    from openai import OpenAI as OpenAIClient
+else:
+    OpenAIClient = None  # type: ignore[assignment]
+
+try:
+    import anthropic
+except Exception:
+    anthropic = None  # type: ignore[assignment]
+
+try:
+    from transformers import AutoTokenizer, AutoModelForCausalLM  # type: ignore[import-not-found]
+    import torch
+except Exception:
+    AutoTokenizer = AutoModelForCausalLM = torch = None  # type: ignore[assignment]
+
+
 logger = logging.getLogger(__name__)
+
+
 def _get_timeout() -> float:
     raw = os.getenv("ELEANOR_HTTP_TIMEOUT", "10")
     try:
@@ -46,25 +64,6 @@ async def _post_json(url: str, payload: dict, headers: Optional[dict] = None) ->
         resp = await client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         return resp.json()
-
-# Optional imports (only load if available)
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from openai import OpenAI as OpenAIClient
-else:
-    OpenAIClient = None  # type: ignore[assignment]
-
-try:
-    import anthropic
-except Exception:
-    anthropic = None  # type: ignore[assignment]
-
-try:
-    from transformers import AutoTokenizer, AutoModelForCausalLM  # type: ignore[import-not-found]
-    import torch
-except Exception:
-    AutoTokenizer = AutoModelForCausalLM = torch = None  # type: ignore[assignment]
 
 
 # ============================================================

@@ -16,9 +16,8 @@ Backends:
     - Ollama local embeddings
 """
 
-import json
 import os
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Sequence, cast
+from typing import TYPE_CHECKING, Any, List, Optional, Sequence, cast
 import requests
 
 
@@ -181,7 +180,7 @@ class GrokEmbeddingAdapter(BaseEmbeddingAdapter):
 
 try:
     from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
-except:
+except ImportError:
     SentenceTransformer = None
 
 

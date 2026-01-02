@@ -2,7 +2,6 @@ import importlib
 import sys
 import types
 
-import pytest
 from fastapi.testclient import TestClient
 
 from api.middleware.auth import create_token

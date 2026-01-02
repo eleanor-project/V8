@@ -4,7 +4,7 @@ Tests for GPU Manager
 
 import pytest
 import sys
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 # Mock torch if not available
 try:
