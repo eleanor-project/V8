@@ -256,20 +256,6 @@ async with EleanorEngineV8(config=config) as engine:
 4. **Test Shutdown Paths**: Verify data integrity under all exit conditions
 5. **Log Resource Lifecycle**: Track initialization and cleanup for debugging
 
-## Performance Considerations
-
-### Buffer Size Tuning
-
-- **Small buffer (100-500)**: Lower memory, more disk I/O
-- **Medium buffer (1000-2000)**: Balanced (recommended)
-- **Large buffer (5000+)**: Higher memory, fewer disk I/O
-
-### Flush Interval Tuning
-
-- **Short interval (1-3s)**: More real-time, higher I/O
-- **Medium interval (5-10s)**: Balanced (recommended)
-- **Long interval (30s+)**: Batch efficiency, risk of data loss
-
 ## Future Enhancements
 
 - [ ] Redis connection pool management
@@ -277,19 +263,11 @@ async with EleanorEngineV8(config=config) as engine:
 - [ ] Health check endpoint for resource status
 - [ ] Metrics for buffer size and flush frequency
 - [ ] Automatic resource leak detection
-- [ ] Circuit breakers for external dependencies (Issue #14)
+- [ ] Circuit breakers for external dependencies
 
 ## Related Issues
 
-- [#19: Async Resource Management](https://github.com/eleanor-project/v8/issues/19) (this implementation)
-- [#14: Circuit Breakers and Graceful Degradation](https://github.com/eleanor-project/v8/issues/14)
-- [#17: Observability and Structured Logging](https://github.com/eleanor-project/v8/issues/17)
-- [#18: Resilience Patterns](https://github.com/eleanor-project/v8/issues/18)
-
-## Support
-
-For issues or questions:
-1. Check this documentation
-2. Review test cases for examples
-3. Open an issue on GitHub
-4. Contact the ELEANOR team
+- #19: Async Resource Management (this implementation)
+- #14: Circuit Breakers and Graceful Degradation
+- #17: Observability and Structured Logging
+- #18: Resilience Patterns
