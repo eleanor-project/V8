@@ -3,7 +3,7 @@ import json
 import asyncio
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
 from pydantic import BaseModel, Field
@@ -17,7 +17,7 @@ from engine.security.sanitizer import CredentialSanitizer
 # ---------------------------------------------------------
 
 class EvidenceRecord(BaseModel):
-    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
     trace_id: str
     request_id: Optional[str] = None
 

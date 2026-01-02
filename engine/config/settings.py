@@ -698,7 +698,7 @@ class EleanorSettings(BaseSettings):
         dotenv_settings: Callable[..., Dict[str, Any]],
         file_secret_settings: Callable[..., Dict[str, Any]],
     ) -> tuple[Callable[..., Dict[str, Any]], ...]:
-        def yaml_settings(_: BaseSettings) -> Dict[str, Any]:
+        def yaml_settings(_: Optional[BaseSettings] = None) -> Dict[str, Any]:
             path = os.getenv("ELEANOR_CONFIG_PATH") or os.getenv("ELEANOR_CONFIG")
             if not path:
                 return {}

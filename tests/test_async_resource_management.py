@@ -6,6 +6,7 @@ import asyncio
 import pytest
 import tempfile
 import json
+import signal
 from pathlib import Path
 
 from engine.evidence_recorder_async import AsyncEvidenceRecorder

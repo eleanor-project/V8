@@ -7,7 +7,7 @@ End-to-end demo:
 """
 
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 
 from governance.review_triggers import ReviewTriggerEvaluator
 from governance.review_packets import build_review_packet
@@ -53,7 +53,7 @@ review = HumanReviewRecord(
     review_id=str(uuid4()),
     case_id=case.id,
     reviewer_role="constitutional_reviewer",
-    timestamp=datetime.utcnow().isoformat(),
+    timestamp=datetime.now(timezone.utc).isoformat(),
     coverage_issues=[],
     severity_assessment=SeverityAssessment(
         original=1.7,

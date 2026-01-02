@@ -8,7 +8,7 @@ Separation of powers: Jurisprudence decisions stay OUT of governance and engine 
 """
 
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import json
 import uuid
@@ -122,7 +122,7 @@ class PromotionRouter:
             dict representing precedent entry
         """
         precedent_id = str(uuid.uuid4())
-        sunset_date = datetime.utcnow() + timedelta(days=self.sunset_months * 30)
+        sunset_date = datetime.now(timezone.utc) + timedelta(days=self.sunset_months * 30)
 
         return {
             "precedent_id": precedent_id,
@@ -132,7 +132,7 @@ class PromotionRouter:
             "dissent_retained": dissent_retained,
             "confidence": "provisional",  # All precedents start as provisional
             "sunset_review": sunset_date.isoformat(),
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "reviewed_by": review_record.reviewer_role,
             "review_id": review_record.review_id,
         }

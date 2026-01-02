@@ -18,7 +18,7 @@ This enables:
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict
 from critics.schema import CriticOutput
@@ -53,7 +53,7 @@ def log_deliberation(
 
     # Build audit record
     record = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "backend": backend,
         "prompt": prompt,
         "critics": [

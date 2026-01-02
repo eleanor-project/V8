@@ -136,12 +136,13 @@ class AsyncEvidenceRecorder:
             logger.warning("record_called_after_shutdown")
             return
         
+        should_flush = False
         async with self._lock:
             self.buffer.append(kwargs)
-            
-            # Flush if buffer is full
-            if len(self.buffer) >= self.buffer_size:
-                await self.flush()
+            should_flush = len(self.buffer) >= self.buffer_size
+
+        if should_flush:
+            await self.flush()
     
     async def flush(self):
         """Flush buffer to disk"""

@@ -30,7 +30,7 @@ import hashlib
 import uuid
 import time
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Literal
 from contextlib import asynccontextmanager
 
@@ -702,6 +702,9 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting ELEANOR V8 API server...")
     initialize_engine()
+    skip_readiness = os.getenv("ELEANOR_SKIP_READINESS", "").lower() in ("1", "true", "yes")
+    if not skip_readiness:
+        run_readiness_checks()
     if engine is not None and hasattr(engine, "__aenter__"):
         await engine.__aenter__()
     refresh_task = None
@@ -737,11 +740,6 @@ app = FastAPI(
     }
 )
 
-
-@app.on_event("startup")
-async def startup_checks():
-    """Fail fast if required security or storage dependencies are missing."""
-    run_readiness_checks()
 enable_tracing(app)
 enable_prometheus_middleware(app)
 
@@ -909,7 +907,7 @@ async def health_check():
         "status": overall_status,
         "version": "8.0.0",
         "checks": checks,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
 
 
