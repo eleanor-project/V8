@@ -1,18 +1,17 @@
 """
-ELEANOR V8 - Resilience Components
-Circuit breakers, retries, and health checks
+ELEANOR V8 — Resilience Framework
+
+Circuit breakers and graceful degradation for fault tolerance.
 """
 
-from .circuit_breaker import CircuitBreaker, CircuitBreakerState
-from .retry import RetryPolicy, retry_with_backoff
-from .health import HealthCheck, ComponentHealth, HealthStatus
+from .circuit_breaker import CircuitBreaker, CircuitState, CircuitBreakerOpenError
+from .degradation import DegradationStrategy
+from .health import ComponentHealthChecker
 
 __all__ = [
-    'CircuitBreaker',
-    'CircuitBreakerState',
-    'RetryPolicy',
-    'retry_with_backoff',
-    'HealthCheck',
-    'ComponentHealth',
-    'HealthStatus',
+    "CircuitBreaker",
+    "CircuitState",
+    "CircuitBreakerOpenError",
+    "DegradationStrategy",
+    "ComponentHealthChecker",
 ]
