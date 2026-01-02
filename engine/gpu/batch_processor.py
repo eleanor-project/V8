@@ -217,15 +217,16 @@ class GPUBatchProcessor:
         """
         try:
             # Check if critic supports batched evaluation
+            results: List[Any]
             if hasattr(critic, 'evaluate_batch'):
-                results = await self.async_executor.run_async(
+                batched = await self.async_executor.run_async(
                     critic.evaluate_batch,
-                    batch
+                    batch,
                 )
-                results = cast(List[Any], results)
+                results = cast(List[Any], batched)
             else:
                 # Fall back to sequential evaluation
-                results: List[Any] = []
+                results = []
                 for item in batch:
                     result = await self.async_executor.run_async(
                         critic.evaluate,

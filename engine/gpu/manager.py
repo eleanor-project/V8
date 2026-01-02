@@ -77,7 +77,8 @@ class GPUManager:
         self.cuda_available = False
         self.mps_available = False
         self.device_count = 0
-        self.primary_device = None
+        self.primary_device = ""
+        self.torch: Optional[Any] = None
         
         # Try to import PyTorch
         try:
@@ -92,10 +93,12 @@ class GPUManager:
             
             logger.info(
                 "GPU manager initialized",
-                torch_available=True,
-                cuda_available=self.cuda_available,
-                mps_available=self.mps_available,
-                device_count=self.device_count
+                extra={
+                    "torch_available": True,
+                    "cuda_available": self.cuda_available,
+                    "mps_available": self.mps_available,
+                    "device_count": self.device_count,
+                },
             )
             
         except ImportError:
@@ -214,12 +217,15 @@ class GPUManager:
             for i in range(self.device_count):
                 props = self.torch.cuda.get_device_properties(i)
                 logger.info(
-                    f"GPU {i} detected",
-                    device_id=i,
-                    name=props.name,
-                    total_memory_gb=props.total_memory / (1024 ** 3),
-                    compute_capability=f"{props.major}.{props.minor}",
-                    multi_processor_count=props.multi_processor_count
+                    "GPU %s detected",
+                    i,
+                    extra={
+                        "device_id": i,
+                        "name": props.name,
+                        "total_memory_gb": props.total_memory / (1024 ** 3),
+                        "compute_capability": f"{props.major}.{props.minor}",
+                        "multi_processor_count": props.multi_processor_count,
+                    },
                 )
         elif self.mps_available:
             logger.info("Apple Silicon GPU (MPS) detected")
