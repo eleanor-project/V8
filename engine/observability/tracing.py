@@ -11,7 +11,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Context variable for trace context
-_trace_context = contextvars.ContextVar('trace_context', default={})
+_trace_context: contextvars.ContextVar[Dict[str, Any]] = contextvars.ContextVar(
+    "trace_context",
+    default={},
+)
 
 
 class TraceContext:
@@ -79,10 +82,10 @@ def configure_tracing(
         return None
     
     try:
-        from opentelemetry import trace
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.sdk.resources import Resource
+        from opentelemetry import trace  # type: ignore[import-not-found]
+        from opentelemetry.sdk.trace import TracerProvider  # type: ignore[import-not-found]
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor  # type: ignore[import-not-found]
+        from opentelemetry.sdk.resources import Resource  # type: ignore[import-not-found]
         
         # Create resource
         resource = Resource.create({
@@ -96,7 +99,7 @@ def configure_tracing(
         # Add exporters
         if jaeger_endpoint:
             try:
-                from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+                from opentelemetry.exporter.jaeger.thrift import JaegerExporter  # type: ignore[import-not-found]
                 jaeger_exporter = JaegerExporter(
                     agent_host_name=jaeger_endpoint.split(':')[0],
                     agent_port=int(jaeger_endpoint.split(':')[1]) if ':' in jaeger_endpoint else 6831,
@@ -108,7 +111,9 @@ def configure_tracing(
         
         if otel_endpoint:
             try:
-                from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+                from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (  # type: ignore[import-not-found]
+                    OTLPSpanExporter,
+                )
                 otlp_exporter = OTLPSpanExporter(endpoint=otel_endpoint)
                 provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
                 logger.info(f"OTLP tracing configured: {otel_endpoint}")
@@ -143,7 +148,7 @@ def get_tracer(name: Optional[str] = None) -> Any:
         Tracer instance or no-op tracer
     """
     try:
-        from opentelemetry import trace
+        from opentelemetry import trace  # type: ignore[import-not-found]
         return trace.get_tracer(name or __name__)
     except ImportError:
         # Return no-op tracer

@@ -7,7 +7,7 @@ Singleton configuration manager with hot-reload support.
 import os
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, cast
 from threading import Lock
 
 from .settings import EleanorSettings, get_settings
@@ -112,7 +112,7 @@ class ConfigManager:
         Returns:
             Validation result with warnings and errors
         """
-        result = {
+        result: Dict[str, Any] = {
             "valid": True,
             "warnings": [],
             "errors": [],
@@ -149,11 +149,11 @@ class ConfigManager:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert settings to dictionary."""
-        return self.settings.model_dump()
+        return cast(Dict[str, Any], self.settings.model_dump())
     
     def to_json(self) -> str:
         """Convert settings to JSON string."""
-        return self.settings.model_dump_json(indent=2)
+        return cast(str, self.settings.model_dump_json(indent=2))
     
     def to_legacy_config(self) -> Dict[str, Any]:
         """Convert to legacy EngineConfig format."""

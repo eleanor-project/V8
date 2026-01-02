@@ -269,7 +269,7 @@ class PrecedentAlignmentEngineV8:
         Lightweight cluster labeling based on decision distribution.
         """
 
-        clusters = {
+        clusters: Dict[str, List[Dict[str, Any]]] = {
             "supportive": [],
             "neutral": [],
             "contradictory": []

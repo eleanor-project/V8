@@ -13,7 +13,7 @@ import json
 import logging
 import uuid
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, AsyncGenerator, Callable
+from typing import Any, Dict, List, Optional, AsyncGenerator, Callable, cast
 
 from pydantic import BaseModel, Field
 
@@ -69,10 +69,10 @@ def _resolve_router_backend(router_backend: Optional[Any]) -> RouterProtocol:
     if isinstance(router_backend, str):
         return DependencyFactory.create_router(backend=router_backend)
     if inspect.isclass(router_backend):
-        return router_backend()
+        return cast(RouterProtocol, router_backend())
     if callable(router_backend):
-        return router_backend()
-    return router_backend
+        return cast(RouterProtocol, router_backend())
+    return cast(RouterProtocol, router_backend)
 
 
 def _resolve_dependencies(
@@ -161,8 +161,8 @@ class EngineModelInfo(BaseModel):
 
 class EngineForensicData(BaseModel):
     detector_metadata: Dict[str, Any] = Field(default_factory=dict)
-    uncertainty_graph: UncertaintyResult = Field(default_factory=dict)
-    precedent_alignment: PrecedentAlignmentResult = Field(default_factory=dict)
+    uncertainty_graph: UncertaintyResult = Field(default_factory=dict)  # type: ignore[arg-type]
+    precedent_alignment: PrecedentAlignmentResult = Field(default_factory=dict)  # type: ignore[arg-type]
     router_diagnostics: Dict[str, Any] = Field(default_factory=dict)
     timings: Dict[str, float] = Field(default_factory=dict)
     evidence_references: List[Dict[str, Any]] = Field(default_factory=list)
@@ -289,7 +289,7 @@ class EleanorEngineV8:
             "score": 0.0,
             "violations": [],
             "justification": f"critic_error:{type(error).__name__}",
-            "duration_ms": duration_ms,
+            "duration_ms": duration_ms if duration_ms is not None else 0.0,
             "error": str(error),
         }
 
@@ -482,7 +482,7 @@ class EleanorEngineV8:
 
             end = asyncio.get_event_loop().time()
 
-            evaluation_result = evaluation_result or {}
+            evaluation_result = cast(CriticResult, evaluation_result or {})
             evaluation_result["critic"] = name
             evaluation_result["duration_ms"] = (end - start) * 1000
 
@@ -565,7 +565,14 @@ class EleanorEngineV8:
                 )
                 output[critic_name] = self._build_critic_error_result(critic_name, result)
                 continue
-            output[result.get("critic", critic_name)] = result
+            if not isinstance(result, dict):
+                output[critic_name] = self._build_critic_error_result(
+                    critic_name,
+                    Exception("critic_result_invalid"),
+                )
+                continue
+            critic_result = cast(CriticResult, result)
+            output[critic_result.get("critic", critic_name)] = critic_result
         return output
 
 
@@ -589,8 +596,16 @@ class EleanorEngineV8:
         if self.precedent_retriever:
             try:
                 retrieval_meta = self.precedent_retriever.retrieve(text, list(critic_results.values()))
-                cases = retrieval_meta.get("precedent_cases") or retrieval_meta.get("cases") or []
-                query_embedding = retrieval_meta.get("query_embedding") or []
+                cases = cast(
+                    List[Dict[str, Any]],
+                    retrieval_meta.get("precedent_cases")
+                    or retrieval_meta.get("cases")
+                    or [],
+                )
+                query_embedding = cast(
+                    List[float],
+                    retrieval_meta.get("query_embedding") or [],
+                )
             except Exception as exc:
                 raise PrecedentRetrievalError(
                     "Precedent retrieval failed",
@@ -613,12 +628,19 @@ class EleanorEngineV8:
                 details={"error": str(exc), "trace_id": trace_id},
             ) from exc
 
+        out_result: Optional[PrecedentAlignmentResult] = cast(
+            Optional[PrecedentAlignmentResult],
+            out,
+        )
         if retrieval_meta:
-            out = {**(out or {}), "retrieval": retrieval_meta}
+            out_result = cast(
+                PrecedentAlignmentResult,
+                {**(out_result or {}), "retrieval": retrieval_meta},
+            )
 
         end = asyncio.get_event_loop().time()
         self.timings["precedent_alignment_ms"] = (end - start) * 1000
-        return out
+        return out_result
 
 
     async def _run_uncertainty_engine(
@@ -649,7 +671,7 @@ class EleanorEngineV8:
             ) from exc
         end = asyncio.get_event_loop().time()
         self.timings["uncertainty_engine_ms"] = (end - start) * 1000
-        return out
+        return cast(UncertaintyResult, out)
 
 
     async def _aggregate_results(
@@ -678,7 +700,7 @@ class EleanorEngineV8:
 
         end = asyncio.get_event_loop().time()
         self.timings["aggregation_ms"] = (end - start) * 1000
-        return out
+        return cast(AggregationOutput, out)
 
     # -----------------------------------------------------
     # GOVERNANCE HOOKS
@@ -845,8 +867,16 @@ class EleanorEngineV8:
             self._emit_error(exc, stage="detectors", trace_id=trace_id, context=context)
             detector_payload = None
         except Exception as exc:
-            error = DetectorExecutionError("Detector execution failed", details={"error": str(exc)})
-            self._emit_error(error, stage="detectors", trace_id=trace_id, context=context)
+            detector_error = DetectorExecutionError(
+                "Detector execution failed",
+                details={"error": str(exc)},
+            )
+            self._emit_error(
+                detector_error,
+                stage="detectors",
+                trace_id=trace_id,
+                context=context,
+            )
             detector_payload = None
         if detector_payload:
             context = {**context, "detectors": detector_payload}
@@ -887,6 +917,19 @@ class EleanorEngineV8:
                 diagnostics = exc.details.get("diagnostics") if isinstance(exc, EleanorV8Exception) else None
                 self.router_diagnostics = diagnostics or {"error": str(exc)}
 
+        model_name_value = str(model_info.get("model_name") or "unknown-model")
+        model_info["model_name"] = model_name_value
+        engine_model_info = EngineModelInfo(
+            model_name=model_name_value,
+            model_version=cast(Optional[str], model_info.get("model_version")),
+            router_selection_reason=cast(
+                Optional[str],
+                model_info.get("router_selection_reason"),
+            ),
+            cost_estimate=cast(Optional[Dict[str, Any]], model_info.get("cost_estimate")),
+            health_score=cast(Optional[float], model_info.get("health_score")),
+        )
+
         # Step 2: Critics (parallel)
         critic_results = await self._run_critics_parallel(
             model_response=model_response,
@@ -915,7 +958,7 @@ class EleanorEngineV8:
                 uncertainty_data = await self._run_uncertainty_engine(
                     precedent_alignment=precedent_data,
                     critic_results=critic_results,
-                    model_name=model_info.get("model_name") or "unknown-model",
+                    model_name=engine_model_info.model_name,
                 )
             except UncertaintyComputationError as exc:
                 self._emit_error(exc, stage="uncertainty", trace_id=trace_id, context=context)
@@ -952,8 +995,16 @@ class EleanorEngineV8:
         except GovernanceEvaluationError as review_exc:
             self._emit_error(review_exc, stage="governance", trace_id=trace_id, context=context)
         except Exception as review_exc:
-            error = GovernanceEvaluationError("Governance review gate failed", details={"error": str(review_exc)})
-            self._emit_error(error, stage="governance", trace_id=trace_id, context=context)
+            governance_error = GovernanceEvaluationError(
+                "Governance review gate failed",
+                details={"error": str(review_exc)},
+            )
+            self._emit_error(
+                governance_error,
+                stage="governance",
+                trace_id=trace_id,
+                context=context,
+            )
 
         # Timing
         pipeline_end = asyncio.get_event_loop().time()
@@ -967,13 +1018,13 @@ class EleanorEngineV8:
         result_kwargs = {
             "trace_id": trace_id,
             "output_text": aggregated.get("final_output") or model_response,
-            "model_info": EngineModelInfo(**model_info),
+            "model_info": engine_model_info,
             "critic_findings": {
                 k: EngineCriticFinding(
                     critic=k,
-                    violations=v["violations"],
-                    duration_ms=v["duration_ms"],
-                    evaluated_rules=v.get("evaluated_rules"),
+                    violations=list(v.get("violations", [])),
+                    duration_ms=v.get("duration_ms"),
+                    evaluated_rules=cast(Optional[List[str]], v.get("evaluated_rules")),
                 )
                 for k, v in critic_results.items()
             },
@@ -990,7 +1041,7 @@ class EleanorEngineV8:
             return EngineResult(
                 trace_id=trace_id,
                 output_text=aggregated.get("final_output") or model_response,
-                model_info=EngineModelInfo(**model_info),
+                model_info=engine_model_info,
             )
 
         # ---------------------------
@@ -1049,8 +1100,16 @@ class EleanorEngineV8:
             self._emit_error(exc, stage="detectors", trace_id=trace_id, context=context)
             detector_payload = None
         except Exception as exc:
-            error = DetectorExecutionError("Detector execution failed", details={"error": str(exc)})
-            self._emit_error(error, stage="detectors", trace_id=trace_id, context=context)
+            detector_error = DetectorExecutionError(
+                "Detector execution failed",
+                details={"error": str(exc)},
+            )
+            self._emit_error(
+                detector_error,
+                stage="detectors",
+                trace_id=trace_id,
+                context=context,
+            )
             detector_payload = None
         if detector_payload:
             context = {**context, "detectors": detector_payload}
@@ -1096,6 +1155,19 @@ class EleanorEngineV8:
                 diagnostics = exc.details.get("diagnostics") if isinstance(exc, EleanorV8Exception) else None
                 self.router_diagnostics = diagnostics or {"error": str(exc)}
 
+        model_name_value = str(model_info.get("model_name") or "unknown-model")
+        model_info["model_name"] = model_name_value
+        engine_model_info = EngineModelInfo(
+            model_name=model_name_value,
+            model_version=cast(Optional[str], model_info.get("model_version")),
+            router_selection_reason=cast(
+                Optional[str],
+                model_info.get("router_selection_reason"),
+            ),
+            cost_estimate=cast(Optional[Dict[str, Any]], model_info.get("cost_estimate")),
+            health_score=cast(Optional[float], model_info.get("health_score")),
+        )
+
         yield {
             "event": "router_selected",
             "trace_id": trace_id,
@@ -1116,7 +1188,7 @@ class EleanorEngineV8:
             "critics": list(self.critics.keys()),
         }
 
-        critic_results = {}
+        critic_results: CriticResultsMap = {}
 
         critic_input_text = context.get("input_text_override") or text
         if not isinstance(critic_input_text, str):
@@ -1145,28 +1217,29 @@ class EleanorEngineV8:
                 fallback = exc.details.get("result") if isinstance(exc.details, dict) else None
                 res = fallback or self._build_critic_error_result(critic_name, exc)
             except Exception as exc:
-                error = CriticEvaluationError(
+                critic_error = CriticEvaluationError(
                     critic_name=critic_name,
                     message=str(exc),
                     trace_id=trace_id,
                     details={"error_type": type(exc).__name__},
                 )
                 self._emit_error(
-                    error,
+                    critic_error,
                     stage="critic",
                     trace_id=trace_id,
                     critic=critic_name,
                     context=context,
                 )
                 res = self._build_critic_error_result(critic_name, exc)
-            critic_results[res["critic"]] = res
+            res = cast(CriticResult, res)
+            critic_results[res.get("critic", critic_name)] = res
 
             yield {
                 "event": "critic_result",
                 "trace_id": trace_id,
-                "critic": res["critic"],
-                "violations": res["violations"],
-                "duration_ms": res["duration_ms"],
+                "critic": res.get("critic", critic_name),
+                "violations": list(res.get("violations", [])),
+                "duration_ms": res.get("duration_ms"),
                 "evaluated_rules": res.get("evaluated_rules"),
             }
 
@@ -1201,7 +1274,7 @@ class EleanorEngineV8:
                 uncertainty_data = await self._run_uncertainty_engine(
                     precedent_alignment=precedent_data,
                     critic_results=critic_results,
-                    model_name=model_info.get("model_name") or "unknown-model",
+                    model_name=engine_model_info.model_name,
                 )
                 yield {
                     "event": "uncertainty",
@@ -1249,8 +1322,16 @@ class EleanorEngineV8:
         except GovernanceEvaluationError as review_exc:
             self._emit_error(review_exc, stage="governance", trace_id=trace_id, context=context)
         except Exception as review_exc:
-            error = GovernanceEvaluationError("Governance review gate failed", details={"error": str(review_exc)})
-            self._emit_error(error, stage="governance", trace_id=trace_id, context=context)
+            governance_error = GovernanceEvaluationError(
+                "Governance review gate failed",
+                details={"error": str(review_exc)},
+            )
+            self._emit_error(
+                governance_error,
+                stage="governance",
+                trace_id=trace_id,
+                context=context,
+            )
 
         # Final Output
         final_output = aggregated.get("final_output", "") if isinstance(aggregated, dict) else ""

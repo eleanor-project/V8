@@ -7,11 +7,13 @@ Coordinate GPU operations with Python asyncio for non-blocking execution.
 import asyncio
 import logging
 import time
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, TYPE_CHECKING
 from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from .manager import GPUManager
 
 class AsyncGPUExecutor:
     """
@@ -111,9 +113,11 @@ class AsyncGPUExecutor:
             
             logger.debug(
                 "GPU operation completed",
-                operation=operation.__name__,
-                duration_ms=duration_ms,
-                stream_id=self.current_stream_idx
+                extra={
+                    "operation": operation.__name__,
+                    "duration_ms": duration_ms,
+                    "stream_id": self.current_stream_idx,
+                },
             )
             
             return result
@@ -186,9 +190,12 @@ class AsyncGPUExecutor:
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.error(
-                    f"GPU operation {i} failed",
-                    operation=operations[i].__name__,
-                    error=str(result)
+                    "GPU operation %s failed",
+                    i,
+                    extra={
+                        "operation": operations[i].__name__,
+                        "error": str(result),
+                    },
                 )
         
         return results
