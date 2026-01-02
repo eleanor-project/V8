@@ -20,6 +20,7 @@ Usage:
 """
 
 import asyncio
+import inspect
 import time
 from enum import Enum
 from dataclasses import dataclass, field
@@ -215,7 +216,7 @@ class CircuitBreaker:
 
         try:
             # Handle both sync and async functions
-            if asyncio.iscoroutinefunction(func):
+            if inspect.iscoroutinefunction(func):
                 result = await func(*args, **kwargs)
             else:
                 result = func(*args, **kwargs)

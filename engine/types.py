@@ -10,7 +10,7 @@ Explicit types that preserve constitutional semantics:
 
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Protocol, TypedDict, Union
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
 # ============================================================================
@@ -36,8 +36,7 @@ class EscalationClause(BaseModel):
     rationale: str = Field(..., description="Constitutional justification")
     severity: float = Field(..., ge=0.0, le=1.0, description="Constitutional severity")
     
-    class Config:
-        frozen = True  # Escalation clauses are immutable
+    model_config = ConfigDict(frozen=True)
 
 
 class EscalationSignal(BaseModel):
@@ -57,9 +56,7 @@ class EscalationSignal(BaseModel):
     human_decision: Optional[str] = None
     reviewed_at: Optional[str] = None
     
-    class Config:
-        frozen = False  # Allows human review fields to be set once
-        validate_assignment = True
+    model_config = ConfigDict(validate_assignment=True)
 
 
 # ============================================================================
@@ -136,8 +133,7 @@ class CriticEvaluation(BaseModel):
         description="Evidence record IDs"
     )
     
-    class Config:
-        frozen = True  # Evaluations are immutable once sealed
+    model_config = ConfigDict(frozen=True)
 
 
 # ============================================================================
@@ -287,7 +283,8 @@ class ValidatedInput(BaseModel):
     text: str = Field(..., max_length=100_000, description="Input text")
     context: Dict[str, Any] = Field(default_factory=dict)
     
-    @validator('text')
+    @field_validator("text")
+    @classmethod
     def validate_text_safety(cls, v):
         """Basic input sanitization."""
         if not v or not v.strip():
@@ -295,7 +292,8 @@ class ValidatedInput(BaseModel):
         # Add injection detection here if needed
         return v
     
-    @validator('context')
+    @field_validator("context")
+    @classmethod
     def validate_context_size(cls, v):
         """Prevent context payload attacks."""
         import json
@@ -331,8 +329,7 @@ class EvidenceRecord(BaseModel):
     severity: Optional[float] = None
     content: Dict[str, Any] = Field(default_factory=dict)
     
-    class Config:
-        frozen = True  # Evidence is immutable
+    model_config = ConfigDict(frozen=True)
 
 
 # ============================================================================

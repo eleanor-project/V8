@@ -5,6 +5,7 @@ Circuit breaker pattern for external dependencies.
 """
 
 import asyncio
+import inspect
 import logging
 from enum import Enum
 from datetime import datetime, timedelta
@@ -89,7 +90,7 @@ class CircuitBreaker:
         
         # Execute function
         try:
-            if asyncio.iscoroutinefunction(func):
+            if inspect.iscoroutinefunction(func):
                 result = await func(*args, **kwargs)
             else:
                 result = func(*args, **kwargs)

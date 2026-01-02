@@ -16,7 +16,7 @@ import re
 import unicodedata
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from engine.exceptions import InputValidationError
 from engine.utils.validation import validate_trace_id
@@ -95,8 +95,7 @@ class ValidatedInput(BaseModel):
         description="Whether input was modified during sanitization"
     )
     
-    class Config:
-        frozen = True  # Validated inputs are immutable
+    model_config = ConfigDict(frozen=True)
 
 
 # ============================================================================
