@@ -1,29 +1,26 @@
 """
-ELEANOR V8 — Security Utilities
+Security Module for ELEANOR V8
 
-Secret providers and credential sanitization.
+Provides:
+- Secrets management (AWS, Vault, Environment)
+- Credential sanitization
+- Audit trail protection
 """
 
-from .secrets import (
-    SecretProvider,
-    EnvironmentSecretProvider,
-    AWSSecretsManagerProvider,
-    VaultSecretProvider,
-    build_secret_provider,
-    build_secret_provider_from_settings,
-    get_llm_api_key,
-    get_llm_api_key_sync,
+from engine.security.secrets import (
+    SecretsProvider,
+    EnvironmentSecretsProvider,
+    AWSSecretsProvider,
+    VaultSecretsProvider,
+    auto_detect_secrets_provider,
 )
-from .sanitizer import CredentialSanitizer
+from engine.security.sanitizer import SecretsSanitizer
 
 __all__ = [
-    "SecretProvider",
-    "EnvironmentSecretProvider",
-    "AWSSecretsManagerProvider",
-    "VaultSecretProvider",
-    "build_secret_provider",
-    "build_secret_provider_from_settings",
-    "get_llm_api_key",
-    "get_llm_api_key_sync",
-    "CredentialSanitizer",
+    "SecretsProvider",
+    "EnvironmentSecretsProvider",
+    "AWSSecretsProvider",
+    "VaultSecretsProvider",
+    "auto_detect_secrets_provider",
+    "SecretsSanitizer",
 ]
