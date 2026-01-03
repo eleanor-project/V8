@@ -8,6 +8,8 @@ Configuration via environment variables:
 - RATE_LIMIT_ENABLED: Enable/disable rate limiting (default: true)
 - RATE_LIMIT_REQUESTS: Token bucket capacity (default: 100)
 - RATE_LIMIT_WINDOW: Seconds to refill to full capacity (default: 60)
+- RATE_LIMIT_MAX_CLIENTS: Optional cap on tracked clients (default: unset)
+- RATE_LIMIT_CLIENT_TTL: Optional idle eviction in seconds (default: window*10)
 - RATE_LIMIT_REDIS_URL: Optional Redis URL for distributed limiting
 - RATE_LIMIT_KEY_PREFIX: Optional Redis key prefix
 """
@@ -59,6 +61,17 @@ def _build_headers(
     return headers
 
 
+def _env_positive_int(name: str) -> Optional[int]:
+    raw = os.getenv(name)
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
 @dataclass
 class RateLimitConfig:
     """Rate limiting configuration."""
@@ -66,6 +79,8 @@ class RateLimitConfig:
     enabled: bool = True
     requests_per_window: int = 100
     window_seconds: int = 60
+    max_clients: Optional[int] = None
+    client_ttl_seconds: Optional[int] = None
     redis_url: Optional[str] = None
     key_prefix: str = "eleanor:rate_limit:"
 
@@ -76,10 +91,23 @@ class RateLimitConfig:
         enabled = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
         if env != "development" and not enabled:
             raise ValueError("RATE_LIMIT_ENABLED cannot be false in production environments")
+        window_seconds = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
+        ttl_raw = os.getenv("RATE_LIMIT_CLIENT_TTL")
+        if ttl_raw is None:
+            ttl_seconds = window_seconds * 10
+        else:
+            try:
+                ttl_seconds = int(ttl_raw)
+            except ValueError:
+                ttl_seconds = window_seconds * 10
+            if ttl_seconds <= 0:
+                ttl_seconds = None
         return cls(
             enabled=enabled,
             requests_per_window=int(os.getenv("RATE_LIMIT_REQUESTS", "100")),
-            window_seconds=int(os.getenv("RATE_LIMIT_WINDOW", "60")),
+            window_seconds=window_seconds,
+            max_clients=_env_positive_int("RATE_LIMIT_MAX_CLIENTS"),
+            client_ttl_seconds=ttl_seconds,
             redis_url=os.getenv("RATE_LIMIT_REDIS_URL") or None,
             key_prefix=os.getenv("RATE_LIMIT_KEY_PREFIX", "eleanor:rate_limit:"),
         )
@@ -98,6 +126,12 @@ class TokenBucketRateLimiter:
         self.refill_rate = self.capacity / float(config.window_seconds)
         self._tokens: Dict[str, float] = defaultdict(lambda: self.capacity)
         self._timestamps: Dict[str, float] = {}
+        self._last_cleanup = time.time()
+        self._cleanup_interval = 60.0
+        self.max_clients = config.max_clients
+        self.client_ttl_seconds = config.client_ttl_seconds
+        if self.client_ttl_seconds:
+            self._cleanup_interval = max(1.0, min(60.0, self.client_ttl_seconds / 2))
         self._lock = threading.Lock()
 
     async def check(self, request: Request) -> Tuple[bool, Dict[str, str]]:
@@ -123,6 +157,8 @@ class TokenBucketRateLimiter:
                 tokens -= 1.0
             self._tokens[client_id] = tokens
             self._timestamps[client_id] = now
+            if self._should_cleanup(now):
+                self._cleanup_locked(now)
 
         headers = _build_headers(tokens, self.capacity, self.refill_rate, now)
         return allowed, headers
@@ -136,6 +172,31 @@ class TokenBucketRateLimiter:
             else:
                 self._tokens.clear()
                 self._timestamps.clear()
+            self._last_cleanup = time.time()
+
+    def _should_cleanup(self, now: float) -> bool:
+        if self.max_clients and len(self._timestamps) > self.max_clients:
+            return True
+        if self.client_ttl_seconds:
+            return now - self._last_cleanup >= self._cleanup_interval
+        return False
+
+    def _cleanup_locked(self, now: float) -> None:
+        if self.client_ttl_seconds:
+            cutoff = now - self.client_ttl_seconds
+            stale = [client for client, ts in self._timestamps.items() if ts < cutoff]
+            for client in stale:
+                self._timestamps.pop(client, None)
+                self._tokens.pop(client, None)
+
+        if self.max_clients and len(self._timestamps) > self.max_clients:
+            excess = len(self._timestamps) - self.max_clients
+            oldest = sorted(self._timestamps.items(), key=lambda item: item[1])[:excess]
+            for client, _ in oldest:
+                self._timestamps.pop(client, None)
+                self._tokens.pop(client, None)
+
+        self._last_cleanup = now
 
 
 _REDIS_SCRIPT = """

@@ -22,12 +22,33 @@ Returned objects MUST include:
 }
 """
 
+from __future__ import annotations
+
 import json
+import logging
+import os
 import re
-import psycopg2  # type: ignore[import-untyped]
-from psycopg2 import sql  # type: ignore[import-untyped]
-import weaviate  # type: ignore[import-not-found]
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Optional
+
+try:
+    import psycopg2  # type: ignore[import-untyped]
+    from psycopg2 import sql  # type: ignore[import-untyped]
+except Exception:  # pragma: no cover - optional dependency
+    psycopg2 = SimpleNamespace(connect=None, Error=Exception)  # type: ignore[assignment]
+    sql = None  # type: ignore[assignment]
+
+try:
+    from psycopg2.pool import ThreadedConnectionPool  # type: ignore[import-untyped]
+except Exception:  # pragma: no cover - optional dependency
+    ThreadedConnectionPool = None  # type: ignore[assignment]
+
+try:
+    import weaviate  # type: ignore[import-not-found]
+except Exception:  # pragma: no cover - optional dependency
+    weaviate = None  # type: ignore[assignment]
+
+logger = logging.getLogger(__name__)
 
 
 # Valid table name pattern (alphanumeric and underscore only)
@@ -42,10 +63,12 @@ TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 class Embedder:
     """LLM-based embedding generator for precedent search."""
 
-    def __init__(self, embed_fn: Callable[[str], List[float]]):
+    def __init__(self, embed_fn: Optional[Callable[[str], List[float]]] = None):
         self.embed_fn = embed_fn
 
     def embed(self, text: str) -> List[float]:
+        if not self.embed_fn:
+            return []
         return self.embed_fn(text)
 
 
@@ -55,7 +78,9 @@ class Embedder:
 
 
 class WeaviatePrecedentStore:
-    def __init__(self, client: weaviate.Client, class_name="Precedent", embed_fn=None):
+    def __init__(self, client: Any, class_name: str = "Precedent", embed_fn=None):
+        if weaviate is None:
+            logger.warning("weaviate_client_unavailable")
         self.client = client
         self.class_name = class_name
         self.embedder = Embedder(embed_fn)
@@ -68,6 +93,12 @@ class WeaviatePrecedentStore:
     ) -> List[Dict[str, Any]]:
         if embedding is None:
             embedding = self.embedder.embed(query_text)
+        if not embedding:
+            logger.warning(
+                "weaviate_search_missing_embedding",
+                extra={"class_name": self.class_name},
+            )
+            return []
 
         result = (
             self.client.query.get(self.class_name, ["text", "metadata"])  # type: ignore[attr-defined]  # type: ignore[attr-defined]
@@ -109,7 +140,19 @@ class PGVectorPrecedentStore:
                 "alphanumeric characters and underscores."
             )
 
-        self.conn = psycopg2.connect(conn_string)
+        if ThreadedConnectionPool is None and getattr(psycopg2, "connect", None) is None:
+            raise ImportError("psycopg2 required for pgvector support. Install psycopg2-binary.")
+
+        self.pool = None
+        self.conn = None
+        if ThreadedConnectionPool is not None:
+            min_size = _env_int("PG_POOL_MIN", 1)
+            max_size = _env_int("PG_POOL_MAX", 5)
+            if max_size < min_size:
+                max_size = min_size
+            self.pool = ThreadedConnectionPool(min_size, max_size, conn_string)
+        else:
+            self.conn = psycopg2.connect(conn_string)
         self.table = table_name
         self.embedder = Embedder(embed_fn)
 
@@ -121,20 +164,45 @@ class PGVectorPrecedentStore:
     ) -> List[Dict[str, Any]]:
         if embedding is None:
             embedding = self.embedder.embed(query_text)
+        if not embedding:
+            logger.warning(
+                "pgvector_search_missing_embedding",
+                extra={"table": self.table},
+            )
+            return []
 
         # Use psycopg2.sql module for safe identifier handling
-        query = sql.SQL(
-            """
+        if sql is None:
+            query = f"""
             SELECT text, metadata
-            FROM {}
+            FROM {self.table}
             ORDER BY embedding <-> %s
             LIMIT %s;
         """
-        ).format(sql.Identifier(self.table))
+        else:
+            query = sql.SQL(
+                """
+                SELECT text, metadata
+                FROM {}
+                ORDER BY embedding <-> %s
+                LIMIT %s;
+            """
+            ).format(sql.Identifier(self.table))
 
-        with self.conn.cursor() as cur:
-            cur.execute(query, (embedding, top_k))
-            rows = cur.fetchall()
+        if self.pool is not None:
+            conn = self.pool.getconn()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(query, (embedding, top_k))
+                    rows = cur.fetchall()
+            finally:
+                self.pool.putconn(conn)
+        elif self.conn is not None:
+            with self.conn.cursor() as cur:
+                cur.execute(query, (embedding, top_k))
+                rows = cur.fetchall()
+        else:
+            raise RuntimeError("No pgvector connection available")
 
         output = []
         for text, metadata in rows:
@@ -150,6 +218,8 @@ class PGVectorPrecedentStore:
 
     def close(self):
         """Close the database connection."""
+        if self.pool is not None:
+            self.pool.closeall()
         if self.conn:
             self.conn.close()
 
@@ -158,3 +228,14 @@ class PGVectorPrecedentStore:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(1, value)

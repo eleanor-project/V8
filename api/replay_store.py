@@ -9,13 +9,15 @@ Provides:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import threading
+from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
 from types import ModuleType
+from typing import Any, Dict, List, Optional, cast
 from uuid import uuid4
 
 _fcntl: Optional[ModuleType]
@@ -50,13 +52,42 @@ def _as_dict(record: Any) -> Dict[str, Any]:
     return dict(record)
 
 
+def _env_int(name: str) -> Optional[int]:
+    raw = os.getenv(name)
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
 class ReplayStore:
-    def __init__(self, path: str = "replay_log.jsonl", max_cache: int = 1000):
+    def __init__(
+        self,
+        path: str = "replay_log.jsonl",
+        max_cache: int = 1000,
+        max_log_bytes: Optional[int] = None,
+        max_index_entries: Optional[int] = None,
+    ):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.max_cache = max_cache
+        env_max_bytes = _env_int("REPLAY_LOG_MAX_BYTES")
+        if max_log_bytes is None:
+            max_log_bytes = env_max_bytes
+        self.max_log_bytes = max_log_bytes
+        env_index_entries = _env_int("REPLAY_INDEX_MAX")
+        if max_index_entries is None:
+            max_index_entries = env_index_entries
+        self.max_index_entries = max_index_entries or max_cache
+        if self.max_index_entries < max_cache:
+            self.max_index_entries = max_cache
         self._lock = threading.Lock()
-        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+        self._offsets: "OrderedDict[str, int]" = OrderedDict()
+        self._file_size = 0
         self._load_existing()
 
     def _load_existing(self) -> None:
@@ -64,56 +95,157 @@ class ReplayStore:
             return
         try:
             with self.path.open("r", encoding="utf-8") as f:
-                for line in f:
+                while True:
+                    offset = f.tell()
+                    line = f.readline()
+                    if not line:
+                        break
                     try:
                         item = json.loads(line)
-                        trace_id = item.get("trace_id")
-                        if trace_id:
-                            self._cache[trace_id] = item
                     except json.JSONDecodeError:
                         continue
+                    trace_id = item.get("trace_id")
+                    if trace_id:
+                        self._touch_cache_locked(trace_id, item)
+                        self._touch_index_locked(trace_id, offset)
+            try:
+                self._file_size = self.path.stat().st_size
+            except OSError:
+                self._file_size = 0
         except Exception:
             # On load failure, start with empty cache but keep file intact.
-            self._cache = {}
+            self._cache = OrderedDict()
+            self._offsets = OrderedDict()
+            self._file_size = 0
+
+    def _touch_cache_locked(self, trace_id: str, record: Dict[str, Any]) -> None:
+        self._cache[trace_id] = record
+        self._cache.move_to_end(trace_id)
+        self._prune_cache_locked()
+
+    def _touch_index_locked(self, trace_id: str, offset: int) -> None:
+        self._offsets[trace_id] = offset
+        self._offsets.move_to_end(trace_id)
+        self._prune_index_locked()
+
+    def _prune_cache_locked(self) -> None:
+        while len(self._cache) > self.max_cache:
+            self._cache.popitem(last=False)
+
+    def _prune_index_locked(self) -> None:
+        while len(self._offsets) > self.max_index_entries:
+            self._offsets.popitem(last=False)
+
+    def _maybe_trim_log_locked(self) -> None:
+        if not self.max_log_bytes:
+            return
+        if self._file_size <= self.max_log_bytes:
+            return
+        self._rewrite_log_locked()
+
+    def _rewrite_log_locked(self) -> None:
+        records = list(self._cache.values())
+        if not records:
+            try:
+                self.path.write_text("", encoding="utf-8")
+            except Exception:
+                pass
+            self._offsets = OrderedDict()
+            self._file_size = 0
+            return
+
+        max_bytes = self.max_log_bytes
+        kept: List[tuple[Dict[str, Any], str]] = []
+        total = 0
+        for record in reversed(records):
+            line = json.dumps(record, ensure_ascii=False)
+            size = len((line + "\n").encode("utf-8"))
+            if max_bytes is not None and size > max_bytes:
+                continue
+            if max_bytes is not None and total + size > max_bytes and kept:
+                break
+            kept.append((record, line))
+            total += size
+        kept.reverse()
+
+        tmp_path = self.path.with_suffix(f"{self.path.suffix}.tmp")
+        new_cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+        new_offsets: "OrderedDict[str, int]" = OrderedDict()
+        with tmp_path.open("w", encoding="utf-8") as f:
+            for record, line in kept:
+                offset = f.tell()
+                f.write(line + "\n")
+                trace_id = record.get("trace_id")
+                if trace_id:
+                    new_cache[trace_id] = record
+                    new_offsets[trace_id] = offset
+
+        os.replace(tmp_path, self.path)
+        self._cache = new_cache
+        self._offsets = new_offsets
+        try:
+            self._file_size = self.path.stat().st_size
+        except OSError:
+            self._file_size = 0
 
     def save(self, record: Dict[str, Any]) -> None:
         trace_id = record.get("trace_id")
         if not trace_id:
             return
         text = json.dumps(record, ensure_ascii=False)
+        payload = text + "\n"
+        payload_size = len(payload.encode("utf-8"))
         with self._lock:
             with self.path.open("a", encoding="utf-8") as f:
                 if fcntl is not None:
                     fcntl.flock(f, fcntl.LOCK_EX)
-                f.write(text + "\n")
+                offset = f.tell()
+                f.write(payload)
                 if fcntl is not None:
                     fcntl.flock(f, fcntl.LOCK_UN)
-            self._cache[trace_id] = record
-            # prune cache if oversized
-            if len(self._cache) > self.max_cache:
-                # drop arbitrary first item
-                first_key = next(iter(self._cache.keys()))
-                self._cache.pop(first_key, None)
+            self._file_size += payload_size
+            self._touch_cache_locked(trace_id, record)
+            self._touch_index_locked(trace_id, offset)
+            self._maybe_trim_log_locked()
+
+    async def save_async(self, record: Dict[str, Any]) -> None:
+        await asyncio.to_thread(self.save, record)
 
     def get(self, trace_id: str) -> Optional[Dict[str, Any]]:
-        if trace_id in self._cache:
-            return self._cache[trace_id]
+        cached = self._cache.get(trace_id)
+        if cached is not None:
+            return cached
 
-        # fallback to file scan
         if not self.path.exists():
             return None
+
         with self._lock:
+            cached = self._cache.get(trace_id)
+            if cached is not None:
+                return cached
+
+            offset = self._offsets.get(trace_id)
+            if offset is not None:
+                item = self._read_at_offset_locked(trace_id, offset)
+                if item is not None:
+                    return item
+
             try:
                 with self.path.open("r", encoding="utf-8") as f:
                     if fcntl is not None:
                         fcntl.flock(f, fcntl.LOCK_SH)
-                    for line in f:
+                    while True:
+                        offset = f.tell()
+                        line = f.readline()
+                        if not line:
+                            break
                         try:
                             item = cast(Dict[str, Any], json.loads(line))
                         except json.JSONDecodeError:
                             continue
                         if item.get("trace_id") == trace_id:
-                            self._cache[trace_id] = item
+                            self._touch_cache_locked(trace_id, item)
+                            self._touch_index_locked(trace_id, offset)
                             if fcntl is not None:
                                 fcntl.flock(f, fcntl.LOCK_UN)
                             return item
@@ -122,6 +254,27 @@ class ReplayStore:
             except FileNotFoundError:
                 return None
         return None
+
+    async def get_async(self, trace_id: str) -> Optional[Dict[str, Any]]:
+        return await asyncio.to_thread(self.get, trace_id)
+
+    def _read_at_offset_locked(self, trace_id: str, offset: int) -> Optional[Dict[str, Any]]:
+        try:
+            with self.path.open("r", encoding="utf-8") as f:
+                if fcntl is not None:
+                    fcntl.flock(f, fcntl.LOCK_SH)
+                f.seek(offset)
+                line = f.readline()
+                if fcntl is not None:
+                    fcntl.flock(f, fcntl.LOCK_UN)
+            item = cast(Dict[str, Any], json.loads(line))
+            if item.get("trace_id") != trace_id:
+                return None
+            self._touch_cache_locked(trace_id, item)
+            self._touch_index_locked(trace_id, offset)
+            return item
+        except Exception:
+            return None
 
 
 def store_review_packet(packet: Any) -> Optional[str]:

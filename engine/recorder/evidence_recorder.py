@@ -85,6 +85,7 @@ class EvidenceRecorder:
         self.db_sink = db_sink
 
         self._lock = asyncio.Lock()
+        self._state_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         """Initialize recorder resources."""
@@ -108,10 +109,11 @@ class EvidenceRecorder:
     # -----------------------------------------------------
     # Internal helper: Add to in-memory buffer
     # -----------------------------------------------------
-    def _add_to_buffer(self, record: EvidenceRecord):
-        self.buffer.append(record)
-        if len(self.buffer) > self.buffer_size:
-            self.buffer.pop(0)
+    async def _add_to_buffer(self, record: EvidenceRecord):
+        async with self._state_lock:
+            self.buffer.append(record)
+            if len(self.buffer) > self.buffer_size:
+                self.buffer.pop(0)
 
     # -----------------------------------------------------
     # JSONL sink
@@ -201,12 +203,15 @@ class EvidenceRecorder:
         )
 
         # In-memory buffer sink
-        self._add_to_buffer(record)
+        await self._add_to_buffer(record)
 
         # JSONL sink
         if self.jsonl_path:
-            self._pending.append(record)
-            if len(self._pending) >= self.buffer_size or self.flush_interval <= 0:
+            should_flush = False
+            async with self._state_lock:
+                self._pending.append(record)
+                should_flush = len(self._pending) >= self.buffer_size or self.flush_interval <= 0
+            if should_flush:
                 await self.flush()
 
         # DB sink
@@ -230,10 +235,13 @@ class EvidenceRecorder:
 
     async def flush(self) -> None:
         """Flush pending evidence to JSONL."""
-        if not self.jsonl_path or not self._pending:
+        if not self.jsonl_path:
             return
-        pending = list(self._pending)
-        self._pending.clear()
+        async with self._state_lock:
+            if not self._pending:
+                return
+            pending = list(self._pending)
+            self._pending.clear()
         for record in pending:
             await self._write_jsonl(record)
 
