@@ -9,7 +9,7 @@ Tests all code paths including:
 """
 
 import pytest
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
+from unittest.mock import Mock, patch, AsyncMock, MagicMock, ANY
 
 import httpx
 from engine.governance.opa_client import OPAClientV8
@@ -128,7 +128,9 @@ class TestOPAClientEvaluate:
         assert result["escalate"] is False
         assert result["failures"] == []
         mock_client.post.assert_awaited_once_with(
-            "http://localhost:8181/v1/data/eleanor/decision", json={"input": evidence}
+            "http://localhost:8181/v1/data/eleanor/decision",
+            json={"input": evidence},
+            timeout=ANY,
         )
 
     @patch("engine.governance.opa_client.httpx.AsyncClient")
@@ -357,7 +359,9 @@ class TestOPAClientEvaluate:
         await client.evaluate(evidence)
 
         mock_client.post.assert_awaited_once_with(
-            "http://localhost:8181/v1/data/custom/policy", json={"input": evidence}
+            "http://localhost:8181/v1/data/custom/policy",
+            json={"input": evidence},
+            timeout=ANY,
         )
 
     @patch("engine.governance.opa_client.httpx.AsyncClient")

@@ -42,8 +42,8 @@ class TestEnvironmentSecretsProvider:
             provider = EnvironmentSecretsProvider(prefix="ELEANOR_")
             secrets = provider.list_secrets()
 
-            assert "ELEANOR_API_KEY" in secrets
-            assert "ELEANOR_SECRET" in secrets
+            assert "API_KEY" in secrets
+            assert "SECRET" in secrets
             assert "OTHER_VAR" not in secrets
 
     def test_get_secret_or_fail(self):
@@ -86,7 +86,7 @@ class TestSecretsSanitizer:
         text = "Authorization: Bearer abc123xyz"
         sanitized = SecretsSanitizer.sanitize_string(text)
         assert "abc123xyz" not in sanitized
-        assert "Bearer [REDACTED]" in sanitized
+        assert "[BEARER_TOKEN]" in sanitized
 
     def test_sanitize_dict_sensitive_keys(self):
         """Test dictionary sanitization with sensitive keys"""

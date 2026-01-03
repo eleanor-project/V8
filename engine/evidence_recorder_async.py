@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
-    import aiofiles
+    import aiofiles  # type: ignore[import-untyped]
 
     AIOFILES_AVAILABLE = True
 except ImportError:

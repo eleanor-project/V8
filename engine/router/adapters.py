@@ -25,7 +25,8 @@ import os
 import logging
 from typing import Any, Optional, Awaitable, TYPE_CHECKING
 
-import httpx
+import httpx  # noqa: F401
+
 
 from engine.utils.http_client import get_async_client
 

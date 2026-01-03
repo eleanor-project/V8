@@ -20,7 +20,7 @@ class ResourceManager:
     """Manages lifecycle of engine resources"""
 
     def __init__(self):
-        self._shutdown_event = asyncio.Event()
+        self._shutdown_event: asyncio.Event = asyncio.Event()
         self._cleanup_tasks: Set[asyncio.Task] = set()
         self._resources_initialized = False
         self._shutdown_in_progress = False

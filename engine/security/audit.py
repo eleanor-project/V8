@@ -32,6 +32,8 @@ class SecureAuditLogger:
         event_type: str,
         details: Dict[str, Any],
         severity: str = "INFO",
+        *,
+        sanitize: bool = True,
     ):
         """
         Log audit event with sanitization.
@@ -41,8 +43,10 @@ class SecureAuditLogger:
             details: Event details (will be sanitized)
             severity: Log severity (INFO, WARNING, ERROR)
         """
-        # Sanitize details
-        sanitized_details = self.sanitizer.sanitize_dict(details)
+        # Sanitize details unless explicitly skipped.
+        sanitized_details = (
+            self.sanitizer.sanitize_dict(details) if sanitize else details
+        )
 
         # Log to audit trail
         log_entry = {
@@ -136,4 +140,6 @@ class SecureAuditLogger:
         }
 
         severity = "WARNING" if not success else "INFO"
-        self.log_audit_event("secret_access", details, severity)
+        sanitized_details = self.sanitizer.sanitize_dict(details)
+        sanitized_details["secret_key"] = secret_key
+        self.log_audit_event("secret_access", sanitized_details, severity, sanitize=False)
