@@ -8,7 +8,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from cachetools import TTLCache  # type: ignore[import-untyped]
 
@@ -57,7 +57,7 @@ class RouterSelectionCache:
         normalized = self._normalize_text(text)
         ctx_hash = self._context_hash(context)
         key = self._cache_key(normalized, ctx_hash)
-        entry = self.cache.get(key)
+        entry = cast(Optional[RouterCacheEntry], self.cache.get(key))
         if entry is not None:
             self.hits += 1
             return entry.selection
@@ -72,7 +72,8 @@ class RouterSelectionCache:
         normalized = self._normalize_text(text)
         ctx_hash = self._context_hash(context)
 
-        for entry in self.cache.values():
+        for cached in self.cache.values():
+            entry = cast(RouterCacheEntry, cached)
             if entry.context_hash != ctx_hash:
                 continue
             ratio = SequenceMatcher(None, normalized, entry.normalized_text).ratio()

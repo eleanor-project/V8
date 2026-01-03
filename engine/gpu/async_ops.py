@@ -176,6 +176,6 @@ class AsyncGPUExecutor:
             return "AsyncGPUExecutor(torch_unavailable)"
 
         device_str = str(self.device) if self.device else "none"
-        num_streams = len([s for s in self.streams if s is not None])
+        num_streams = len(self.streams)
 
-        return f"AsyncGPUExecutor(device={device_str}, streams={num_streams})"
+        return f"AsyncGPUExecutor(device={device_str}, num_streams={num_streams})"

@@ -46,9 +46,9 @@ def _atomic_write_json(path: str, record: Dict[str, Any]) -> None:
 
 def _as_dict(record: Any) -> Dict[str, Any]:
     if hasattr(record, "model_dump"):
-        return record.model_dump()
+        return cast(Dict[str, Any], record.model_dump())
     if hasattr(record, "dict"):
-        return record.dict()
+        return cast(Dict[str, Any], record.dict())
     return dict(record)
 
 

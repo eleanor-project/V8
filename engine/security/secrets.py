@@ -14,6 +14,22 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterable, List, Optional
 
+try:
+    import boto3 as _boto3  # type: ignore[import-not-found]
+    from botocore.exceptions import ClientError as _ClientError  # type: ignore[import-not-found]
+except Exception:  # pragma: no cover - optional dependency
+    _boto3 = None
+    _ClientError = Exception
+
+try:
+    import hvac as _hvac  # type: ignore[import-not-found]
+except Exception:  # pragma: no cover - optional dependency
+    _hvac = None
+
+boto3 = _boto3
+ClientError = _ClientError
+hvac = _hvac
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,6 +51,13 @@ class SecretsProvider(ABC):
         secret = self.get_secret(key)
         if secret is None:
             raise ValueError(f"Required secret not found: {key}")
+        return secret
+
+    def get_secret_or_fail(self, key: str) -> str:
+        """Get secret or raise ValueError if missing (legacy message)."""
+        secret = self.get_secret(key)
+        if secret is None:
+            raise ValueError(f"Secret '{key}' not found")
         return secret
 
     async def refresh_secrets(self) -> None:
@@ -114,16 +137,12 @@ class AWSSecretsProvider(SecretsProvider):
             cache_ttl: Seconds to cache secrets (default: 5 minutes)
             prefix: Prefix for all secret names
         """
-        try:
-            import boto3
-            from botocore.exceptions import ClientError
-
-            self.boto3 = boto3
-            self.ClientError = ClientError
-        except ImportError:
+        if boto3 is None:
             raise ImportError(
                 "boto3 required for AWSSecretsProvider. " "Install with: pip install boto3"
             )
+        self.boto3 = boto3
+        self.ClientError = ClientError
 
         self.region_name = region_name
         self.cache_ttl = cache_ttl
@@ -165,14 +184,17 @@ class AWSSecretsProvider(SecretsProvider):
 
         try:
             response = self.client.get_secret_value(SecretId=secret_name)
-            secret = response["SecretString"]
+            secret = response.get("SecretString")
+            if secret is None:
+                return None
+            secret_str = str(secret)
 
             # Cache it
-            self._cache[key] = (secret, time.time())
+            self._cache[key] = (secret_str, time.time())
 
             logger.info("secret_retrieved_from_aws", extra={"key": key, "secret_name": secret_name})
 
-            return secret
+            return secret_str
 
         except self.ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -245,14 +267,11 @@ class VaultSecretsProvider(SecretsProvider):
             vault_token: Vault authentication token (or use VAULT_TOKEN env)
             mount_point: KV secrets mount point
         """
-        try:
-            import hvac
-
-            self.hvac = hvac
-        except ImportError:
+        if hvac is None:
             raise ImportError(
                 "hvac required for VaultSecretsProvider. " "Install with: pip install hvac"
             )
+        self.hvac = hvac
 
         self.vault_addr = vault_addr
         self.mount_point = mount_point
@@ -285,13 +304,15 @@ class VaultSecretsProvider(SecretsProvider):
                 mount_point=self.mount_point,
             )
 
-            value = secret["data"]["data"].get("value")
+            value = secret.get("data", {}).get("data", {}).get("value")
+            if value is None:
+                return None
 
             logger.info(
                 "secret_retrieved_from_vault", extra={"key": key, "mount_point": self.mount_point}
             )
 
-            return value
+            return str(value)
 
         except Exception as e:
             logger.error(
@@ -311,7 +332,10 @@ class VaultSecretsProvider(SecretsProvider):
                 path="",
                 mount_point=self.mount_point,
             )
-            return response["data"]["keys"]
+            keys = response.get("data", {}).get("keys", [])
+            if isinstance(keys, list):
+                return [str(key) for key in keys]
+            return []
 
         except Exception as e:
             logger.error(
@@ -383,12 +407,42 @@ def build_secret_provider_from_settings(settings: Any) -> SecretsProvider:
     raise ValueError(f"Unknown secret_provider: {provider}")
 
 
+def auto_detect_secrets_provider(cache_ttl: int = 300) -> SecretsProvider:
+    """Auto-detect secrets provider based on environment variables."""
+    aws_enabled = os.getenv("AWS_SECRETS_MANAGER", "").lower() in ("1", "true", "yes")
+    if aws_enabled:
+        region = os.getenv("AWS_REGION", "us-west-2")
+        prefix = os.getenv("AWS_SECRET_PREFIX") or os.getenv("AWS_SECRETS_PREFIX") or "eleanor/"
+        if prefix and not prefix.endswith("/"):
+            prefix = f"{prefix}/"
+        try:
+            return AWSSecretsProvider(region_name=region, cache_ttl=cache_ttl, prefix=prefix)
+        except Exception as exc:
+            logger.warning("aws_secrets_provider_init_failed", extra={"error": str(exc)})
+
+    vault_addr = os.getenv("VAULT_ADDR")
+    vault_token = os.getenv("VAULT_TOKEN")
+    if vault_addr and vault_token:
+        mount_point = os.getenv("VAULT_MOUNT_POINT") or os.getenv("VAULT_MOUNT") or "eleanor"
+        try:
+            return VaultSecretsProvider(
+                vault_addr=vault_addr,
+                vault_token=vault_token,
+                mount_point=mount_point,
+            )
+        except Exception as exc:
+            logger.warning("vault_secrets_provider_init_failed", extra={"error": str(exc)})
+
+    return EnvironmentSecretProvider(cache_ttl=cache_ttl)
+
+
 __all__ = [
     "SecretsProvider",
     "EnvironmentSecretsProvider",
     "EnvironmentSecretProvider",
     "AWSSecretsProvider",
     "VaultSecretsProvider",
+    "auto_detect_secrets_provider",
     "build_secret_provider_from_settings",
     "get_llm_api_key_sync",
     "get_llm_api_key",

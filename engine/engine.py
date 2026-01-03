@@ -750,9 +750,13 @@ class EleanorEngineV8:
         self,
         text: str,
         context: dict,
-        timings: Dict[str, float],
-        router_diagnostics: Dict[str, Any],
+        timings: Optional[Dict[str, float]] = None,
+        router_diagnostics: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        if timings is None:
+            timings = {}
+        if router_diagnostics is None:
+            router_diagnostics = {}
         start = asyncio.get_event_loop().time()
         cache_key: Optional[CacheKey] = None
 

@@ -10,7 +10,7 @@ Prevents credential leakage in:
 
 import logging
 import re
-from typing import Any, Dict, List, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +26,12 @@ class SecretsSanitizer:
     - Support for custom patterns
     """
 
+    _default_instance: Optional["SecretsSanitizer"] = None
+
     # Patterns for common secret formats
     DEFAULT_PATTERNS = [
         # OpenAI API keys
-        (r"sk-[a-zA-Z0-9]{48}", "[OPENAI_API_KEY]"),
+        (r"sk-[a-zA-Z0-9]{20,}", "[OPENAI_API_KEY]"),
         (r"sk-proj-[a-zA-Z0-9_-]{48,}", "[OPENAI_PROJECT_KEY]"),
         # Anthropic API keys
         (r"sk-ant-[a-zA-Z0-9_-]{95,}", "[ANTHROPIC_API_KEY]"),
@@ -82,8 +84,8 @@ class SecretsSanitizer:
 
     def __init__(
         self,
-        custom_patterns: List[tuple[str, str]] = None,
-        additional_sensitive_keys: Set[str] = None,
+        custom_patterns: Optional[List[tuple[str, str]]] = None,
+        additional_sensitive_keys: Optional[Set[str]] = None,
     ):
         """
         Args:
@@ -112,7 +114,41 @@ class SecretsSanitizer:
             },
         )
 
-    def sanitize_string(self, text: str) -> str:
+        # Bind instance methods to preserve instance-specific behavior.
+        self.sanitize_string = self._sanitize_string  # type: ignore[assignment]
+        self.sanitize_dict = self._sanitize_dict  # type: ignore[assignment]
+        self.sanitize_list = self._sanitize_list  # type: ignore[assignment]
+        self.sanitize = self._sanitize  # type: ignore[assignment]
+
+    @classmethod
+    def _default(cls) -> "SecretsSanitizer":
+        if cls._default_instance is None:
+            cls._default_instance = cls()
+        return cls._default_instance
+
+    @classmethod
+    def sanitize_string(cls, text: str) -> str:
+        return cls._default()._sanitize_string(text)
+
+    @classmethod
+    def sanitize_dict(
+        cls, data: Dict[str, Any], sensitive_keys: Optional[Set[str]] = None
+    ) -> Dict[str, Any]:
+        return cls._default()._sanitize_dict(data, sensitive_keys=sensitive_keys)
+
+    @classmethod
+    def sanitize_list(
+        cls, data: List[Any], sensitive_keys: Optional[Set[str]] = None
+    ) -> List[Any]:
+        return cls._default()._sanitize_list(data, sensitive_keys=sensitive_keys)
+
+    @classmethod
+    def sanitize(
+        cls, data: Union[str, Dict, List], sensitive_keys: Optional[Set[str]] = None
+    ) -> Union[str, Dict, List]:
+        return cls._default()._sanitize(data, sensitive_keys=sensitive_keys)
+
+    def _sanitize_string(self, text: str) -> str:
         """
         Remove secrets from string using pattern matching.
 
@@ -131,7 +167,9 @@ class SecretsSanitizer:
 
         return result
 
-    def sanitize_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _sanitize_dict(
+        self, data: Dict[str, Any], sensitive_keys: Optional[Set[str]] = None
+    ) -> Dict[str, Any]:
         """
         Recursively sanitize dictionary, redacting sensitive keys.
 
@@ -144,24 +182,26 @@ class SecretsSanitizer:
         if not isinstance(data, dict):
             return data
 
-        sanitized = {}
+        sanitized: Dict[str, Any] = {}
 
         for key, value in data.items():
             # Check if key is sensitive
-            if self._is_sensitive_key(key):
+            if self._is_sensitive_key(key, sensitive_keys=sensitive_keys):
                 sanitized[key] = "[REDACTED]"
             elif isinstance(value, dict):
-                sanitized[key] = self.sanitize_dict(value)
+                sanitized[key] = self._sanitize_dict(value, sensitive_keys=sensitive_keys)
             elif isinstance(value, list):
-                sanitized[key] = self.sanitize_list(value)
+                sanitized[key] = self._sanitize_list(value, sensitive_keys=sensitive_keys)
             elif isinstance(value, str):
-                sanitized[key] = self.sanitize_string(value)
+                sanitized[key] = self._sanitize_string(value)
             else:
                 sanitized[key] = value
 
         return sanitized
 
-    def sanitize_list(self, data: List[Any]) -> List[Any]:
+    def _sanitize_list(
+        self, data: List[Any], sensitive_keys: Optional[Set[str]] = None
+    ) -> List[Any]:
         """
         Recursively sanitize list items.
 
@@ -175,17 +215,19 @@ class SecretsSanitizer:
             return data
 
         return [
-            self.sanitize_dict(item)
+            self._sanitize_dict(item, sensitive_keys=sensitive_keys)
             if isinstance(item, dict)
-            else self.sanitize_list(item)
+            else self._sanitize_list(item, sensitive_keys=sensitive_keys)
             if isinstance(item, list)
-            else self.sanitize_string(item)
+            else self._sanitize_string(item)
             if isinstance(item, str)
             else item
             for item in data
         ]
 
-    def sanitize(self, data: Union[str, Dict, List]) -> Union[str, Dict, List]:
+    def _sanitize(
+        self, data: Union[str, Dict, List], sensitive_keys: Optional[Set[str]] = None
+    ) -> Union[str, Dict, List]:
         """
         Universal sanitization method.
 
@@ -196,15 +238,15 @@ class SecretsSanitizer:
             Sanitized data of same type
         """
         if isinstance(data, str):
-            return self.sanitize_string(data)
+            return self._sanitize_string(data)
         elif isinstance(data, dict):
-            return self.sanitize_dict(data)
+            return self._sanitize_dict(data, sensitive_keys=sensitive_keys)
         elif isinstance(data, list):
-            return self.sanitize_list(data)
+            return self._sanitize_list(data, sensitive_keys=sensitive_keys)
         else:
             return data
 
-    def _is_sensitive_key(self, key: str) -> bool:
+    def _is_sensitive_key(self, key: str, sensitive_keys: Optional[Set[str]] = None) -> bool:
         """
         Check if key name indicates sensitive data.
 
@@ -215,7 +257,10 @@ class SecretsSanitizer:
             True if key should be redacted
         """
         key_lower = key.lower()
-        return any(sensitive in key_lower for sensitive in self.sensitive_keys)
+        active_keys = self.sensitive_keys
+        if sensitive_keys:
+            active_keys = active_keys | {key.lower() for key in sensitive_keys}
+        return any(sensitive in key_lower for sensitive in active_keys)
 
     def add_pattern(self, pattern: str, replacement: str):
         """Add a custom pattern at runtime"""
@@ -282,7 +327,7 @@ class CredentialSanitizer:
         if not isinstance(data, dict):
             return data
 
-        sanitized = {}
+        sanitized: Dict[str, Any] = {}
         for key, value in data.items():
             key_lower = key.lower()
             if any(sensitive in key_lower for sensitive in cls.SENSITIVE_KEYS):
@@ -302,7 +347,7 @@ class CredentialSanitizer:
         if not isinstance(data, list):
             return data
 
-        sanitized_list = []
+        sanitized_list: List[Any] = []
         for item in data:
             if isinstance(item, dict):
                 sanitized_list.append(cls.sanitize_dict(item))
