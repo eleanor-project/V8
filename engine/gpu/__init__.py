@@ -8,24 +8,39 @@ Provides GPU acceleration infrastructure:
 - BatchProcessor: Dynamic batching for GPU workloads
 """
 
+from typing import Any, Optional
+
 from .manager import GPUManager, GPUConfig, GPUMemoryStats
 from .async_ops import AsyncGPUExecutor
 from .monitoring import collect_gpu_metrics
 
-try:
-    from .embeddings import GPUEmbeddingCache
-except Exception:
-    GPUEmbeddingCache = None  # type: ignore[assignment]
+GPUEmbeddingCache: Optional[Any] = None
+BatchProcessor: Optional[Any] = None
+MultiGPUManager: Optional[Any] = None
 
+_embeddings: Optional[Any]
 try:
-    from .batch_processor import BatchProcessor
+    from . import embeddings as _embeddings
 except Exception:
-    BatchProcessor = None  # type: ignore[assignment]
+    _embeddings = None
+if _embeddings is not None:
+    GPUEmbeddingCache = _embeddings.GPUEmbeddingCache
 
+_batch_processor: Optional[Any]
 try:
-    from .parallelization import MultiGPURouter as MultiGPUManager
+    from . import batch_processor as _batch_processor
 except Exception:
-    MultiGPUManager = None  # type: ignore[assignment]
+    _batch_processor = None
+if _batch_processor is not None:
+    BatchProcessor = _batch_processor.BatchProcessor
+
+_parallelization: Optional[Any]
+try:
+    from . import parallelization as _parallelization
+except Exception:
+    _parallelization = None
+if _parallelization is not None:
+    MultiGPUManager = _parallelization.MultiGPURouter
 
 GPUBatchProcessor = BatchProcessor
 

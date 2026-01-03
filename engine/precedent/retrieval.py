@@ -20,7 +20,7 @@ Output:
 }
 """
 
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional, Callable, Mapping, cast
 import inspect
 
 from engine.schemas.pipeline_types import (
@@ -108,7 +108,10 @@ class PrecedentRetrievalV8:
             if query_embedding:
                 self._cache_embedding(query_text, query_embedding)
 
-        results = self._search_store(query_text, top_k, query_embedding) or []
+        results_raw = self._search_store(query_text, top_k, query_embedding) or []
+        results: List[PrecedentCaseResult] = [
+            cast(PrecedentCaseResult, case) for case in results_raw
+        ]
 
         if not results:
             return {
@@ -118,7 +121,7 @@ class PrecedentRetrievalV8:
                 "query_embedding": query_embedding or [],
             }
 
-        scored = []
+        scored: List[tuple[PrecedentCaseResult, float]] = []
         for case in results:
             score = self._score_alignment(case, critic_outputs)
             scored.append((case, score))
@@ -150,6 +153,7 @@ class PrecedentRetrievalV8:
             return []
 
         if query_embedding:
+            params: Mapping[str, inspect.Parameter]
             try:
                 params = inspect.signature(search_fn).parameters
             except (TypeError, ValueError):
@@ -179,7 +183,9 @@ class PrecedentRetrievalV8:
             if hasattr(cached, "detach"):
                 cached = cached.detach().cpu()
             if hasattr(cached, "tolist"):
-                return cached.tolist()
+                values = cached.tolist()
+                if isinstance(values, list):
+                    return [float(item) for item in values]
         except Exception:
             return []
         return []

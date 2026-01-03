@@ -7,14 +7,17 @@ Coordinate async GPU operations with CPU tasks.
 import asyncio
 import logging
 from functools import partial
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+torch: Optional[Any]
 try:
-    import torch
+    import torch as _torch
 except ImportError:  # pragma: no cover - torch optional
     torch = None
+else:
+    torch = _torch
 
 
 class AsyncGPUExecutor:
@@ -46,12 +49,14 @@ class AsyncGPUExecutor:
         """
         self.device = device
         self._torch_available = torch is not None
+        self.streams: List[Optional[Any]] = [None] * num_streams
+        self.current_stream_idx = 0
 
-        if not self._torch_available:
+        if not self._torch_available or torch is None:
             logger.warning("PyTorch not installed. Async GPU operations unavailable.")
-            self.streams = [None] * num_streams
-            self.current_stream_idx = 0
             return
+
+        assert torch is not None
 
         # Create CUDA streams if using CUDA
         if device is not None and device.type == "cuda" and torch.cuda.is_available():
@@ -73,8 +78,6 @@ class AsyncGPUExecutor:
                     "note": "No streams (CPU/MPS mode)",
                 },
             )
-
-        self.current_stream_idx = 0
 
     def get_stream(self) -> Any:
         """
@@ -108,9 +111,11 @@ class AsyncGPUExecutor:
         Returns:
             Result of operation
         """
-        if not self._torch_available:
+        if not self._torch_available or torch is None:
             # Fallback to sync execution without torch
             return operation(*args, **kwargs)
+
+        assert torch is not None
 
         stream = self.get_stream()
         call = partial(operation, *args, **kwargs)

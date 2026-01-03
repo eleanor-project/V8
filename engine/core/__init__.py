@@ -11,7 +11,7 @@ import os
 import json
 import inspect
 import logging
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Optional, Callable, List, cast
 
 from engine.engine import create_engine, EngineConfig
 from engine.router.router import RouterV8
@@ -53,6 +53,30 @@ def _wrap_llm_adapter(fn):
         return result
 
     return _adapter
+
+
+def _parse_memory_gb(value: Optional[Any]) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        raw = value.strip().lower()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+        suffixes = {"gb": 1.0, "g": 1.0, "mb": 1.0 / 1024, "m": 1.0 / 1024}
+        for suffix, factor in suffixes.items():
+            if raw.endswith(suffix):
+                number = raw[: -len(suffix)].strip()
+                try:
+                    return float(number) * factor
+                except ValueError:
+                    return None
+    return None
 
 
 def _build_router(
@@ -168,8 +192,8 @@ def _build_precedent_layer(
 
             class MemoryStore:
                 def __init__(self, embed_fn=None):
-                    self.items = []
-                    self.embed_fn = embed_fn or (lambda x: [])
+                    self.items: List[Dict[str, Any]] = []
+                    self.embed_fn: Callable[[str], List[float]] = embed_fn or (lambda x: [])
 
                 def add(self, text, metadata=None):
                     self.items.append(
@@ -281,7 +305,7 @@ def build_eleanor_engine_v8(
                 preferred_devices=preferred_devices,
                 mixed_precision=settings.gpu.memory.mixed_precision,
                 num_streams=settings.gpu.async_ops.num_streams,
-                max_memory_per_gpu=settings.gpu.memory.max_memory_per_gpu,
+                max_memory_per_gpu=_parse_memory_gb(settings.gpu.memory.max_memory_per_gpu),
                 log_memory_stats=settings.gpu.memory.log_memory_stats,
                 memory_check_interval=settings.gpu.memory.memory_check_interval,
                 default_batch_size=settings.gpu.batching.default_batch_size,

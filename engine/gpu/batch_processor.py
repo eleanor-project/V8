@@ -4,7 +4,7 @@ Batch Processor - Dynamic batch size optimization for GPU efficiency
 
 import logging
 import time
-from typing import Any, Callable, List
+from typing import Any, Callable, List, cast
 
 import asyncio
 import inspect
@@ -254,11 +254,13 @@ class BatchProcessor:
         """
         # If process_fn is async, await it
         if inspect.iscoroutinefunction(self.process_fn):
-            return await self.process_fn(items)
+            result = await self.process_fn(items)
         else:
             # Run in executor to not block event loop
             loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, self.process_fn, items)
+            result = await loop.run_in_executor(None, self.process_fn, items)
+
+        return cast(List[Any], result)
 
     def _adjust_batch_size(self, latency: float, actual_batch_size: int) -> None:
         """

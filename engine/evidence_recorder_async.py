@@ -44,7 +44,7 @@ class AsyncEvidenceRecorder:
         self.flush_interval = flush_interval
 
         self.buffer: List[Dict[str, Any]] = []
-        self._file_handle = None
+        self._file_handle: Optional[Any] = None
         self._flush_task: Optional[asyncio.Task] = None
         self._shutdown = False
         self._initialized = False

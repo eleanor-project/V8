@@ -121,7 +121,9 @@ class ClaudeAdapter(BaseLLMAdapter):
         response = self.client.messages.create(
             model=self.model, max_tokens=2048, messages=[{"role": "user", "content": prompt}]
         )
-        return str(response.content[0].text).strip()
+        content_block = response.content[0]
+        text = getattr(content_block, "text", None)
+        return str(text if text is not None else content_block).strip()
 
 
 # ============================================================
@@ -258,7 +260,7 @@ def bootstrap_default_registry(
             models.extend([m.strip() for m in env_many.split(",") if m.strip()])
         if not models:
             models = ["meta-llama/Llama-3-8b"]
-        device = hf_device or os.getenv("HF_DEVICE", "cpu")
+        device = hf_device or os.getenv("HF_DEVICE") or "cpu"
         for m in models:
             # derive a short name
             short = m.split("/")[-1].lower().replace(" ", "-")

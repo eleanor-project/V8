@@ -6,7 +6,7 @@ All settings can be overridden via environment variables with ELEANOR_ prefix.
 """
 
 import os
-from typing import Optional, Dict, Any, List, Callable
+from typing import Optional, Dict, Any, List, Callable, cast
 from pathlib import Path
 from pydantic import (
     BaseModel,
@@ -16,7 +16,11 @@ from pydantic import (
     model_validator,
     ConfigDict,
 )
-from pydantic_settings import BaseSettings, SettingsConfigDict  # type: ignore[import-not-found]
+from pydantic_settings import (  # type: ignore[import-not-found]
+    BaseSettings,
+    SettingsConfigDict,
+    PydanticBaseSettingsSource,
+)
 import warnings
 
 
@@ -91,21 +95,31 @@ def _normalize_yaml_config(payload: Dict[str, Any]) -> Dict[str, Any]:
     _map_gpu_section("critics", ("gpu_batching", "use_gpu"))
     _map_gpu_section("precedent", ("gpu_similarity_search", "cache_embeddings_on_gpu"))
 
-    governance = payload.get("governance") if isinstance(payload.get("governance"), dict) else {}
+    governance_raw = payload.get("governance")
+    governance: Dict[str, Any] = (
+        governance_raw if isinstance(governance_raw, dict) else {}
+    )
     if "constitutional_config_path" in governance:
         normalized["constitutional_config_path"] = governance["constitutional_config_path"]
 
-    storage = payload.get("storage") if isinstance(payload.get("storage"), dict) else {}
+    storage_raw = payload.get("storage")
+    storage: Dict[str, Any] = storage_raw if isinstance(storage_raw, dict) else {}
     if "evidence_path" in storage:
         normalized.setdefault("evidence", {})["jsonl_path"] = storage["evidence_path"]
     if "replay_log_path" in storage:
         normalized["replay_log_path"] = storage["replay_log_path"]
 
-    precedent = payload.get("precedent") if isinstance(payload.get("precedent"), dict) else {}
+    precedent_raw = payload.get("precedent")
+    precedent: Dict[str, Any] = (
+        precedent_raw if isinstance(precedent_raw, dict) else {}
+    )
     if "backend" in precedent:
         normalized.setdefault("precedent", {})["backend"] = precedent["backend"]
 
-    logging_cfg = payload.get("logging") if isinstance(payload.get("logging"), dict) else {}
+    logging_raw = payload.get("logging")
+    logging_cfg: Dict[str, Any] = (
+        logging_raw if isinstance(logging_raw, dict) else {}
+    )
     if "level" in logging_cfg:
         normalized.setdefault("observability", {})["log_level"] = logging_cfg["level"]
 
@@ -547,11 +561,11 @@ class EleanorSettings(BaseSettings):
     def settings_customise_sources(
         cls,
         settings_cls: type[BaseSettings],
-        init_settings: Callable[..., Dict[str, Any]],
-        env_settings: Callable[..., Dict[str, Any]],
-        dotenv_settings: Callable[..., Dict[str, Any]],
-        file_secret_settings: Callable[..., Dict[str, Any]],
-    ) -> tuple[Callable[..., Dict[str, Any]], ...]:
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
         def yaml_settings(_: Optional[BaseSettings] = None) -> Dict[str, Any]:
             path = os.getenv("ELEANOR_CONFIG_PATH") or os.getenv("ELEANOR_CONFIG")
             if not path:
@@ -561,11 +575,12 @@ class EleanorSettings(BaseSettings):
             payload = _load_yaml_config(path)
             return _normalize_yaml_config(payload)
 
+        yaml_source = cast(PydanticBaseSettingsSource, yaml_settings)
         return (
             init_settings,
             env_settings,
             dotenv_settings,
-            yaml_settings,
+            yaml_source,
             file_secret_settings,
         )
 
@@ -727,10 +742,12 @@ def get_settings(env_file: Optional[str] = None, reload: bool = False) -> Eleano
 
         # Load settings
         if Path(env_file).exists():
-            _settings = EleanorSettings(_env_file=env_file)
+            settings_cls = cast(Any, EleanorSettings)
+            _settings = settings_cls(_env_file=env_file)
         else:
             _settings = EleanorSettings()
 
+    assert _settings is not None
     return _settings
 
 

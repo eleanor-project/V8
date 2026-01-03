@@ -78,7 +78,8 @@ class DetectorEngineV8:
                         and attr is not Detector
                     ):
                         detector = attr()
-                        self.detectors[detector.name] = detector
+                        detector_name = getattr(detector, "name", attr_name)
+                        self.detectors[detector_name] = detector
                         break
             except Exception as e:
                 # Log but don't crash if a detector fails to load
