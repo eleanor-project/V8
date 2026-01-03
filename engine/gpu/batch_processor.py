@@ -13,16 +13,17 @@ from collections import deque
 
 logger = logging.getLogger(__name__)
 
+
 class BatchProcessor:
     """
     Dynamic batch processor for GPU operations.
-    
+
     Features:
     - Automatic batch size optimization based on memory
     - Timeout-based batching (don't wait forever)
     - Adaptive batch sizing based on observed latency
     - Handles variable-length inputs
-    
+
     Example:
         >>> processor = BatchProcessor(
         ...     process_fn=model.forward,
@@ -31,7 +32,7 @@ class BatchProcessor:
         ... )
         >>> result = await processor.process(input_data)
     """
-    
+
     def __init__(
         self,
         process_fn: Callable,
@@ -44,7 +45,7 @@ class BatchProcessor:
     ):
         """
         Initialize batch processor.
-        
+
         Args:
             process_fn: Function to process batches (should accept List of inputs)
             device: Torch device to use
@@ -61,16 +62,16 @@ class BatchProcessor:
         self.min_batch_size = min_batch_size
         self.batch_timeout = batch_timeout
         self.dynamic_sizing = dynamic_sizing
-        
+
         # Queue for pending items
         self.queue: deque = deque()
         self.processing_lock = asyncio.Lock()
-        
+
         # Performance tracking
         self.recent_latencies: List[float] = []
         self.max_latency_samples = 20
         self.oom_count = 0
-        
+
         logger.info(
             "batch_processor_initialized",
             extra={
@@ -80,31 +81,31 @@ class BatchProcessor:
                 "dynamic_sizing": dynamic_sizing,
             },
         )
-    
+
     async def process(self, item: Any) -> Any:
         """
         Process a single item (batched with others).
-        
+
         Args:
             item: Input to process
-            
+
         Returns:
             Processed result
         """
         # Create a future for this item's result
         future: asyncio.Future = asyncio.Future()
-        
+
         # Add to queue
         async with self.processing_lock:
             self.queue.append((item, future))
-            
+
             # If batch is full, trigger background processing
             if len(self.queue) >= self.current_batch_size:
                 asyncio.create_task(self._process_batch())
-        
+
         # Wait for result
         return await future
-    
+
     async def _process_batch(self) -> None:
         """
         Process a batch of items from the queue.
@@ -112,71 +113,71 @@ class BatchProcessor:
         async with self.processing_lock:
             if not self.queue:
                 return
-            
+
             # Get batch
             batch_size = min(len(self.queue), self.current_batch_size)
             batch = [self.queue.popleft() for _ in range(batch_size)]
-        
+
         if not batch:
             return
-        
+
         items, futures = zip(*batch)
-        
+
         try:
             start_time = time.time()
-            
+
             # If GPU is available and using CUDA, clear cache if memory is tight
             if torch.cuda.is_available() and self.device.type == "cuda":
                 torch.cuda.empty_cache()
-            
+
             # Call processing function
             results = await self._execute_batch(list(items))
-            
+
             # Track latency
             latency = time.time() - start_time
             self.recent_latencies.append(latency)
             if len(self.recent_latencies) > self.max_latency_samples:
                 self.recent_latencies.pop(0)
-            
+
             # Adjust batch size if enabled
             if self.dynamic_sizing:
                 self._adjust_batch_size(latency, len(items))
-            
+
             # Set results
             for future, result in zip(futures, results):
                 if not future.done():
                     future.set_result(result)
-            
+
             logger.debug(
                 "Processed batch of %d items in %.1fms (batch_size=%d)",
                 len(items),
                 latency * 1000,
                 self.current_batch_size,
             )
-            
+
         except RuntimeError as e:
             # Handle GPU OOM
             if "out of memory" in str(e).lower():
                 logger.warning("GPU OOM with batch_size=%d", self.current_batch_size)
                 self.oom_count += 1
-                
+
                 # Reduce batch size
                 self.current_batch_size = max(
                     self.min_batch_size,
                     self.current_batch_size // 2,
                 )
                 logger.info("Reduced batch_size to %d", self.current_batch_size)
-                
+
                 # Clear GPU cache
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-                
+
                 # Re-queue items and retry
                 async with self.processing_lock:
                     for item, future in batch:
                         if not future.done():
                             self.queue.appendleft((item, future))
-                
+
                 # Retry with smaller batch
                 await self._process_batch()
             else:
@@ -185,7 +186,7 @@ class BatchProcessor:
                     if not future.done():
                         future.set_exception(e)
                 raise
-        
+
         except Exception as e:
             logger.error("Batch processing failed: %s", e)
             # Set exception for all futures
@@ -240,14 +241,14 @@ class BatchProcessor:
                     raise
 
         return results
-    
+
     async def _execute_batch(self, items: List[Any]) -> List[Any]:
         """
         Execute batch processing (possibly in executor).
-        
+
         Args:
             items: List of items to process
-            
+
         Returns:
             List of results
         """
@@ -258,20 +259,20 @@ class BatchProcessor:
             # Run in executor to not block event loop
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, self.process_fn, items)
-    
+
     def _adjust_batch_size(self, latency: float, actual_batch_size: int) -> None:
         """
         Adjust batch size based on observed latency.
-        
+
         Strategy:
         - If latency is low and stable, increase batch size
         - If latency is high or increasing, decrease batch size
         """
         if len(self.recent_latencies) < 5:
             return  # Need more samples
-        
+
         avg_latency = sum(self.recent_latencies) / len(self.recent_latencies)
-        
+
         # Increase batch size if latency is good
         if avg_latency < 0.5 and self.current_batch_size < self.max_batch_size:
             self.current_batch_size = min(
@@ -279,7 +280,7 @@ class BatchProcessor:
                 self.current_batch_size + 1,
             )
             logger.debug("Increased batch_size to %d", self.current_batch_size)
-        
+
         # Decrease if latency is too high
         elif avg_latency > 2.0 and self.current_batch_size > self.min_batch_size:
             self.current_batch_size = max(
@@ -287,20 +288,18 @@ class BatchProcessor:
                 self.current_batch_size - 1,
             )
             logger.debug("Decreased batch_size to %d", self.current_batch_size)
-    
+
     def stats(self) -> dict:
         """
         Get batch processor statistics.
-        
+
         Returns:
             Dictionary with performance metrics
         """
         avg_latency = (
-            sum(self.recent_latencies) / len(self.recent_latencies)
-            if self.recent_latencies
-            else 0
+            sum(self.recent_latencies) / len(self.recent_latencies) if self.recent_latencies else 0
         )
-        
+
         return {
             "current_batch_size": self.current_batch_size,
             "max_batch_size": self.max_batch_size,
@@ -309,7 +308,7 @@ class BatchProcessor:
             "oom_count": self.oom_count,
             "dynamic_sizing": self.dynamic_sizing,
         }
-    
+
     def __repr__(self) -> str:
         stats = self.stats()
         return (

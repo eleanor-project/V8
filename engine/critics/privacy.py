@@ -83,9 +83,7 @@ class PrivacyIdentityCritic(ConstitutionalCritic):
                     confidence=0.9,
                 )
             )
-            escalation = self._escalate_P1(
-                "Identity inference occurred without explicit consent."
-            )
+            escalation = self._escalate_P1("Identity inference occurred without explicit consent.")
             severity = max(severity, 0.9)
 
         if persistent_identity and escalation is None:
@@ -97,9 +95,7 @@ class PrivacyIdentityCritic(ConstitutionalCritic):
                     confidence=0.85,
                 )
             )
-            escalation = self._escalate_P2(
-                "Identity persistence exceeds contextual expectations."
-            )
+            escalation = self._escalate_P2("Identity persistence exceeds contextual expectations.")
             severity = max(severity, 0.85)
 
         if context_mismatch and escalation is None:
@@ -111,9 +107,7 @@ class PrivacyIdentityCritic(ConstitutionalCritic):
                     confidence=0.7,
                 )
             )
-            escalation = self._escalate_P3(
-                "Contextual integrity violated across domains."
-            )
+            escalation = self._escalate_P3("Contextual integrity violated across domains.")
             severity = max(severity, 0.7)
 
         if secondary_use and escalation is None:
@@ -125,9 +119,7 @@ class PrivacyIdentityCritic(ConstitutionalCritic):
                     confidence=0.75,
                 )
             )
-            escalation = self._escalate_P4(
-                "Secondary use occurred without renewed consent."
-            )
+            escalation = self._escalate_P4("Secondary use occurred without renewed consent.")
             severity = max(severity, 0.75)
 
         return self._build_evaluation(

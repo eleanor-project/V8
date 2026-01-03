@@ -24,6 +24,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 _jwt: Optional[ModuleType]
 try:
     import jwt as _jwt
+
     JWT_AVAILABLE = True
 except ImportError:
     JWT_AVAILABLE = False
@@ -45,9 +46,7 @@ class AuthConfig:
     def from_env(cls) -> "AuthConfig":
         """Load configuration from environment variables."""
         env = (
-            os.getenv("ELEANOR_ENVIRONMENT")
-            or os.getenv("ELEANOR_ENV")
-            or "development"
+            os.getenv("ELEANOR_ENVIRONMENT") or os.getenv("ELEANOR_ENV") or "development"
         ).lower()
         is_dev = env in ("development", "dev", "local")
 
@@ -76,7 +75,7 @@ class AuthConfig:
             secret=secret or "dev-secret",
             algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
             enabled=enabled,
-            token_expiry_seconds=int(os.getenv("TOKEN_EXPIRY_SECONDS", "3600"))
+            token_expiry_seconds=int(os.getenv("TOKEN_EXPIRY_SECONDS", "3600")),
         )
 
 
@@ -123,23 +122,19 @@ def decode_token(token: str, config: AuthConfig) -> TokenPayload:
     if not JWT_AVAILABLE:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="JWT library not installed. Run: pip install PyJWT"
+            detail="JWT library not installed. Run: pip install PyJWT",
         )
     assert jwt is not None
 
     try:
-        payload = jwt.decode(
-            token,
-            config.secret,
-            algorithms=[config.algorithm]
-        )
+        payload = jwt.decode(token, config.secret, algorithms=[config.algorithm])
 
         # Check expiration
         if "exp" in payload and payload["exp"] < time.time():
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token has expired",
-                headers={"WWW-Authenticate": "Bearer"}
+                headers={"WWW-Authenticate": "Bearer"},
             )
 
         return TokenPayload(payload)
@@ -148,18 +143,18 @@ def decode_token(token: str, config: AuthConfig) -> TokenPayload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"WWW-Authenticate": "Bearer"},
         )
     except jwt.InvalidTokenError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {str(e)}",
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
 
 async def verify_token(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> Optional[TokenPayload]:
     """
     Verify the JWT token from the Authorization header.
@@ -177,15 +172,13 @@ async def verify_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization header required",
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     return decode_token(credentials.credentials, config)
 
 
-async def get_current_user(
-    token: Optional[TokenPayload] = Depends(verify_token)
-) -> Optional[str]:
+async def get_current_user(token: Optional[TokenPayload] = Depends(verify_token)) -> Optional[str]:
     """Get the current user ID from the token."""
     if token is None:
         return None
@@ -194,33 +187,37 @@ async def get_current_user(
 
 def require_role(role: str):
     """Decorator to require a specific role."""
+
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, token: TokenPayload = Depends(verify_token), **kwargs):
             config = get_auth_config()
             if config.enabled and token and not token.has_role(role):
                 raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Role '{role}' required"
+                    status_code=status.HTTP_403_FORBIDDEN, detail=f"Role '{role}' required"
                 )
             return await func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
 def require_scope(scope: str):
     """Decorator to require a specific scope."""
+
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, token: TokenPayload = Depends(verify_token), **kwargs):
             config = get_auth_config()
             if config.enabled and token and not token.has_scope(scope):
                 raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Scope '{scope}' required"
+                    status_code=status.HTTP_403_FORBIDDEN, detail=f"Scope '{scope}' required"
                 )
             return await func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -228,7 +225,7 @@ def create_token(
     user_id: str,
     roles: Optional[List[str]] = None,
     scopes: Optional[List[str]] = None,
-    config: Optional[AuthConfig] = None
+    config: Optional[AuthConfig] = None,
 ) -> str:
     """
     Create a new JWT token.
@@ -247,7 +244,7 @@ def create_token(
         "iat": int(time.time()),
         "exp": int(time.time()) + config.token_expiry_seconds,
         "roles": roles or [],
-        "scopes": scopes or []
+        "scopes": scopes or [],
     }
 
     return cast(str, jwt.encode(payload, config.secret, algorithm=config.algorithm))

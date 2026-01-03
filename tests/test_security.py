@@ -171,7 +171,7 @@ class TestSecureAuditLogger:
                 "test_event",
                 {"api_key": "secret123", "action": "test"},
             )
-            
+
             # Verify logged data was sanitized
             call_kwargs = mock_logger.info.call_args[1]
             assert call_kwargs["extra"]["details"]["api_key"] == "[REDACTED]"
@@ -186,7 +186,7 @@ class TestSecureAuditLogger:
                 action="read",
                 allowed=True,
             )
-            
+
             assert mock_logger.info.called
 
     def test_log_secret_access(self):
@@ -197,7 +197,7 @@ class TestSecureAuditLogger:
                 accessor="service_a",
                 success=True,
             )
-            
+
             assert mock_logger.info.called
             call_kwargs = mock_logger.info.call_args[1]
             # Verify secret value is never logged
@@ -212,7 +212,7 @@ class TestIntegration:
         """Test complete sanitization flow"""
         sanitizer = SecretsSanitizer()
         audit_logger = SecureAuditLogger(sanitizer=sanitizer)
-        
+
         # Simulate logging an event with secrets
         event_details = {
             "request": {
@@ -223,13 +223,13 @@ class TestIntegration:
             },
             "response": {"status": 200},
         }
-        
+
         with patch("engine.security.audit.logger"):
             audit_logger.log_audit_event("api_request", event_details)
-        
+
         # Manually sanitize to verify
         sanitized = sanitizer.sanitize_dict(event_details)
-        
+
         assert "sk-1234567890" not in str(sanitized)
         assert "secret123" not in str(sanitized)
         assert "[REDACTED]" in str(sanitized) or "[OPENAI_API_KEY]" in str(sanitized)

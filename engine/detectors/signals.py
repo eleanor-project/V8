@@ -96,6 +96,7 @@ class DetectorSignal(BaseModel):
         evidence: Supporting evidence dictionary
         flags: Flags for escalation/routing to critics
     """
+
     detector_name: str
     severity: SeverityInput = Field(default_factory=lambda: SeverityLevel(0.0))
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)

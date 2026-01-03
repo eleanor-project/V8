@@ -65,9 +65,7 @@ def list_quarantined_cases() -> list[dict]:
             {
                 "case_id": case_id,
                 "latest_outcome": latest.get("outcome"),
-                "dissent_present": bool(
-                    latest.get("dissent_evaluation", {}).get("present")
-                ),
+                "dissent_present": bool(latest.get("dissent_evaluation", {}).get("present")),
                 "review_count": len(reviews),
                 "last_reviewed": latest.get("timestamp"),
             }
@@ -76,9 +74,7 @@ def list_quarantined_cases() -> list[dict]:
     # Sort by most recently reviewed
     results.sort(
         key=lambda r: (
-            datetime.fromisoformat(r["last_reviewed"])
-            if r.get("last_reviewed")
-            else datetime.min
+            datetime.fromisoformat(r["last_reviewed"]) if r.get("last_reviewed") else datetime.min
         ),
         reverse=True,
     )

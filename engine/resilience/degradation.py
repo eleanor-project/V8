@@ -13,19 +13,18 @@ logger = logging.getLogger(__name__)
 class DegradationStrategy:
     """
     Defines fallback behaviors for component failures.
-    
+
     Each method returns a degraded result that allows the pipeline
     to continue operating with reduced functionality.
     """
-    
+
     @staticmethod
     async def precedent_fallback(
-        error: Exception,
-        context: Optional[Dict[str, Any]] = None
+        error: Exception, context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Fallback when precedent retrieval fails.
-        
+
         Returns empty precedent data indicating novelty.
         """
         payload = {
@@ -36,7 +35,7 @@ class DegradationStrategy:
         if context:
             payload.update(context)
         logger.warning("precedent_retrieval_failed", extra=payload)
-        
+
         return {
             "cases": [],
             "alignment_score": 0.0,
@@ -45,15 +44,14 @@ class DegradationStrategy:
             "degradation_reason": "precedent_store_unavailable",
             "error": str(error),
         }
-    
+
     @staticmethod
     async def uncertainty_fallback(
-        error: Exception,
-        context: Optional[Dict[str, Any]] = None
+        error: Exception, context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Fallback when uncertainty engine fails.
-        
+
         Returns conservative high uncertainty estimate.
         """
         payload = {
@@ -64,7 +62,7 @@ class DegradationStrategy:
         if context:
             payload.update(context)
         logger.warning("uncertainty_engine_failed", extra=payload)
-        
+
         return {
             "overall_uncertainty": 0.8,  # Conservative estimate
             "needs_escalation": True,
@@ -73,16 +71,16 @@ class DegradationStrategy:
             "recommendation": "human_review_recommended",
             "error": str(error),
         }
-    
+
     @staticmethod
     async def router_fallback(
         error: Exception,
         default_model: str = "llama3.2:3b",
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Fallback when router fails.
-        
+
         Returns default model selection.
         """
         payload = {
@@ -94,7 +92,7 @@ class DegradationStrategy:
         if context:
             payload.update(context)
         logger.warning("router_failed", extra=payload)
-        
+
         return {
             "model_name": default_model,
             "model_version": "fallback",
@@ -103,16 +101,14 @@ class DegradationStrategy:
             "degradation_reason": "router_unavailable",
             "error": str(error),
         }
-    
+
     @staticmethod
     async def critic_fallback(
-        critic_name: str,
-        error: Exception,
-        context: Optional[Dict[str, Any]] = None
+        critic_name: str, error: Exception, context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Fallback when single critic fails.
-        
+
         Returns empty critic result indicating failure.
         """
         payload = {
@@ -124,7 +120,7 @@ class DegradationStrategy:
         if context:
             payload.update(context)
         logger.warning("critic_failed", extra=payload)
-        
+
         return {
             "critic_name": critic_name,
             "violations": [],
@@ -134,16 +130,14 @@ class DegradationStrategy:
             "error": str(error),
             "note": "Critic evaluation skipped due to failure",
         }
-    
+
     @staticmethod
     async def detector_fallback(
-        detector_name: str,
-        error: Exception,
-        context: Optional[Dict[str, Any]] = None
+        detector_name: str, error: Exception, context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Fallback when detector fails.
-        
+
         Returns empty signals indicating no detection.
         """
         payload = {
@@ -155,7 +149,7 @@ class DegradationStrategy:
         if context:
             payload.update(context)
         logger.warning("detector_failed", extra=payload)
-        
+
         return {
             "detector_name": detector_name,
             "signals": [],

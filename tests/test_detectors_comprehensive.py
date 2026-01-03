@@ -15,6 +15,7 @@ import pytest
 @pytest.fixture
 def detector_engine():
     from engine.detectors.engine import DetectorEngineV8
+
     return DetectorEngineV8()
 
 
@@ -93,6 +94,7 @@ class TestAutonomyDetector:
     @pytest.fixture
     async def detector(self):
         from engine.detectors.autonomy.detector import AutonomyDetector
+
         return AutonomyDetector()
 
     @pytest.mark.asyncio
@@ -120,6 +122,7 @@ class TestCoercionDetector:
     @pytest.fixture
     async def detector(self):
         from engine.detectors.coercion.detector import CoercionDetector
+
         return CoercionDetector()
 
     @pytest.mark.asyncio
@@ -138,6 +141,7 @@ class TestDehumanizationDetector:
     @pytest.fixture
     async def detector(self):
         from engine.detectors.dehumanization.detector import DehumanizationDetector
+
         return DehumanizationDetector()
 
     @pytest.mark.asyncio
@@ -157,12 +161,14 @@ class TestDiscriminationDetector:
     @pytest.fixture
     async def detector(self):
         from engine.detectors.discrimination.detector import DiscriminationDetector
+
         return DiscriminationDetector()
 
     @pytest.mark.asyncio
     async def test_discriminatory_language_detected(self):
         """Test that discriminatory language is detected."""
         from engine.detectors.discrimination.detector import DiscriminationDetector
+
         detector = DiscriminationDetector()
 
         text = "Women can't handle technical jobs and all Muslims are dangerous."
@@ -178,6 +184,7 @@ class TestHallucinationDetector:
     @pytest.fixture
     async def detector(self):
         from engine.detectors.hallucination.detector import HallucinationDetector
+
         return HallucinationDetector()
 
     @pytest.mark.asyncio
@@ -196,6 +203,7 @@ class TestPrivacyDetector:
     @pytest.fixture
     async def detector(self):
         from engine.detectors.privacy.detector import PrivacyDetector
+
         return PrivacyDetector()
 
     @pytest.mark.asyncio
@@ -214,6 +222,7 @@ class TestPhysicalSafetyDetector:
     @pytest.fixture
     async def detector(self):
         from engine.detectors.physical_safety.detector import PhysicalSafetyDetector
+
         return PhysicalSafetyDetector()
 
     @pytest.mark.asyncio
@@ -233,6 +242,7 @@ class TestPsychologicalHarmDetector:
     @pytest.fixture
     async def detector(self):
         from engine.detectors.psychological_harm.detector import PsychologicalHarmDetector
+
         return PsychologicalHarmDetector()
 
     @pytest.mark.asyncio
@@ -251,12 +261,15 @@ class TestFeasibilityDetector:
     @pytest.fixture
     async def detector(self):
         from engine.detectors.feasibility.detector import FeasibilityDetector
+
         return FeasibilityDetector()
 
     @pytest.mark.asyncio
     async def test_unrealistic_timeline_detected(self, detector):
         """Test that unrealistic timelines are detected."""
-        text = "This complex system can be built overnight with zero cost and 100% guaranteed success."
+        text = (
+            "This complex system can be built overnight with zero cost and 100% guaranteed success."
+        )
         signal = await detector.detect(text, {})
 
         assert signal.severity > 0.4
@@ -269,6 +282,7 @@ class TestIrreversibleHarmDetector:
     @pytest.fixture
     async def detector(self):
         from engine.detectors.irreversible_harm.detector import IrreversibleHarmDetector
+
         return IrreversibleHarmDetector()
 
     @pytest.mark.asyncio

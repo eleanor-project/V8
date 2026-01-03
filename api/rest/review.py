@@ -158,8 +158,7 @@ def get_lane_contents_endpoint(lane_name: str):
 
     if lane_name not in valid_lanes:
         raise HTTPException(
-            status_code=400,
-            detail=f"Invalid lane. Must be one of: {', '.join(valid_lanes)}"
+            status_code=400, detail=f"Invalid lane. Must be one of: {', '.join(valid_lanes)}"
         )
 
     contents = promotion_router.get_lane_contents(lane_name)

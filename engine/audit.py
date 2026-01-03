@@ -34,10 +34,7 @@ def ensure_log_dir():
 
 
 def log_deliberation(
-    prompt: str,
-    critic_outputs: List[CriticOutput],
-    aggregation_result: Dict,
-    backend: str = "mock"
+    prompt: str, critic_outputs: List[CriticOutput], aggregation_result: Dict, backend: str = "mock"
 ):
     """
     Log a complete deliberation to audit trail.

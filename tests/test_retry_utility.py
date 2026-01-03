@@ -12,13 +12,14 @@ from engine.utils.retry import (
     calculate_delay,
     should_retry,
     retry_with_backoff,
-    retry_async
+    retry_async,
 )
 
 
 # ============================================================
 # RetryConfig Tests
 # ============================================================
+
 
 def test_retry_config_defaults():
     """Test RetryConfig default values."""
@@ -43,7 +44,7 @@ def test_retry_config_custom():
         max_delay=60.0,
         exponential_base=3.0,
         jitter=False,
-        jitter_factor=0.2
+        jitter_factor=0.2,
     )
 
     assert config.max_retries == 5
@@ -58,14 +59,12 @@ def test_retry_config_custom():
 # RetryExhausted Tests
 # ============================================================
 
+
 def test_retry_exhausted_exception():
     """Test RetryExhausted exception creation."""
     original_error = ValueError("Original error")
     exc = RetryExhausted(
-        message="Test failed",
-        attempts=3,
-        last_exception=original_error,
-        total_delay=5.5
+        message="Test failed", attempts=3, last_exception=original_error, total_delay=5.5
     )
 
     assert exc.attempts == 3
@@ -79,6 +78,7 @@ def test_retry_exhausted_exception():
 # ============================================================
 # calculate_delay Tests
 # ============================================================
+
 
 def test_calculate_delay_exponential():
     """Test exponential backoff calculation."""
@@ -123,6 +123,7 @@ def test_calculate_delay_non_negative():
 # should_retry Tests
 # ============================================================
 
+
 def test_should_retry_retryable_exception():
     """Test that retryable exceptions return True."""
     config = RetryConfig(retryable_exceptions=(ValueError, KeyError))
@@ -142,8 +143,7 @@ def test_should_retry_non_retryable_exception():
 def test_should_retry_unknown_exception():
     """Test behavior for exceptions not in either list."""
     config = RetryConfig(
-        retryable_exceptions=(ValueError,),
-        non_retryable_exceptions=(KeyboardInterrupt,)
+        retryable_exceptions=(ValueError,), non_retryable_exceptions=(KeyboardInterrupt,)
     )
 
     # RuntimeError is neither retryable nor non-retryable
@@ -153,6 +153,7 @@ def test_should_retry_unknown_exception():
 # ============================================================
 # retry_with_backoff Async Tests
 # ============================================================
+
 
 @pytest.mark.asyncio
 async def test_retry_async_success_first_attempt():
@@ -231,6 +232,7 @@ async def test_retry_async_non_retryable_exception():
 # retry_with_backoff Sync Tests
 # ============================================================
 
+
 def test_retry_sync_success_first_attempt():
     """Test sync function succeeds on first attempt."""
     call_count = 0
@@ -285,6 +287,7 @@ def test_retry_sync_exhausted():
 # ============================================================
 # retry_with_backoff Configuration Tests
 # ============================================================
+
 
 @pytest.mark.asyncio
 async def test_retry_with_config_object():
@@ -352,6 +355,7 @@ async def test_retry_on_retry_callback():
 @pytest.mark.asyncio
 async def test_retry_callback_exception_ignored():
     """Test that exceptions in callback don't affect retry."""
+
     def failing_callback(attempt, exception, delay):
         raise RuntimeError("Callback error")
 
@@ -373,6 +377,7 @@ async def test_retry_callback_exception_ignored():
 # ============================================================
 # retry_async Function Tests
 # ============================================================
+
 
 @pytest.mark.asyncio
 async def test_retry_async_function_success():
@@ -396,6 +401,7 @@ async def test_retry_async_function_success():
 @pytest.mark.asyncio
 async def test_retry_async_function_with_kwargs():
     """Test retry_async function with kwargs."""
+
     async def test_func(x, y=10):
         return x * y
 
@@ -408,6 +414,7 @@ async def test_retry_async_function_with_kwargs():
 @pytest.mark.asyncio
 async def test_retry_async_function_exhausted():
     """Test retry_async function exhausts retries."""
+
     async def always_fails():
         raise ValueError("Always fails")
 
@@ -445,6 +452,7 @@ async def test_retry_async_with_callback():
 # Edge Cases
 # ============================================================
 
+
 @pytest.mark.asyncio
 async def test_retry_with_zero_retries():
     """Test retry with max_retries=0."""
@@ -465,6 +473,7 @@ async def test_retry_with_zero_retries():
 
 def test_retry_preserves_function_metadata():
     """Test that decorator preserves function metadata."""
+
     @retry_with_backoff(max_retries=1)
     def my_function():
         """My docstring"""

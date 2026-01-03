@@ -29,8 +29,9 @@ import threading
 
 class CircuitState(Enum):
     """Circuit breaker states."""
-    CLOSED = "closed"      # Normal operation
-    OPEN = "open"          # Failing, reject calls
+
+    CLOSED = "closed"  # Normal operation
+    OPEN = "open"  # Failing, reject calls
     HALF_OPEN = "half_open"  # Testing recovery
 
 
@@ -41,8 +42,7 @@ class CircuitBreakerOpen(Exception):
         self.name = name
         self.recovery_time = recovery_time
         super().__init__(
-            f"Circuit breaker '{name}' is open. "
-            f"Recovery in {recovery_time:.1f} seconds."
+            f"Circuit breaker '{name}' is open. " f"Recovery in {recovery_time:.1f} seconds."
         )
 
 
@@ -83,14 +83,14 @@ class CircuitBreaker:
         success_threshold: int = 2,
         recovery_timeout: float = 30.0,
         half_open_max_calls: int = 3,
-        on_state_change: Optional[Callable[[str, CircuitState, CircuitState], None]] = None
+        on_state_change: Optional[Callable[[str, CircuitState, CircuitState], None]] = None,
     ):
         self.name = name
         self.config = CircuitBreakerConfig(
             failure_threshold=failure_threshold,
             success_threshold=success_threshold,
             recovery_timeout=recovery_timeout,
-            half_open_max_calls=half_open_max_calls
+            half_open_max_calls=half_open_max_calls,
         )
 
         self._state = CircuitState.CLOSED
@@ -100,7 +100,9 @@ class CircuitBreaker:
         self._half_open_calls = 0
         self._lock = threading.Lock()
 
-        self._on_state_change: Optional[Callable[[str, CircuitState, CircuitState], None]] = on_state_change
+        self._on_state_change: Optional[
+            Callable[[str, CircuitState, CircuitState], None]
+        ] = on_state_change
         self.metrics = CircuitBreakerMetrics()
 
     @property
@@ -271,8 +273,8 @@ class CircuitBreaker:
                     "successful_calls": self.metrics.successful_calls,
                     "failed_calls": self.metrics.failed_calls,
                     "rejected_calls": self.metrics.rejected_calls,
-                    "state_changes": self.metrics.state_changes
-                }
+                    "state_changes": self.metrics.state_changes,
+                },
             }
 
 
@@ -290,11 +292,7 @@ class CircuitBreakerRegistry:
         self._breakers: Dict[str, CircuitBreaker] = {}
         self._lock = threading.Lock()
 
-    def get_or_create(
-        self,
-        name: str,
-        **kwargs
-    ) -> CircuitBreaker:
+    def get_or_create(self, name: str, **kwargs) -> CircuitBreaker:
         """Get an existing circuit breaker or create a new one."""
         with self._lock:
             if name not in self._breakers:

@@ -31,12 +31,13 @@ from typing import Any, Callable, Dict, List, Optional
 
 
 # Valid table name pattern (alphanumeric and underscore only)
-TABLE_NAME_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 # ----------------------------------------------------------
 # Utility: Embedding provider (LLM-agnostic)
 # ----------------------------------------------------------
+
 
 class Embedder:
     """LLM-based embedding generator for precedent search."""
@@ -51,6 +52,7 @@ class Embedder:
 # ----------------------------------------------------------
 # 1. Weaviate Backend
 # ----------------------------------------------------------
+
 
 class WeaviatePrecedentStore:
     def __init__(self, client: weaviate.Client, class_name="Precedent", embed_fn=None):
@@ -68,8 +70,7 @@ class WeaviatePrecedentStore:
             embedding = self.embedder.embed(query_text)
 
         result = (
-            self.client.query  # type: ignore[attr-defined]
-            .get(self.class_name, ["text", "metadata"])  # type: ignore[attr-defined]
+            self.client.query.get(self.class_name, ["text", "metadata"])  # type: ignore[attr-defined]  # type: ignore[attr-defined]
             .with_near_vector({"vector": embedding})  # type: ignore[attr-defined]
             .with_limit(top_k)  # type: ignore[attr-defined]
             .do()
@@ -82,11 +83,13 @@ class WeaviatePrecedentStore:
         output = []
 
         for hit in hits:
-            output.append({
-                "text": hit.get("text", ""),
-                "embedding": embedding,
-                "metadata": hit.get("metadata", {})
-            })
+            output.append(
+                {
+                    "text": hit.get("text", ""),
+                    "embedding": embedding,
+                    "metadata": hit.get("metadata", {}),
+                }
+            )
 
         return output
 
@@ -94,6 +97,7 @@ class WeaviatePrecedentStore:
 # ----------------------------------------------------------
 # 2. pgvector Backend
 # ----------------------------------------------------------
+
 
 class PGVectorPrecedentStore:
     def __init__(self, conn_string: str, table_name: str = "precedent", embed_fn=None):
@@ -119,12 +123,14 @@ class PGVectorPrecedentStore:
             embedding = self.embedder.embed(query_text)
 
         # Use psycopg2.sql module for safe identifier handling
-        query = sql.SQL("""
+        query = sql.SQL(
+            """
             SELECT text, metadata
             FROM {}
             ORDER BY embedding <-> %s
             LIMIT %s;
-        """).format(sql.Identifier(self.table))
+        """
+        ).format(sql.Identifier(self.table))
 
         with self.conn.cursor() as cur:
             cur.execute(query, (embedding, top_k))
@@ -132,11 +138,13 @@ class PGVectorPrecedentStore:
 
         output = []
         for text, metadata in rows:
-            output.append({
-                "text": text,
-                "embedding": embedding,
-                "metadata": json.loads(metadata) if isinstance(metadata, str) else metadata
-            })
+            output.append(
+                {
+                    "text": text,
+                    "embedding": embedding,
+                    "metadata": json.loads(metadata) if isinstance(metadata, str) else metadata,
+                }
+            )
 
         return output
 

@@ -1,11 +1,10 @@
 import os
-import sys
 from pathlib import Path
 
 # ------------------------------------------------------------
 # CONFIGURATION — update this if your repo root path changes
 # ------------------------------------------------------------
-REPO_ROOT = Path(os.getcwd())   # or hardcode your repo folder
+REPO_ROOT = Path(os.getcwd())  # or hardcode your repo folder
 
 
 REQUIRED_TREE = {
@@ -36,23 +35,39 @@ REQUIRED_TREE = {
             "evidence_recorder.py": None,
             "db_sink.py": None,
         },
-        "orchestrator": "*",   # allow anything
-        "router": "*",         # allow anything
+        "orchestrator": "*",  # allow anything
+        "router": "*",  # allow anything
         "engine.py": None,
     }
 }
 
 # Detector domains (should exist as folders under engine/detectors)
 DETECTOR_DOMAINS = [
-    "discrimination", "autonomy", "privacy", "coercion", "dehumanization",
-    "irreversible_harm", "physical_safety", "psychological_harm",
-    "operational_risk", "cascading_failure",
-    "disparate_treatment", "disparate_impact", "procedural_fairness",
-    "embedding_bias", "structural_disadvantage",
-    "factual_accuracy", "omission", "contradiction", "hallucination",
+    "discrimination",
+    "autonomy",
+    "privacy",
+    "coercion",
+    "dehumanization",
+    "irreversible_harm",
+    "physical_safety",
+    "psychological_harm",
+    "operational_risk",
+    "cascading_failure",
+    "disparate_treatment",
+    "disparate_impact",
+    "procedural_fairness",
+    "embedding_bias",
+    "structural_disadvantage",
+    "factual_accuracy",
+    "omission",
+    "contradiction",
+    "hallucination",
     "evidence_grounding",
-    "feasibility", "resource_burden", "time_constraints",
-    "environmental_impact", "cascading_pragmatic_failure"
+    "feasibility",
+    "resource_burden",
+    "time_constraints",
+    "environmental_impact",
+    "cascading_pragmatic_failure",
 ]
 
 

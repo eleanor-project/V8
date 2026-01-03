@@ -53,7 +53,7 @@ class TestOPAClientInitialization:
 class TestOPAClientHealth:
     """Test OPAClientV8 health check functionality."""
 
-    @patch('engine.governance.opa_client.httpx.Client')
+    @patch("engine.governance.opa_client.httpx.Client")
     def test_health_check_success(self, mock_get):
         """Test successful health check."""
         mock_response = Mock()
@@ -67,7 +67,7 @@ class TestOPAClientHealth:
         assert client.health() is True
         mock_client.get.assert_called_once_with("http://localhost:8181/health")
 
-    @patch('engine.governance.opa_client.httpx.Client')
+    @patch("engine.governance.opa_client.httpx.Client")
     def test_health_check_failure_non_200(self, mock_get):
         """Test health check with non-200 status code."""
         mock_response = Mock()
@@ -80,7 +80,7 @@ class TestOPAClientHealth:
         client = OPAClientV8()
         assert client.health() is False
 
-    @patch('engine.governance.opa_client.httpx.Client')
+    @patch("engine.governance.opa_client.httpx.Client")
     def test_health_check_connection_error(self, mock_get):
         """Test health check with connection error."""
         mock_client = MagicMock()
@@ -91,7 +91,7 @@ class TestOPAClientHealth:
         client = OPAClientV8()
         assert client.health() is False
 
-    @patch('engine.governance.opa_client.httpx.Client')
+    @patch("engine.governance.opa_client.httpx.Client")
     def test_health_check_timeout(self, mock_get):
         """Test health check with timeout."""
         mock_client = MagicMock()
@@ -106,18 +106,14 @@ class TestOPAClientHealth:
 class TestOPAClientEvaluate:
     """Test OPAClientV8 policy evaluation functionality."""
 
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_evaluate_success_allow(self, mock_post):
         """Test successful evaluation with allow=True."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "result": {
-                "allow": True,
-                "escalate": False,
-                "failures": []
-            }
+            "result": {"allow": True, "escalate": False, "failures": []}
         }
         mock_client = AsyncMock()
         mock_client.__aenter__.return_value = mock_client
@@ -132,11 +128,10 @@ class TestOPAClientEvaluate:
         assert result["escalate"] is False
         assert result["failures"] == []
         mock_client.post.assert_awaited_once_with(
-            "http://localhost:8181/v1/data/eleanor/decision",
-            json={"input": evidence}
+            "http://localhost:8181/v1/data/eleanor/decision", json={"input": evidence}
         )
 
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_evaluate_success_deny(self, mock_post):
         """Test successful evaluation with allow=False."""
@@ -146,7 +141,7 @@ class TestOPAClientEvaluate:
             "result": {
                 "allow": False,
                 "escalate": False,
-                "failures": [{"policy": "fairness_threshold", "reason": "Severity too high"}]
+                "failures": [{"policy": "fairness_threshold", "reason": "Severity too high"}],
             }
         }
         mock_client = AsyncMock()
@@ -163,7 +158,7 @@ class TestOPAClientEvaluate:
         assert len(result["failures"]) == 1
         assert result["failures"][0]["policy"] == "fairness_threshold"
 
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_evaluate_success_escalate(self, mock_post):
         """Test successful evaluation with escalate=True."""
@@ -173,7 +168,7 @@ class TestOPAClientEvaluate:
             "result": {
                 "allow": False,
                 "escalate": True,
-                "failures": [{"policy": "constitutional_threshold", "reason": "Tier 3 escalation"}]
+                "failures": [{"policy": "constitutional_threshold", "reason": "Tier 3 escalation"}],
             }
         }
         mock_client = AsyncMock()
@@ -189,13 +184,15 @@ class TestOPAClientEvaluate:
         assert result["escalate"] is True
         assert len(result["failures"]) == 1
 
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_evaluate_connection_error(self, mock_post):
         """Test evaluate with connection error."""
         mock_client = AsyncMock()
         mock_client.__aenter__.return_value = mock_client
-        mock_client.post = AsyncMock(side_effect=httpx.RequestError("Connection refused", request=Mock()))
+        mock_client.post = AsyncMock(
+            side_effect=httpx.RequestError("Connection refused", request=Mock())
+        )
         mock_post.return_value = mock_client
 
         client = OPAClientV8()
@@ -208,13 +205,15 @@ class TestOPAClientEvaluate:
         assert result["failures"][0]["policy"] == "opa_client_error"
         assert "Connection refused" in result["failures"][0]["reason"]
 
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_evaluate_timeout_error(self, mock_post):
         """Test evaluate with timeout error."""
         mock_client = AsyncMock()
         mock_client.__aenter__.return_value = mock_client
-        mock_client.post = AsyncMock(side_effect=httpx.RequestError("Request timeout", request=Mock()))
+        mock_client.post = AsyncMock(
+            side_effect=httpx.RequestError("Request timeout", request=Mock())
+        )
         mock_post.return_value = mock_client
 
         client = OPAClientV8()
@@ -227,7 +226,7 @@ class TestOPAClientEvaluate:
         assert result["failures"][0]["policy"] == "opa_client_error"
         assert "timeout" in result["failures"][0]["reason"].lower()
 
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_evaluate_http_error_500(self, mock_post):
         """Test evaluate with HTTP 500 error."""
@@ -249,7 +248,7 @@ class TestOPAClientEvaluate:
         assert result["failures"][0]["policy"] == "opa_http_error"
         assert "HTTP 500" in result["failures"][0]["reason"]
 
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_evaluate_http_error_404(self, mock_post):
         """Test evaluate with HTTP 404 error."""
@@ -270,7 +269,7 @@ class TestOPAClientEvaluate:
         assert result["failures"][0]["policy"] == "opa_http_error"
         assert "HTTP 404" in result["failures"][0]["reason"]
 
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_evaluate_invalid_json_response(self, mock_post):
         """Test evaluate with invalid JSON response."""
@@ -293,7 +292,7 @@ class TestOPAClientEvaluate:
         assert result["failures"][0]["policy"] == "invalid_json"
         assert result["failures"][0]["reason"] == "not valid json"
 
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_evaluate_missing_result_field(self, mock_post):
         """Test evaluate with missing result field in response."""
@@ -314,7 +313,7 @@ class TestOPAClientEvaluate:
         assert result["escalate"] is False
         assert result["failures"] == []
 
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_evaluate_partial_result_fields(self, mock_post):
         """Test evaluate with partial fields in result."""
@@ -339,7 +338,7 @@ class TestOPAClientEvaluate:
         assert result["escalate"] is False  # Default
         assert result["failures"] == []  # Default
 
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_evaluate_with_custom_policy_path(self, mock_post):
         """Test evaluate uses custom policy path correctly."""
@@ -358,11 +357,10 @@ class TestOPAClientEvaluate:
         await client.evaluate(evidence)
 
         mock_client.post.assert_awaited_once_with(
-            "http://localhost:8181/v1/data/custom/policy",
-            json={"input": evidence}
+            "http://localhost:8181/v1/data/custom/policy", json={"input": evidence}
         )
 
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_evaluate_with_complex_evidence(self, mock_post):
         """Test evaluate with complex evidence payload."""
@@ -382,17 +380,11 @@ class TestOPAClientEvaluate:
                 "fairness": {
                     "severity": 2.5,
                     "violations": ["discrimination"],
-                    "escalation": {"tier": "tier_3", "clause_id": "F1"}
+                    "escalation": {"tier": "tier_3", "clause_id": "F1"},
                 },
-                "rights": {
-                    "severity": 2.0,
-                    "violations": ["dignity violation"]
-                }
+                "rights": {"severity": 2.0, "violations": ["dignity violation"]},
             },
-            "metadata": {
-                "timestamp": "2025-01-01T00:00:00Z",
-                "model": "claude-sonnet-4.5"
-            }
+            "metadata": {"timestamp": "2025-01-01T00:00:00Z", "model": "claude-sonnet-4.5"},
         }
         result = await client.evaluate(evidence)
 
@@ -406,8 +398,8 @@ class TestOPAClientEvaluate:
 class TestOPAClientIntegration:
     """Integration-style tests combining multiple operations."""
 
-    @patch('engine.governance.opa_client.httpx.Client')
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.Client")
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_health_then_evaluate(self, mock_async_client, mock_client_cls):
         """Test health check followed by evaluation."""
@@ -439,7 +431,7 @@ class TestOPAClientIntegration:
         result = await client.evaluate({"test": "data"})
         assert result["allow"] is True
 
-    @patch('engine.governance.opa_client.httpx.AsyncClient')
+    @patch("engine.governance.opa_client.httpx.AsyncClient")
     @pytest.mark.asyncio
     async def test_multiple_evaluations(self, mock_post):
         """Test multiple consecutive evaluations."""

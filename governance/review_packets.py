@@ -26,14 +26,11 @@ def build_review_packet(case, review_decision: dict) -> ReviewPacket:
     return ReviewPacket(
         case_id=case.id,
         domain=getattr(case, "domain", "unspecified"),
-
         severity=case.severity,
         uncertainty_flags=getattr(case.uncertainty, "flags", []),
-
         critic_outputs=case.critic_outputs,
         aggregator_summary=case.aggregator_summary,
         dissent=getattr(case, "dissent", None),
-
         citations=case.citations,
-        triggers=review_decision["triggers"]
+        triggers=review_decision["triggers"],
     )

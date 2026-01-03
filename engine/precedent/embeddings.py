@@ -25,6 +25,7 @@ import requests
 #  Base Embedding Interface
 # ============================================================
 
+
 class BaseEmbeddingAdapter:
     """All embedding adapters must return a vector list[float]."""
 
@@ -52,10 +53,7 @@ class GPTEmbeddingAdapter(BaseEmbeddingAdapter):
         self.model = model
 
     def embed(self, text: str) -> List[float]:
-        resp = self.client.embeddings.create(
-            model=self.model,
-            input=text
-        )
+        resp = self.client.embeddings.create(model=self.model, input=text)
         embedding: Sequence[float] = resp.data[0].embedding
         return list(embedding)
 
@@ -100,6 +98,7 @@ class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
         # Try to import voyageai client
         try:
             import voyageai  # type: ignore[import-not-found]
+
             self._voyage_client = voyageai.Client(api_key=self.api_key) if self.api_key else None
         except ImportError:
             self._voyage_client = None
@@ -131,9 +130,7 @@ class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
         if self._voyage_client is not None:
             try:
                 result = self._voyage_client.embed(
-                    texts=[text],
-                    model=self.model,
-                    input_type="document"
+                    texts=[text], model=self.model, input_type="document"
                 )
                 vec: Sequence[float] = result.embeddings[0]  # type: ignore[index]
                 return list(vec)
@@ -155,6 +152,7 @@ class ClaudeEmbeddingAdapter(BaseEmbeddingAdapter):
 # ============================================================
 #  xAI Grok Embeddings
 # ============================================================
+
 
 class GrokEmbeddingAdapter(BaseEmbeddingAdapter):
     """Calls xAI embedding endpoint."""
@@ -190,7 +188,9 @@ class HFEmbeddingAdapter(BaseEmbeddingAdapter):
     def __init__(self, model="all-MiniLM-L6-v2", device: Optional[str] = None):
         if SentenceTransformer is None:
             raise ImportError("sentence-transformers library not installed")
-        self.model = SentenceTransformer(model, device=device) if device else SentenceTransformer(model)
+        self.model = (
+            SentenceTransformer(model, device=device) if device else SentenceTransformer(model)
+        )
 
     def embed(self, text: str) -> List[float]:
         vec = self.model.encode(text)
@@ -201,6 +201,7 @@ class HFEmbeddingAdapter(BaseEmbeddingAdapter):
 #  Ollama Local Embeddings
 # ============================================================
 
+
 class OllamaEmbeddingAdapter(BaseEmbeddingAdapter):
     """Uses Ollama's /api/embeddings endpoint."""
 
@@ -209,8 +210,7 @@ class OllamaEmbeddingAdapter(BaseEmbeddingAdapter):
 
     def embed(self, text: str) -> List[float]:
         resp = requests.post(
-            "http://localhost:11434/api/embeddings",
-            json={"model": self.model, "prompt": text}
+            "http://localhost:11434/api/embeddings", json={"model": self.model, "prompt": text}
         )
         data: Any = resp.json()
         embedding = data["embedding"]
@@ -220,6 +220,7 @@ class OllamaEmbeddingAdapter(BaseEmbeddingAdapter):
 # ============================================================
 #  Unified Embedding Registry
 # ============================================================
+
 
 class EmbeddingRegistry:
     """
@@ -245,13 +246,13 @@ class EmbeddingRegistry:
 #  Bootstrap Helper
 # ============================================================
 
+
 def bootstrap_embedding_registry(
     openai_key=None,
     anthropic_key=None,
     xai_key=None,
     device: Optional[str] = None,
 ) -> EmbeddingRegistry:
-
     reg = EmbeddingRegistry()
 
     # Cloud Embedding Backends

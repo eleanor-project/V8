@@ -24,11 +24,8 @@ def _get_timeout() -> float:
 
 
 class OPAClientV8:
-
     def __init__(
-        self,
-        base_url: str = "http://localhost:8181",
-        policy_path: str = "v1/data/eleanor/decision"
+        self, base_url: str = "http://localhost:8181", policy_path: str = "v1/data/eleanor/decision"
     ):
         """
         Args:
@@ -58,7 +55,9 @@ class OPAClientV8:
     # ----------------------------------------------------------
     # Policy Evaluation (Primary Method)
     # ----------------------------------------------------------
-    async def evaluate(self, evidence_payload: Dict[str, Any], policy_path: str | None = None) -> Dict[str, Any]:
+    async def evaluate(
+        self, evidence_payload: Dict[str, Any], policy_path: str | None = None
+    ) -> Dict[str, Any]:
         """
         Executes OPA policy evaluation.
 
@@ -83,20 +82,16 @@ class OPAClientV8:
             return {
                 "allow": False,
                 "escalate": True,
-                "failures": [{
-                    "policy": "opa_client_error",
-                    "reason": str(e)
-                }]
+                "failures": [{"policy": "opa_client_error", "reason": str(e)}],
             }
 
         if resp.status_code != 200:
             return {
                 "allow": False,
                 "escalate": True,
-                "failures": [{
-                    "policy": "opa_http_error",
-                    "reason": f"HTTP {resp.status_code}: {resp.text}"
-                }]
+                "failures": [
+                    {"policy": "opa_http_error", "reason": f"HTTP {resp.status_code}: {resp.text}"}
+                ],
             }
 
         try:
@@ -105,10 +100,7 @@ class OPAClientV8:
             return {
                 "allow": False,
                 "escalate": True,
-                "failures": [{
-                    "policy": "invalid_json",
-                    "reason": resp.text
-                }]
+                "failures": [{"policy": "invalid_json", "reason": resp.text}],
             }
 
         # Expecting OPA schema:
@@ -124,5 +116,5 @@ class OPAClientV8:
         return {
             "allow": result.get("allow", False),
             "escalate": result.get("escalate", False),
-            "failures": result.get("failures", [])
+            "failures": result.get("failures", []),
         }

@@ -26,11 +26,14 @@ from engine.utils.validation import validate_trace_id
 # CONFIGURATION
 # ============================================================================
 
+
 class ValidationConfig(BaseModel):
     """Configuration for input validation."""
-    
+
     max_text_length: int = Field(default=100_000, gt=0, description="Maximum input text length")
-    max_context_size: int = Field(default=1_000_000, gt=0, description="Maximum context JSON size in bytes")
+    max_context_size: int = Field(
+        default=1_000_000, gt=0, description="Maximum context JSON size in bytes"
+    )
     max_context_depth: int = Field(default=5, gt=0, description="Maximum nested dict depth")
     max_context_keys: int = Field(default=100, gt=0, description="Maximum context keys allowed")
     max_context_string_length: int = Field(
@@ -38,63 +41,72 @@ class ValidationConfig(BaseModel):
         gt=0,
         description="Maximum length for any single context string",
     )
-    
-    enable_injection_detection: bool = Field(default=True, description="Enable prompt injection detection")
-    enable_malicious_pattern_detection: bool = Field(default=True, description="Detect malicious patterns")
-    reject_on_injection: bool = Field(default=True, description="Reject inputs on injection detection")
-    
-    # Patterns that may indicate prompt injection
-    injection_patterns: List[str] = Field(default_factory=lambda: [
-        r"ignore (previous|above|all) (instructions?|prompts?|rules?)",
-        r"disregard (previous|above|all)",
-        r"override (system|safety|constitutional)",
-        r"disregard all",
-        r"system\s*:\s*",
-        r"<\|endoftext\|>",
-        r"you (are|must) now",
-        r"jailbreak",
-        r"DAN mode",
-        r"<\s*script\s*>",
-        r"javascript\s*:",
-    ])
 
-    override_keys: Set[str] = Field(default_factory=lambda: {
-        "skip_router",
-        "model_output",
-        "model_metadata",
-        "input_text_override",
-        "force_model_output",
-        "domain",
-        "detectors",
-    })
+    enable_injection_detection: bool = Field(
+        default=True, description="Enable prompt injection detection"
+    )
+    enable_malicious_pattern_detection: bool = Field(
+        default=True, description="Detect malicious patterns"
+    )
+    reject_on_injection: bool = Field(
+        default=True, description="Reject inputs on injection detection"
+    )
+
+    # Patterns that may indicate prompt injection
+    injection_patterns: List[str] = Field(
+        default_factory=lambda: [
+            r"ignore (previous|above|all) (instructions?|prompts?|rules?)",
+            r"disregard (previous|above|all)",
+            r"override (system|safety|constitutional)",
+            r"disregard all",
+            r"system\s*:\s*",
+            r"<\|endoftext\|>",
+            r"you (are|must) now",
+            r"jailbreak",
+            r"DAN mode",
+            r"<\s*script\s*>",
+            r"javascript\s*:",
+        ]
+    )
+
+    override_keys: Set[str] = Field(
+        default_factory=lambda: {
+            "skip_router",
+            "model_output",
+            "model_metadata",
+            "input_text_override",
+            "force_model_output",
+            "domain",
+            "detectors",
+        }
+    )
 
 
 # ============================================================================
 # VALIDATED INPUT TYPE
 # ============================================================================
 
+
 class ValidatedInput(BaseModel):
     """
     Input that has passed validation checks.
-    
+
     Presence of this type guarantees input has been sanitized and
     is safe for constitutional evaluation.
     """
-    
+
     text: str = Field(..., description="Validated input text")
     context: Dict[str, Any] = Field(default_factory=dict, description="Validated context")
     trace_id: str = Field(..., description="Audit trail identifier")
-    
+
     # Validation metadata
     validation_warnings: List[str] = Field(
-        default_factory=list,
-        description="Non-blocking warnings from validation"
+        default_factory=list, description="Non-blocking warnings from validation"
     )
     sanitization_applied: bool = Field(
-        default=False,
-        description="Whether input was modified during sanitization"
+        default=False, description="Whether input was modified during sanitization"
     )
-    
+
     model_config = ConfigDict(frozen=True)
 
 
@@ -102,26 +114,26 @@ class ValidatedInput(BaseModel):
 # VALIDATOR
 # ============================================================================
 
+
 class InputValidator:
     """
     Validates inputs before constitutional evaluation.
-    
+
     Validation failures are constitutional signals - they indicate
     that the system cannot evaluate the input with integrity.
     """
 
     _CONTROL_CHAR_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-    
+
     def __init__(self, config: Optional[ValidationConfig] = None):
         self.config = config or ValidationConfig()
-        
+
         # Compile injection patterns
         self.injection_regexes = [
-            re.compile(pattern, re.IGNORECASE)
-            for pattern in self.config.injection_patterns
+            re.compile(pattern, re.IGNORECASE) for pattern in self.config.injection_patterns
         ]
         self.override_keys = set(self.config.override_keys)
-    
+
     def validate(
         self,
         text: str,
@@ -130,10 +142,10 @@ class InputValidator:
     ) -> ValidatedInput:
         """
         Validate input text and context.
-        
+
         Raises:
             InputValidationError: If input fails validation
-        
+
         Returns:
             ValidatedInput: Immutable validated input
         """
@@ -141,17 +153,17 @@ class InputValidator:
         trace_id = validate_trace_id(trace_id)
         warnings: List[str] = []
         sanitization_applied = False
-        
+
         # Validate text
         text, text_warnings, text_sanitized = self._validate_text(text)
         warnings.extend(text_warnings)
         sanitization_applied = sanitization_applied or text_sanitized
-        
+
         # Validate context
         context, ctx_warnings, ctx_sanitized = self._validate_context(context)
         warnings.extend(ctx_warnings)
         sanitization_applied = sanitization_applied or ctx_sanitized
-        
+
         return ValidatedInput(
             text=text,
             context=context,
@@ -159,11 +171,11 @@ class InputValidator:
             validation_warnings=warnings,
             sanitization_applied=sanitization_applied,
         )
-    
+
     def _validate_text(self, text: str) -> tuple[str, List[str], bool]:
         """
         Validate and sanitize text input.
-        
+
         Returns:
             (sanitized_text, warnings, was_sanitized)
         """
@@ -231,11 +243,11 @@ class InputValidator:
         normalized = unicodedata.normalize("NFKC", value)
         sanitized = self._CONTROL_CHAR_PATTERN.sub("", normalized)
         return sanitized, sanitized != value
-    
+
     def _validate_context(self, context: Dict[str, Any]) -> tuple[Dict[str, Any], List[str], bool]:
         """
         Validate and sanitize context dictionary.
-        
+
         Returns:
             (sanitized_context, warnings, was_sanitized)
         """
@@ -399,7 +411,8 @@ class InputValidator:
 
     def _validate_override_keys(self, context: Dict[str, Any], warnings: List[str]) -> None:
         unknown_override_keys = {
-            key for key in context
+            key
+            for key in context
             if (key.startswith("_") or "override" in key or key.startswith("force_"))
             and key not in self.override_keys
         }
@@ -453,7 +466,7 @@ class InputValidator:
                 "model_metadata must be a dictionary",
                 validation_type="type_error",
                 field="context.model_metadata",
-                context={"received_type": type(context['model_metadata']).__name__},
+                context={"received_type": type(context["model_metadata"]).__name__},
             )
 
         if "input_text_override" in context:
@@ -481,7 +494,7 @@ class InputValidator:
                 "force_model_output must be a boolean",
                 validation_type="type_error",
                 field="context.force_model_output",
-                context={"received_type": type(context['force_model_output']).__name__},
+                context={"received_type": type(context["force_model_output"]).__name__},
             )
 
         if "model_output" in context and not context.get("skip_router", False):
@@ -493,30 +506,30 @@ class InputValidator:
         if isinstance(obj, list):
             return sum(self._count_keys(value) for value in obj)
         return 0
-    
+
     @staticmethod
     def _has_excessive_repetition(text: str, threshold: float = 0.3) -> bool:
         """
         Check for excessive character repetition (potential DoS).
-        
+
         Returns True if more than threshold of characters are repetitions.
         """
         if len(text) < 10:
             return False
-        
+
         # Count longest consecutive character runs
         max_run = 1
         current_run = 1
-        
+
         for i in range(1, len(text)):
-            if text[i] == text[i-1]:
+            if text[i] == text[i - 1]:
                 current_run += 1
                 max_run = max(max_run, current_run)
             else:
                 current_run = 1
-        
+
         return max_run / len(text) > threshold
-    
+
     @staticmethod
     def _get_dict_depth(d: Any, current_depth: int = 0) -> int:
         """
@@ -524,19 +537,17 @@ class InputValidator:
         """
         if not isinstance(d, dict):
             return current_depth
-        
+
         if not d:
             return current_depth + 1
-        
-        return max(
-            InputValidator._get_dict_depth(v, current_depth + 1)
-            for v in d.values()
-        )
+
+        return max(InputValidator._get_dict_depth(v, current_depth + 1) for v in d.values())
 
 
 # ============================================================================
 # CONVENIENCE FUNCTIONS
 # ============================================================================
+
 
 def validate_input(
     text: str,
@@ -546,14 +557,14 @@ def validate_input(
 ) -> ValidatedInput:
     """
     Convenience function for input validation.
-    
+
     Usage:
         validated = validate_input(
             text="User input here",
             context={"domain": "healthcare"},
             trace_id="trace-123"
         )
-    
+
     Raises:
         InputValidationError: If validation fails
     """
@@ -569,10 +580,10 @@ def validate_input_safe(
 ) -> tuple[Optional[ValidatedInput], Optional[InputValidationError]]:
     """
     Safe input validation that returns error instead of raising.
-    
+
     Returns:
         (validated_input, error) - one will be None
-    
+
     Usage:
         validated, error = validate_input_safe(text="...")
         if error:

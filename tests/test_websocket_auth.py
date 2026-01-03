@@ -31,6 +31,7 @@ def _load_app(monkeypatch, required_role: str | None = None):
     sys.modules.setdefault("psycopg2", psycopg2_stub)
 
     import api.middleware.auth as auth
+
     auth._auth_config = None
 
     if "api.rest.main" in sys.modules:

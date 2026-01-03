@@ -57,6 +57,4 @@ class OpenAIClient(LLMClient):
         try:
             return cast(Dict[str, Any], json.loads(content))
         except json.JSONDecodeError as e:
-            raise RuntimeError(
-                "LLM did not return valid JSON required by critic schema"
-            ) from e
+            raise RuntimeError("LLM did not return valid JSON required by critic schema") from e

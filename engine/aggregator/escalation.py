@@ -19,6 +19,7 @@ from engine.schemas.escalation import (
 # Core Escalation Resolution Logic
 # ---------------------------------------------------------
 
+
 def resolve_escalation(
     *,
     critic_evaluations: List[CriticEvaluation],
@@ -34,9 +35,7 @@ def resolve_escalation(
     """
 
     escalation_signals: List[EscalationSignal] = [
-        ev.escalation
-        for ev in critic_evaluations
-        if ev.escalation is not None
+        ev.escalation for ev in critic_evaluations if ev.escalation is not None
     ]
 
     # -----------------------------------------------------
@@ -67,9 +66,7 @@ def resolve_escalation(
     escalation_summary = EscalationSummary(
         highest_tier=highest_tier,
         triggering_signals=escalation_signals,
-        critics_triggered=list(
-            {signal.critic_id for signal in escalation_signals}
-        ),
+        critics_triggered=list({signal.critic_id for signal in escalation_signals}),
         explanation=_build_escalation_explanation(
             highest_tier=highest_tier,
             signals=escalation_signals,
@@ -106,6 +103,7 @@ def resolve_escalation(
 # Helper Functions
 # ---------------------------------------------------------
 
+
 def _tier_rank(tier: EscalationTier) -> int:
     """
     Higher number = higher authority boundary.
@@ -121,7 +119,6 @@ def _build_execution_gate(
     highest_tier: EscalationTier | None,
     escalation_signals: List[EscalationSignal],
 ) -> ExecutionGate:
-
     if highest_tier is None:
         return ExecutionGate(
             gated=False,
@@ -150,9 +147,7 @@ def _build_execution_gate(
 
 
 def _gate_reason(signals: List[EscalationSignal]) -> str:
-    clauses = ", ".join(
-        f"{s.critic_id}:{s.clause_id}" for s in signals
-    )
+    clauses = ", ".join(f"{s.critic_id}:{s.clause_id}" for s in signals)
     return f"Escalation triggered by constitutional clauses: {clauses}"
 
 
@@ -161,7 +156,6 @@ def _build_escalation_explanation(
     highest_tier: EscalationTier | None,
     signals: List[EscalationSignal],
 ) -> str:
-
     if highest_tier is None:
         return "No constitutional escalation detected."
 
@@ -171,9 +165,7 @@ def _build_escalation_explanation(
     ]
 
     for s in signals:
-        lines.append(
-            f"- [{s.critic_id} / {s.clause_id}] {s.clause_description}"
-        )
+        lines.append(f"- [{s.critic_id} / {s.clause_id}] {s.clause_description}")
 
     return "\n".join(lines)
 
@@ -213,10 +205,7 @@ def _compute_audit_hash(
 
     payload = {
         "synthesis": synthesis,
-        "critics": _strip_timestamps([
-            ev.model_dump(mode="json")
-            for ev in critic_evaluations
-        ]),
+        "critics": _strip_timestamps([ev.model_dump(mode="json") for ev in critic_evaluations]),
         "escalation": _strip_timestamps(escalation_summary.model_dump(mode="json")),
     }
 

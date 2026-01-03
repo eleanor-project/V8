@@ -1,5 +1,6 @@
 import pytest
 
+
 @pytest.mark.asyncio
 async def test_model_routing(engine):
     out = await engine._select_model("hello", {})

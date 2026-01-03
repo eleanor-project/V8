@@ -24,6 +24,7 @@ from ..signals import DetectorSignal
 @dataclass
 class DetectionPattern:
     """Configuration for detection pattern."""
+
     category: str
     patterns: List[str]
     keywords: List[str]
@@ -38,11 +39,9 @@ DETECTION_PATTERNS = [
             r"\\b(you're|you are)\\s+(worthless|pathetic|useless|failure|disgusting)\\b",
             r"\\b(nobody|everyone)\\s+(likes|loves|cares about|wants)\\s+you\\b",
         ],
-        keywords=[
-            "you're worthless", "nobody likes you", "you're useless"
-        ],
+        keywords=["you're worthless", "nobody likes you", "you're useless"],
         severity_weight=0.85,
-        description="Emotional abuse or degradation"
+        description="Emotional abuse or degradation",
     ),
     DetectionPattern(
         category="mental_health_risk",
@@ -50,22 +49,18 @@ DETECTION_PATTERNS = [
             r"\\b(kill yourself|end it all|not worth living)\\b",
             r"\\b(better off dead|should die|deserve to suffer)\\b",
         ],
-        keywords=[
-            "kill yourself", "better off dead", "not worth living"
-        ],
+        keywords=["kill yourself", "better off dead", "not worth living"],
         severity_weight=0.98,
-        description="Severe mental health risk indicators"
+        description="Severe mental health risk indicators",
     ),
     DetectionPattern(
         category="reality_distortion",
         patterns=[
             r"\\b(it's all in your head|you're imagining things|making it up)\\b",
         ],
-        keywords=[
-            "all in your head", "you're imagining"
-        ],
+        keywords=["all in your head", "you're imagining"],
         severity_weight=0.75,
-        description="Reality distortion or gaslighting"
+        description="Reality distortion or gaslighting",
     ),
 ]
 
@@ -115,7 +110,7 @@ class PsychologicalHarmDetector(Detector):
                 "violations": violations,
                 "text_excerpt": text[:500],
             },
-            flags=self._generate_flags(violations)
+            flags=self._generate_flags(violations),
         )
 
     def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
@@ -128,26 +123,30 @@ class PsychologicalHarmDetector(Detector):
             for pattern in self._compiled_patterns[dp.category]:
                 matches = pattern.findall(text)
                 if matches:
-                    violations.append({
-                        "category": dp.category,
-                        "detection_method": "regex",
-                        "severity_score": dp.severity_weight,
-                        "description": dp.description,
-                        "matches": matches[:3],
-                    })
+                    violations.append(
+                        {
+                            "category": dp.category,
+                            "detection_method": "regex",
+                            "severity_score": dp.severity_weight,
+                            "description": dp.description,
+                            "matches": matches[:3],
+                        }
+                    )
                     break
 
             # Strategy 2: Keyword detection
             for keyword in dp.keywords:
                 if keyword.lower() in text_lower:
                     if not any(v["category"] == dp.category for v in violations):
-                        violations.append({
-                            "category": dp.category,
-                            "detection_method": "keyword",
-                            "severity_score": dp.severity_weight * 0.9,
-                            "description": dp.description,
-                            "keyword_matched": keyword,
-                        })
+                        violations.append(
+                            {
+                                "category": dp.category,
+                                "detection_method": "keyword",
+                                "severity_score": dp.severity_weight * 0.9,
+                                "description": dp.description,
+                                "keyword_matched": keyword,
+                            }
+                        )
                     break
 
         return violations

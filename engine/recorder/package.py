@@ -29,7 +29,6 @@ import uuid
 
 
 class EvidencePackageV8:
-
     def __init__(self):
         pass
 
@@ -49,30 +48,24 @@ class EvidencePackageV8:
         critic_outputs: Dict[str, Any],
         deliberation_state: Dict[str, Any],
         uncertainty_state: Dict[str, Any],
-        precedent_result: Dict[str, Any]
+        precedent_result: Dict[str, Any],
     ) -> Dict[str, Any]:
-
         timestamp = time.time()
 
         evidence = {
             "timestamp": timestamp,
             "trace_id": self._trace_id(),
-
             # --- Input ---
             "input_snapshot": input_snapshot,
-
             # --- Model ---
             "model_used": router_result.get("used_adapter"),
             "model_attempts": router_result.get("attempts", []),
-
             # --- Critics ---
             "critic_outputs": critic_outputs,
-
             # --- Aggregation ---
             "priority_violations": deliberation_state.get("priority_violations", []),
             "values_respected": deliberation_state.get("values_respected", []),
             "values_violated": deliberation_state.get("values_violated", []),
-
             # --- Uncertainty ---
             "uncertainty": {
                 "uncertainty_score": uncertainty_state.get("uncertainty_score"),
@@ -82,22 +75,19 @@ class EvidencePackageV8:
                 "requires_escalation": uncertainty_state.get("requires_escalation"),
                 "escalation_reasons": uncertainty_state.get("escalation_reasons", []),
             },
-
             # --- Precedent ---
             "precedent": {
                 "alignment_score": precedent_result.get("alignment_score", 1.0),
                 "top_case": precedent_result.get("top_case"),
                 "precedent_cases": precedent_result.get("precedent_cases"),
             },
-
             # --- Final governance state (OPA evaluated externally) ---
             "governance_ready_payload": {
                 "critic_outputs": critic_outputs,
                 "priority_violations": deliberation_state.get("priority_violations", []),
                 "uncertainty": uncertainty_state,
-                "precedent_alignment": precedent_result.get("alignment_score", 1.0)
-            }
+                "precedent_alignment": precedent_result.get("alignment_score", 1.0),
+            },
         }
 
         return evidence
-

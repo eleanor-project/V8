@@ -1,5 +1,6 @@
 import pytest
 
+
 @pytest.mark.asyncio
 async def test_critics_execute(engine):
     model_response = "Sample output"

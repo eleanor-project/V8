@@ -34,7 +34,6 @@ __all__ = [
     # Base class
     "BaseCriticV8",
     "ConstitutionalCritic",
-
     # V8 Critics (preferred)
     "RightsCriticV8",
     "FairnessCriticV8",
@@ -44,7 +43,6 @@ __all__ = [
     "OperationsCriticV8",
     "AutonomyCriticV8",
     "PrivacyIdentityCritic",
-
     # Backward compatibility aliases
     "RightsCritic",
     "FairnessCritic",

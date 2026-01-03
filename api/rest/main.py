@@ -75,7 +75,13 @@ from api.bootstrap import (
     GOVERNANCE_SCHEMA_VERSION,
 )
 from api.replay_store import ReplayStore
-from engine.router.adapters import GPTAdapter, ClaudeAdapter, GrokAdapter, LlamaHFAdapter, OllamaAdapter
+from engine.router.adapters import (
+    GPTAdapter,
+    ClaudeAdapter,
+    GrokAdapter,
+    LlamaHFAdapter,
+    OllamaAdapter,
+)
 from engine.security.secrets import (
     EnvironmentSecretProvider,
     build_secret_provider_from_settings,
@@ -144,7 +150,9 @@ def enable_tracing(app: FastAPI):
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # type: ignore[import-not-found]
 
         endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces")
-        resource = Resource.create({"service.name": os.getenv("OTEL_SERVICE_NAME", "eleanor-v8-api")})
+        resource = Resource.create(
+            {"service.name": os.getenv("OTEL_SERVICE_NAME", "eleanor-v8-api")}
+        )
         provider = TracerProvider(resource=resource)
         exporter = OTLPSpanExporter(endpoint=endpoint)
         provider.add_span_processor(BatchSpanProcessor(exporter))
@@ -172,12 +180,10 @@ def enable_prometheus_middleware(app: FastAPI):
 # Configuration
 # ---------------------------------------------
 
+
 def _resolve_environment() -> str:
-    return (
-        os.getenv("ELEANOR_ENVIRONMENT")
-        or os.getenv("ELEANOR_ENV")
-        or "development"
-    )
+    return os.getenv("ELEANOR_ENVIRONMENT") or os.getenv("ELEANOR_ENV") or "development"
+
 
 def get_cors_origins() -> list:
     """Get allowed CORS origins from environment."""
@@ -391,7 +397,9 @@ def map_assessment_label(decision: Optional[str]) -> str:
     return mapping.get(normalized, normalized)
 
 
-def normalize_engine_result(result_obj: Any, input_text: str, trace_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_engine_result(
+    result_obj: Any, input_text: str, trace_id: str, context: Dict[str, Any]
+) -> Dict[str, Any]:
     """
     Normalize EngineResult or dict into a common shape used by the API.
     """
@@ -404,15 +412,18 @@ def normalize_engine_result(result_obj: Any, input_text: str, trace_id: str, con
     )
 
     model_info = result.get("model_info") or {}
-    model_used = model_info.get("model_name") if isinstance(model_info, dict) else getattr(model_info, "model_name", "unknown")
+    model_used = (
+        model_info.get("model_name")
+        if isinstance(model_info, dict)
+        else getattr(model_info, "model_name", "unknown")
+    )
 
     aggregated = result.get("aggregated") or result.get("aggregator_output") or {}
     aggregated = aggregated if isinstance(aggregated, dict) else {}
 
     critic_findings = result.get("critic_findings") or result.get("critics") or {}
     critic_outputs = {
-        k: (v.model_dump() if hasattr(v, "model_dump") else v)
-        for k, v in critic_findings.items()
+        k: (v.model_dump() if hasattr(v, "model_dump") else v) for k, v in critic_findings.items()
     }
     critic_outputs = canonicalize_critic_map(critic_outputs)
 
@@ -422,7 +433,9 @@ def normalize_engine_result(result_obj: Any, input_text: str, trace_id: str, con
     model_output = aggregated.get("final_output") if aggregated else None
     model_output = model_output or result.get("output_text")
 
-    degraded_components = result.get("degraded_components") or aggregated.get("degraded_components") or []
+    degraded_components = (
+        result.get("degraded_components") or aggregated.get("degraded_components") or []
+    )
     is_degraded = result.get("is_degraded")
     if is_degraded is None:
         is_degraded = aggregated.get("is_degraded", False)
@@ -446,7 +459,9 @@ def normalize_engine_result(result_obj: Any, input_text: str, trace_id: str, con
 
 
 def _safe_json_dumps(payload: Any) -> str:
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str)
+    return json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str
+    )
 
 
 def _hash_payload(payload: Any) -> str:
@@ -554,7 +569,13 @@ def _build_precedent_trace(precedent_alignment: Dict[str, Any]) -> List[Preceden
     traces: List[PrecedentTrace] = []
     for case in cases:
         meta = case.get("metadata") or {}
-        case_id = meta.get("id") or meta.get("case_id") or case.get("id") or case.get("case_id") or meta.get("title")
+        case_id = (
+            meta.get("id")
+            or meta.get("case_id")
+            or case.get("id")
+            or case.get("case_id")
+            or meta.get("title")
+        )
         if not case_id:
             case_id = "precedent"
         traces.append(
@@ -617,7 +638,9 @@ def _build_critic_evidence(critic_details: Dict[str, Any]) -> List[CriticEvidenc
                 score=score,
                 rationale=rationale,
                 precedents=[str(p) for p in precedents] if isinstance(precedents, list) else [],
-                policy_rules=[str(p) for p in policy_rules] if isinstance(policy_rules, list) else [],
+                policy_rules=[str(p) for p in policy_rules]
+                if isinstance(policy_rules, list)
+                else [],
                 signals=signals,
             )
         )
@@ -663,7 +686,9 @@ def resolve_execution_decision(
     aggregated: Dict[str, Any],
     human_action: Optional[HumanAction],
 ) -> Optional[ExecutableDecision]:
-    aggregation_payload = aggregated.get("aggregation_result") if isinstance(aggregated, dict) else None
+    aggregation_payload = (
+        aggregated.get("aggregation_result") if isinstance(aggregated, dict) else None
+    )
     if not aggregation_payload:
         return None
     try:
@@ -677,7 +702,9 @@ def resolve_execution_decision(
     return enforce_human_review(aggregation_result=aggregation_result, human_action=human_action)
 
 
-def apply_execution_gate(final_decision: str, execution_decision: Optional[ExecutableDecision]) -> str:
+def apply_execution_gate(
+    final_decision: str, execution_decision: Optional[ExecutableDecision]
+) -> str:
     if execution_decision and not execution_decision.executable and final_decision != "deny":
         return "escalate"
     return final_decision
@@ -736,7 +763,7 @@ app = FastAPI(
         401: {"model": ErrorResponse},
         429: {"model": ErrorResponse},
         500: {"model": ErrorResponse},
-    }
+    },
 )
 
 enable_tracing(app)
@@ -751,6 +778,7 @@ if os.path.isdir("ui"):
 try:
     from api.rest.review import router as review_router
     from api.rest.governance import router as governance_router
+
     app.include_router(review_router)
     app.include_router(governance_router)
     logger.info("Human review API endpoints registered")
@@ -792,6 +820,7 @@ app.add_middleware(RateLimitMiddleware, limiter=get_rate_limiter())
 # ---------------------------------------------
 # Exception Handlers
 # ---------------------------------------------
+
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
@@ -836,6 +865,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 # ---------------------------------------------
 # Health Endpoint
 # ---------------------------------------------
+
 
 @app.get("/health", response_model=HealthResponse, tags=["System"])
 async def health_check():
@@ -914,6 +944,7 @@ async def health_check():
 # Main Deliberation Endpoint
 # ---------------------------------------------
 
+
 @app.post("/deliberate", tags=["Deliberation"])
 async def deliberate(
     request: Request,
@@ -954,7 +985,9 @@ async def deliberate(
         deliberate_fn = getattr(engine, "deliberate", None)
 
         if run_fn is not None:
-            result_obj = await run_fn(payload.input, context=payload.context, trace_id=trace_id, detail_level=3)
+            result_obj = await run_fn(
+                payload.input, context=payload.context, trace_id=trace_id, detail_level=3
+            )
         elif asyncio.iscoroutinefunction(deliberate_fn):
             result_obj = await deliberate_fn(payload.input)
         elif deliberate_fn:
@@ -1004,9 +1037,11 @@ async def deliberate(
             DELIB_REQUESTS.labels(outcome=final_assessment).inc()
         if OPA_CALLS:
             opa_outcome = (
-                "deny" if not governance_result.get("allow", True) else
-                "escalate" if governance_result.get("escalate") else
-                "allow"
+                "deny"
+                if not governance_result.get("allow", True)
+                else "escalate"
+                if governance_result.get("escalate")
+                else "allow"
             )
             OPA_CALLS.labels(result=opa_outcome).inc()
 
@@ -1027,17 +1062,21 @@ async def deliberate(
             "opa_governance": governance_result,
             "governance": governance_result,
             "final_decision": final_assessment,
-            "execution_decision": execution_decision.model_dump(mode="json") if execution_decision else None,
+            "execution_decision": execution_decision.model_dump(mode="json")
+            if execution_decision
+            else None,
         }
 
         # persist replay record
-        replay_store.save({
-            "trace_id": response_payload["trace_id"],
-            "input": payload.input,
-            "context": payload.context,
-            "response": response_payload,
-            "timestamp": response_payload["timestamp"],
-        })
+        replay_store.save(
+            {
+                "trace_id": response_payload["trace_id"],
+                "input": payload.input,
+                "context": payload.context,
+                "response": response_payload,
+                "timestamp": response_payload["timestamp"],
+            }
+        )
 
         return response_payload
 
@@ -1088,6 +1127,7 @@ async def deliberate(
 # Evaluate Provided Model Output
 # ---------------------------------------------
 
+
 @app.post("/evaluate", response_model=EvaluateResponse, tags=["Deliberation"])
 async def evaluate(
     payload: EvaluateRequest,
@@ -1107,16 +1147,22 @@ async def evaluate(
     user_intent = context.get("user_intent")
     input_override = user_intent if isinstance(user_intent, str) else ""
 
-    context.update({
-        "policy_profile": payload.policy_profile,
-        "proposed_action": payload.proposed_action.model_dump(mode="json"),
-        "evidence_inputs": payload.evidence_inputs.model_dump(mode="json") if payload.evidence_inputs else {},
-        "model_metadata": payload.model_metadata.model_dump(mode="json") if payload.model_metadata else {},
-        "model_output": model_output_text,
-        "skip_router": True,
-        "force_model_output": True,
-        "input_text_override": input_override,
-    })
+    context.update(
+        {
+            "policy_profile": payload.policy_profile,
+            "proposed_action": payload.proposed_action.model_dump(mode="json"),
+            "evidence_inputs": payload.evidence_inputs.model_dump(mode="json")
+            if payload.evidence_inputs
+            else {},
+            "model_metadata": payload.model_metadata.model_dump(mode="json")
+            if payload.model_metadata
+            else {},
+            "model_output": model_output_text,
+            "skip_router": True,
+            "force_model_output": True,
+            "input_text_override": input_override,
+        }
+    )
 
     try:
         run_fn = getattr(engine, "run", None)
@@ -1130,7 +1176,9 @@ async def evaluate(
             detail_level=3,
         )
 
-        normalized = normalize_engine_result(result_obj, model_output_text, payload.request_id, context)
+        normalized = normalize_engine_result(
+            result_obj, model_output_text, payload.request_id, context
+        )
         aggregated = normalized.get("aggregator_output") or {}
         precedent_alignment = normalized.get("precedent_alignment") or {}
         uncertainty = normalized.get("uncertainty") or {}
@@ -1148,7 +1196,9 @@ async def evaluate(
             "policy_profile": payload.policy_profile,
             "proposed_action": payload.proposed_action.model_dump(mode="json"),
             "context": context,
-            "evidence_inputs": payload.evidence_inputs.model_dump(mode="json") if payload.evidence_inputs else {},
+            "evidence_inputs": payload.evidence_inputs.model_dump(mode="json")
+            if payload.evidence_inputs
+            else {},
         }
 
         governance_result = await evaluate_opa(
@@ -1173,7 +1223,9 @@ async def evaluate(
         uncertainty_envelope = _build_uncertainty_envelope(uncertainty)
         confidence = _confidence_from_uncertainty(uncertainty)
         critic_details = aggregated.get("critics") or {}
-        constraints = _build_constraints(critic_details) if decision == "ALLOW_WITH_CONSTRAINTS" else None
+        constraints = (
+            _build_constraints(critic_details) if decision == "ALLOW_WITH_CONSTRAINTS" else None
+        )
 
         routing_notes = None
         if execution_decision and not execution_decision.executable:
@@ -1195,9 +1247,13 @@ async def evaluate(
             "policy_profile": payload.policy_profile,
         }
         if payload.evidence_inputs:
-            provenance_inputs["evidence_inputs_hash"] = f"sha256:{_hash_payload(payload.evidence_inputs.model_dump(mode='json'))}"
+            provenance_inputs[
+                "evidence_inputs_hash"
+            ] = f"sha256:{_hash_payload(payload.evidence_inputs.model_dump(mode='json'))}"
         if payload.model_metadata:
-            provenance_inputs["model_metadata_hash"] = f"sha256:{_hash_payload(payload.model_metadata.model_dump(mode='json'))}"
+            provenance_inputs[
+                "model_metadata_hash"
+            ] = f"sha256:{_hash_payload(payload.model_metadata.model_dump(mode='json'))}"
 
         evidence_bundle = _build_evidence_bundle(
             decision=decision,
@@ -1250,7 +1306,9 @@ async def evaluate(
 
         error = EvaluateError(code="E_ENGINE_ERROR", message=str(exc))
         uncertainty = UncertaintyEnvelope(level="HIGH", reasons=[str(exc)])
-        routing = RoutingDecision(next_step="human_required", notes="Engine error; manual review required.")
+        routing = RoutingDecision(
+            next_step="human_required", notes="Engine error; manual review required."
+        )
 
         bundle_payload = {
             "summary": "Engine error; abstained from decision.",
@@ -1286,6 +1344,7 @@ async def evaluate(
 # Retrieve Evidence Bundle by Trace ID
 # ---------------------------------------------
 
+
 @app.get("/trace/{trace_id}", tags=["Audit"])
 async def get_trace(
     trace_id: str,
@@ -1311,7 +1370,7 @@ async def get_trace(
             detail="Invalid trace ID format",
         )
 
-    recorder = getattr(engine, 'recorder', None) or getattr(engine, 'evidence_recorder', None)
+    recorder = getattr(engine, "recorder", None) or getattr(engine, "evidence_recorder", None)
 
     if recorder is None:
         raise HTTPException(
@@ -1354,6 +1413,7 @@ async def get_trace(
 # Replay Endpoint
 # ---------------------------------------------
 
+
 @app.get("/replay/{trace_id}", tags=["Audit"])
 async def replay_trace(
     trace_id: str,
@@ -1365,7 +1425,9 @@ async def replay_trace(
     """
     record = replay_store.get(trace_id)
     if record is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trace ID not found in replay log")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Trace ID not found in replay log"
+        )
 
     if not rerun:
         return record
@@ -1379,7 +1441,9 @@ async def replay_trace(
     input_text = record.get("input")
     context = record.get("context", {})
     if not input_text:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Replay record missing input")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Replay record missing input"
+        )
 
     new_trace = str(uuid.uuid4())
     run_fn = getattr(engine, "run", None)
@@ -1392,7 +1456,10 @@ async def replay_trace(
     elif deliberate_fn:
         result_obj = deliberate_fn(input_text)
     else:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Engine does not expose run() or deliberate()")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Engine does not expose run() or deliberate()",
+        )
 
     normalized = normalize_engine_result(result_obj, input_text, new_trace, context)
     governance_payload = {
@@ -1406,8 +1473,12 @@ async def replay_trace(
         "timestamp": time.time(),
         "schema_version": GOVERNANCE_SCHEMA_VERSION,
     }
-    governance_result = await evaluate_opa(getattr(engine, "opa_callback", None), governance_payload)
-    final_decision = resolve_final_decision(normalized["aggregator_output"].get("decision"), governance_result)
+    governance_result = await evaluate_opa(
+        getattr(engine, "opa_callback", None), governance_payload
+    )
+    final_decision = resolve_final_decision(
+        normalized["aggregator_output"].get("decision"), governance_result
+    )
     execution_decision = None
     try:
         execution_decision = resolve_execution_decision(normalized["aggregator_output"], None)
@@ -1421,18 +1492,22 @@ async def replay_trace(
         "opa_governance": governance_result,
         "governance": governance_result,
         "final_decision": final_assessment,
-        "execution_decision": execution_decision.model_dump(mode="json") if execution_decision else None,
+        "execution_decision": execution_decision.model_dump(mode="json")
+        if execution_decision
+        else None,
         "replay_of": trace_id,
     }
 
-    replay_store.save({
-        "trace_id": rerun_payload["trace_id"],
-        "input": input_text,
-        "context": context,
-        "response": rerun_payload,
-        "timestamp": rerun_payload["timestamp"],
-        "replay_of": trace_id,
-    })
+    replay_store.save(
+        {
+            "trace_id": rerun_payload["trace_id"],
+            "input": input_text,
+            "context": context,
+            "response": rerun_payload,
+            "timestamp": rerun_payload["timestamp"],
+            "replay_of": trace_id,
+        }
+    )
 
     return {
         "original": record,
@@ -1443,6 +1518,7 @@ async def replay_trace(
 # ---------------------------------------------
 # Audit Search Endpoint
 # ---------------------------------------------
+
 
 @app.get("/audit/search", tags=["Audit"])
 async def audit_search(
@@ -1455,9 +1531,12 @@ async def audit_search(
     """
     Search audit evidence by critic, severity label, or trace_id across in-memory buffer and JSONL sink.
     """
-    recorder = getattr(engine, 'recorder', None) if engine else None
+    recorder = getattr(engine, "recorder", None) if engine else None
     if recorder is None:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Evidence recorder not available")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Evidence recorder not available",
+        )
 
     matches: List[Dict[str, Any]] = []
 
@@ -1500,6 +1579,7 @@ async def audit_search(
 # Governance Preview Endpoint
 # ---------------------------------------------
 
+
 @app.post("/governance/preview", tags=["Governance"])
 async def governance_preview(
     payload: GovernancePreviewRequest,
@@ -1518,7 +1598,7 @@ async def governance_preview(
         )
 
     try:
-        opa_callback = getattr(engine, 'opa_callback', None) or getattr(engine, 'opa', None)
+        opa_callback = getattr(engine, "opa_callback", None) or getattr(engine, "opa", None)
 
         if opa_callback is None:
             raise HTTPException(
@@ -1531,9 +1611,11 @@ async def governance_preview(
         result = await evaluate_opa(opa_callback, payload_dict)
         if OPA_CALLS:
             opa_outcome = (
-                "deny" if not result.get("allow", True) else
-                "escalate" if result.get("escalate") else
-                "allow"
+                "deny"
+                if not result.get("allow", True)
+                else "escalate"
+                if result.get("escalate")
+                else "allow"
             )
             OPA_CALLS.labels(result=opa_outcome).inc()
         return result
@@ -1551,6 +1633,7 @@ async def governance_preview(
 # ---------------------------------------------
 # Metrics Endpoint (Optional)
 # ---------------------------------------------
+
 
 @app.get("/metrics", tags=["System"], include_in_schema=False)
 async def metrics():
@@ -1581,6 +1664,7 @@ async def metrics():
 # Admin Endpoints (router health + critic bindings)
 # ---------------------------------------------
 
+
 @app.get("/admin/config/health", tags=["Admin"])
 @require_role(ADMIN_ROLE)
 async def config_health():
@@ -1601,6 +1685,7 @@ async def config_health():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Config validation failed: {exc}",
         )
+
 
 @app.get("/admin/cache/health", tags=["Admin"])
 @require_role(ADMIN_ROLE)
@@ -1624,6 +1709,7 @@ async def cache_health():
         "concurrency": concurrency.get_stats() if concurrency else None,
     }
 
+
 @app.get("/admin/gpu/health", tags=["Admin"])
 @require_role(ADMIN_ROLE)
 async def gpu_health():
@@ -1638,6 +1724,7 @@ async def gpu_health():
     metrics = collect_gpu_metrics(gpu_manager)
     metrics["configured"] = gpu_enabled
     return metrics
+
 
 @app.get("/admin/resilience/health", tags=["Admin"])
 @require_role(ADMIN_ROLE)
@@ -1667,14 +1754,19 @@ async def resilience_health():
         "components": components,
     }
 
+
 @app.get("/admin/router/health", tags=["Admin"])
 @require_role(ADMIN_ROLE)
 async def router_health():
     if engine is None or not getattr(engine, "router", None):
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Router not available")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Router not available"
+        )
     router = engine.router
     health = getattr(router, "health", {})
-    breakers = router.get_circuit_breaker_status() if hasattr(router, "get_circuit_breaker_status") else {}
+    breakers = (
+        router.get_circuit_breaker_status() if hasattr(router, "get_circuit_breaker_status") else {}
+    )
     return {"health": health, "circuit_breakers": breakers, "policy": getattr(router, "policy", {})}
 
 
@@ -1682,7 +1774,9 @@ async def router_health():
 @require_role(ADMIN_ROLE)
 async def reset_breakers():
     if engine is None or not getattr(engine, "router", None):
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Router not available")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Router not available"
+        )
     router = engine.router
     if hasattr(router, "_circuit_breakers"):
         router._circuit_breakers.reset_all()
@@ -1693,7 +1787,9 @@ async def reset_breakers():
 @require_role(ADMIN_ROLE)
 async def get_critic_bindings():
     if engine is None:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not initialized")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not initialized"
+        )
     router = getattr(engine, "router", None)
     adapters = getattr(router, "adapters", {}) if router else {}
     return {
@@ -1712,12 +1808,17 @@ class CriticBinding(BaseModel):
 @require_role(ADMIN_ROLE)
 async def set_critic_binding(binding: CriticBinding):
     if engine is None:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not initialized")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not initialized"
+        )
     router = getattr(engine, "router", None)
     adapters = getattr(router, "adapters", {}) if router else {}
     adapter_fn = adapters.get(binding.adapter)
     if adapter_fn is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Adapter '{binding.adapter}' not registered")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Adapter '{binding.adapter}' not registered",
+        )
     critic_key = canonical_critic_name(binding.critic)
     engine.critic_models[critic_key] = adapter_fn
     return {"status": "ok", "binding": {critic_key: binding.adapter}}
@@ -1735,7 +1836,9 @@ class AdapterRegistration(BaseModel):
 @require_role(ADMIN_ROLE)
 async def register_adapter(adapter: AdapterRegistration):
     if engine is None or not getattr(engine, "router", None):
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Router not available")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Router not available"
+        )
 
     router = engine.router
     adapters = getattr(router, "adapters", {}) if router else {}
@@ -1745,7 +1848,9 @@ async def register_adapter(adapter: AdapterRegistration):
         if factory == "ollama":
             adapters[adapter.name] = OllamaAdapter(model=adapter.model or adapter.name)
         elif factory == "hf":
-            adapters[adapter.name] = LlamaHFAdapter(model_path=adapter.model or adapter.name, device=adapter.device or "cpu")
+            adapters[adapter.name] = LlamaHFAdapter(
+                model_path=adapter.model or adapter.name, device=adapter.device or "cpu"
+            )
         elif factory == "openai":
             api_key = adapter.api_key
             if api_key is None and secret_provider is not None:
@@ -1753,8 +1858,12 @@ async def register_adapter(adapter: AdapterRegistration):
             if api_key is None and _resolve_environment() != "production":
                 api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_KEY")
             if api_key is None:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI API key not available")
-            adapters[adapter.name] = GPTAdapter(model=adapter.model or "gpt-4o-mini", api_key=api_key)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI API key not available"
+                )
+            adapters[adapter.name] = GPTAdapter(
+                model=adapter.model or "gpt-4o-mini", api_key=api_key
+            )
         elif factory == "claude":
             api_key = adapter.api_key
             if api_key is None and secret_provider is not None:
@@ -1762,8 +1871,13 @@ async def register_adapter(adapter: AdapterRegistration):
             if api_key is None and _resolve_environment() != "production":
                 api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_KEY")
             if api_key is None:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Anthropic API key not available")
-            adapters[adapter.name] = ClaudeAdapter(model=adapter.model or "claude-3-5-sonnet-20241022", api_key=api_key)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Anthropic API key not available",
+                )
+            adapters[adapter.name] = ClaudeAdapter(
+                model=adapter.model or "claude-3-5-sonnet-20241022", api_key=api_key
+            )
         elif factory == "grok":
             api_key = adapter.api_key
             if api_key is None and secret_provider is not None:
@@ -1771,12 +1885,21 @@ async def register_adapter(adapter: AdapterRegistration):
             if api_key is None and _resolve_environment() != "production":
                 api_key = os.getenv("XAI_API_KEY") or os.getenv("XAI_KEY")
             if api_key is None:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="xAI API key not available")
-            adapters[adapter.name] = GrokAdapter(model=adapter.model or "grok-beta", api_key=api_key)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="xAI API key not available"
+                )
+            adapters[adapter.name] = GrokAdapter(
+                model=adapter.model or "grok-beta", api_key=api_key
+            )
         else:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown adapter type '{adapter.type}'")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown adapter type '{adapter.type}'",
+            )
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to register adapter: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to register adapter: {exc}"
+        )
 
     # ensure fallback order includes the adapter
     policy = getattr(router, "policy", {}) or {}

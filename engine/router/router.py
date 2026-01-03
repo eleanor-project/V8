@@ -37,11 +37,11 @@ logger = logging.getLogger(__name__)
 
 class AdapterError(Exception):
     """Custom exception for adapter-level failures."""
+
     pass
 
 
 class RouterV8:
-
     def __init__(
         self,
         adapters: Optional[Dict[str, Callable]] = None,
@@ -90,7 +90,9 @@ class RouterV8:
             self._get_circuit_breaker(adapter_name)
 
     @staticmethod
-    def _default_adapter(input_text: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _default_adapter(
+        input_text: str, context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Fallback adapter that simply echoes the input."""
         return {
             "response_text": input_text,
@@ -147,7 +149,7 @@ class RouterV8:
         return self._circuit_breakers.get_or_create(
             name=f"adapter_{adapter_name}",
             failure_threshold=self._cb_failure_threshold,
-            recovery_timeout=self._cb_recovery_timeout
+            recovery_timeout=self._cb_recovery_timeout,
         )
 
     def get_circuit_breaker_status(self) -> Dict[str, Any]:
@@ -207,7 +209,9 @@ class RouterV8:
             response = await response
         return response
 
-    async def _call_adapter(self, adapter_name: str, input_text: str, context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _call_adapter(
+        self, adapter_name: str, input_text: str, context: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         adapter = self.adapters.get(adapter_name)
 
         if adapter is None:
@@ -231,7 +235,7 @@ class RouterV8:
                     "output": normalized,
                     "success": normalized["response_text"] is not None,
                     "duration_ms": duration_ms,
-                    "circuit_breaker": breaker.get_status()
+                    "circuit_breaker": breaker.get_status(),
                 }
 
             except CircuitBreakerOpen as e:
@@ -241,7 +245,7 @@ class RouterV8:
                     "success": False,
                     "error": str(e),
                     "circuit_breaker_open": True,
-                    "recovery_time": e.recovery_time
+                    "recovery_time": e.recovery_time,
                 }
 
             except Exception as e:
@@ -256,7 +260,7 @@ class RouterV8:
                     "error": str(e),
                     "trace": traceback.format_exc(),
                     "duration_ms": duration_ms,
-                    "circuit_breaker": breaker.get_status()
+                    "circuit_breaker": breaker.get_status(),
                 }
 
         # Fallback without circuit breaker
@@ -268,7 +272,7 @@ class RouterV8:
                 "adapter": adapter_name,
                 "output": normalized,
                 "success": normalized["response_text"] is not None,
-                "duration_ms": duration_ms
+                "duration_ms": duration_ms,
             }
         except Exception as e:
             self.health[adapter_name] = False
@@ -278,14 +282,16 @@ class RouterV8:
                 "success": False,
                 "error": str(e),
                 "trace": traceback.format_exc(),
-                "duration_ms": duration_ms
+                "duration_ms": duration_ms,
             }
 
     # ---------------------------------------------------------------
     # Routing with fallback logic
     # ---------------------------------------------------------------
 
-    async def _route_async(self, text: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def _route_async(
+        self, text: str, context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Async implementation of routing logic.
         """
@@ -393,7 +399,9 @@ class RouterV8:
     # Public convenience method
     # ---------------------------------------------------------------
 
-    async def generate(self, input_text: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def generate(
+        self, input_text: str, context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Public interface — semantic alias to route().
         """

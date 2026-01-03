@@ -14,6 +14,7 @@ from typing import (
 # Graceful import of structlog
 try:
     import structlog
+
     STRUCTLOG_AVAILABLE = True
 except ImportError:
     STRUCTLOG_AVAILABLE = False
@@ -58,9 +59,7 @@ class CredentialSanitizerFilter(logging.Filter):
         try:
             record.msg = CredentialSanitizer.sanitize_text(str(record.msg))
             if record.args:
-                record.args = tuple(
-                    CredentialSanitizer.sanitize_value(arg) for arg in record.args
-                )
+                record.args = tuple(CredentialSanitizer.sanitize_value(arg) for arg in record.args)
 
             for key, value in list(record.__dict__.items()):
                 if key in self._reserved_keys:
@@ -82,11 +81,7 @@ def get_log_level() -> int:
 
 def get_log_format() -> str:
     """Get the log format from environment."""
-    env = (
-        os.getenv("ELEANOR_ENVIRONMENT")
-        or os.getenv("ELEANOR_ENV")
-        or "development"
-    )
+    env = os.getenv("ELEANOR_ENVIRONMENT") or os.getenv("ELEANOR_ENV") or "development"
     default = "console" if env == "development" else "json"
     return os.getenv("LOG_FORMAT", default)
 
@@ -110,8 +105,7 @@ def configure_logging() -> None:
 
     if not STRUCTLOG_AVAILABLE:
         logging.warning(
-            "structlog not installed. Using basic logging. "
-            "Install with: pip install structlog"
+            "structlog not installed. Using basic logging. " "Install with: pip install structlog"
         )
         return
 
@@ -131,7 +125,7 @@ def configure_logging() -> None:
         processors: List[Processor] = [
             *shared_processors,
             structlog.processors.format_exc_info,
-            structlog.processors.JSONRenderer()
+            structlog.processors.JSONRenderer(),
         ]
     else:
         # Console output for development
@@ -177,6 +171,7 @@ class LogContext:
     def __enter__(self):
         if STRUCTLOG_AVAILABLE:
             import structlog
+
             for key, value in self.context.items():
                 structlog.contextvars.bind_contextvars(**{key: value})
         return self
@@ -184,6 +179,7 @@ class LogContext:
     def __exit__(self, exc_type, exc_val, exc_tb):
         if STRUCTLOG_AVAILABLE:
             import structlog
+
             structlog.contextvars.unbind_contextvars(*self.context.keys())
 
 
@@ -195,7 +191,7 @@ def log_request(
     duration_ms: float,
     trace_id: Optional[str] = None,
     user_id: Optional[str] = None,
-    **extra
+    **extra,
 ) -> None:
     """
     Log an HTTP request with standard fields.
@@ -232,7 +228,7 @@ def log_deliberation(
     duration_ms: float,
     uncertainty: Optional[float] = None,
     escalated: bool = False,
-    **extra
+    **extra,
 ) -> None:
     """
     Log a deliberation result with standard fields.
@@ -269,7 +265,7 @@ def log_critic_execution(
     duration_ms: float,
     success: bool = True,
     error: Optional[str] = None,
-    **extra
+    **extra,
 ) -> None:
     """
     Log a critic execution result.
@@ -296,7 +292,7 @@ def log_precedent_retrieval(
     cases_found: int,
     alignment_score: float,
     duration_ms: float,
-    **extra
+    **extra,
 ) -> None:
     """
     Log a precedent retrieval operation.

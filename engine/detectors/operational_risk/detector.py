@@ -23,6 +23,7 @@ from ..signals import DetectorSignal
 @dataclass
 class DetectionPattern:
     """Configuration for detection pattern."""
+
     category: str
     patterns: List[str]
     keywords: List[str]
@@ -37,22 +38,18 @@ DETECTION_PATTERNS = [
             r"\\b(system|process|service)\\s+(crash|failure|breakdown|outage)\\b",
             r"\\b(not|no)\\s+(backup|redundancy|failover)\\b",
         ],
-        keywords=[
-            "system crash", "no backup", "no redundancy"
-        ],
+        keywords=["system crash", "no backup", "no redundancy"],
         severity_weight=0.75,
-        description="System failure risks"
+        description="System failure risks",
     ),
     DetectionPattern(
         category="single_point_failure",
         patterns=[
             r"\\b(single point of failure|no redundancy)\\b",
         ],
-        keywords=[
-            "single point of failure"
-        ],
+        keywords=["single point of failure"],
         severity_weight=0.8,
-        description="Single points of failure"
+        description="Single points of failure",
     ),
 ]
 
@@ -102,7 +99,7 @@ class OperationalRiskDetector(Detector):
                 "violations": violations,
                 "text_excerpt": text[:500],
             },
-            flags=self._generate_flags(violations)
+            flags=self._generate_flags(violations),
         )
 
     def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
@@ -115,26 +112,30 @@ class OperationalRiskDetector(Detector):
             for pattern in self._compiled_patterns[dp.category]:
                 matches = pattern.findall(text)
                 if matches:
-                    violations.append({
-                        "category": dp.category,
-                        "detection_method": "regex",
-                        "severity_score": dp.severity_weight,
-                        "description": dp.description,
-                        "matches": matches[:3],
-                    })
+                    violations.append(
+                        {
+                            "category": dp.category,
+                            "detection_method": "regex",
+                            "severity_score": dp.severity_weight,
+                            "description": dp.description,
+                            "matches": matches[:3],
+                        }
+                    )
                     break
 
             # Strategy 2: Keyword detection
             for keyword in dp.keywords:
                 if keyword.lower() in text_lower:
                     if not any(v["category"] == dp.category for v in violations):
-                        violations.append({
-                            "category": dp.category,
-                            "detection_method": "keyword",
-                            "severity_score": dp.severity_weight * 0.9,
-                            "description": dp.description,
-                            "keyword_matched": keyword,
-                        })
+                        violations.append(
+                            {
+                                "category": dp.category,
+                                "detection_method": "keyword",
+                                "severity_score": dp.severity_weight * 0.9,
+                                "description": dp.description,
+                                "keyword_matched": keyword,
+                            }
+                        )
                     break
 
         return violations

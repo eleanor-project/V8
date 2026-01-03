@@ -24,6 +24,7 @@ from ..signals import DetectorSignal, SeverityLevel
 @dataclass
 class DetectionPattern:
     """Configuration for detection pattern."""
+
     category: str
     patterns: List[str]
     keywords: List[str]
@@ -38,11 +39,9 @@ DETECTION_PATTERNS = [
             r"\b(according to|cited in|published in)\s+[\w\s]+?\(\d{4}\)",
             r"\b(study|research|paper)\s+(by|from)\s+[A-Z][a-zA-Z]+\s+\(\d{4}\)\b",
         ],
-        keywords=[
-            "according to", "cited in", "published in", "et al."
-        ],
+        keywords=["according to", "cited in", "published in", "et al."],
         severity_weight=0.35,
-        description="Fabricated citations or references"
+        description="Fabricated citations or references",
     ),
     DetectionPattern(
         category="false_statistics",
@@ -50,11 +49,9 @@ DETECTION_PATTERNS = [
             r"\b\d+(\.\d+)?%\s+(of|showed|indicated|demonstrated)",
             r"\bexactly\s+\d+%\s+of\s+",
         ],
-        keywords=[
-            "exactly percent", "precisely showed", "increase by"
-        ],
+        keywords=["exactly percent", "precisely showed", "increase by"],
         severity_weight=0.25,
-        description="Potentially false or fabricated statistics"
+        description="Potentially false or fabricated statistics",
     ),
     DetectionPattern(
         category="invented_entities",
@@ -63,7 +60,7 @@ DETECTION_PATTERNS = [
         ],
         keywords=[],
         severity_weight=0.2,
-        description="References to potentially non-existent entities"
+        description="References to potentially non-existent entities",
     ),
 ]
 
@@ -114,7 +111,7 @@ class HallucinationDetector(Detector):
             description="Hallucination risk assessment",
             violations=[v["category"] for v in violations],
             evidence=metadata,
-            flags=self._generate_flags(violations)
+            flags=self._generate_flags(violations),
         )
 
     def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
@@ -127,60 +124,72 @@ class HallucinationDetector(Detector):
             for pattern in self._compiled_patterns[dp.category]:
                 matches = pattern.findall(text)
                 if matches:
-                    violations.append({
-                        "category": dp.category,
-                        "detection_method": "regex",
-                        "severity_score": dp.severity_weight,
-                        "description": dp.description,
-                        "matches": matches[:3],
-                    })
+                    violations.append(
+                        {
+                            "category": dp.category,
+                            "detection_method": "regex",
+                            "severity_score": dp.severity_weight,
+                            "description": dp.description,
+                            "matches": matches[:3],
+                        }
+                    )
                     break
 
             # Strategy 2: Keyword detection
             for keyword in dp.keywords:
                 if keyword.lower() in text_lower:
                     if not any(v["category"] == dp.category for v in violations):
-                        violations.append({
-                            "category": dp.category,
-                            "detection_method": "keyword",
-                            "severity_score": dp.severity_weight * 0.9,
-                            "description": dp.description,
-                            "keyword_matched": keyword,
-                    })
+                        violations.append(
+                            {
+                                "category": dp.category,
+                                "detection_method": "keyword",
+                                "severity_score": dp.severity_weight * 0.9,
+                                "description": dp.description,
+                                "keyword_matched": keyword,
+                            }
+                        )
                     break
 
         # Fallback lightweight heuristics to ensure coverage for analytics
         if re.search(r"\(\d{4}\)", text) or "et al" in text_lower:
             if not any(v["category"] == "fabricated_citations" for v in violations):
-                violations.append({
-                    "category": "fabricated_citations",
-                    "detection_method": "heuristic",
-                    "severity_score": 0.25,
-                    "description": "Citation present; verify source.",
-                })
+                violations.append(
+                    {
+                        "category": "fabricated_citations",
+                        "detection_method": "heuristic",
+                        "severity_score": 0.25,
+                        "description": "Citation present; verify source.",
+                    }
+                )
 
         if re.search(r"\d+%|\bpercent\b", text_lower):
             if not any(v["category"] == "false_statistics" for v in violations):
-                violations.append({
-                    "category": "false_statistics",
-                    "detection_method": "heuristic",
-                    "severity_score": 0.2,
-                    "description": "Statistical claim present.",
-                })
+                violations.append(
+                    {
+                        "category": "false_statistics",
+                        "detection_method": "heuristic",
+                        "severity_score": 0.2,
+                        "description": "Statistical claim present.",
+                    }
+                )
 
         if re.search(r"definitely|absolutely|100%|guaranteed", text, re.IGNORECASE):
-            violations.append({
-                "category": "overconfidence",
-                "detection_method": "keyword",
-                "severity_score": 0.15,
-                "description": "Overconfident language present.",
-            })
+            violations.append(
+                {
+                    "category": "overconfidence",
+                    "detection_method": "keyword",
+                    "severity_score": 0.15,
+                    "description": "Overconfident language present.",
+                }
+            )
 
         return violations
 
     def _build_metadata(self, text: str, violations: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Build metadata counts for analytics/tests."""
-        citation_count = len(re.findall(r"\(\d{4}\)", text)) + len(re.findall(r"et al\.?", text, re.IGNORECASE))
+        citation_count = len(re.findall(r"\(\d{4}\)", text)) + len(
+            re.findall(r"et al\.?", text, re.IGNORECASE)
+        )
         statistic_count = len(re.findall(r"\d+%|\bpercent\b", text, re.IGNORECASE))
         specific_detail_count = len(re.findall(r"(\d{3}[-\s]?\d{3}[-\s]?\d{4})", text))
         specific_detail_count += len(
@@ -190,7 +199,9 @@ class HallucinationDetector(Detector):
                 re.IGNORECASE,
             )
         )
-        overconfidence_count = len(re.findall(r"definitely|absolutely|100%|guaranteed", text, re.IGNORECASE))
+        overconfidence_count = len(
+            re.findall(r"definitely|absolutely|100%|guaranteed", text, re.IGNORECASE)
+        )
 
         total_risk = 0.0
         if citation_count:
@@ -206,7 +217,9 @@ class HallucinationDetector(Detector):
 
         mitigation = None
         if categories:
-            mitigation = "Verify citations and statistics; add sources or rephrase uncertain claims."
+            mitigation = (
+                "Verify citations and statistics; add sources or rephrase uncertain claims."
+            )
 
         return {
             "violations": violations,

@@ -66,13 +66,7 @@ class RetryMetrics:
 class RetryExhausted(Exception):
     """Raised when all retry attempts are exhausted."""
 
-    def __init__(
-        self,
-        message: str,
-        attempts: int,
-        last_exception: Exception,
-        total_delay: float
-    ):
+    def __init__(self, message: str, attempts: int, last_exception: Exception, total_delay: float):
         self.attempts = attempts
         self.last_exception = last_exception
         self.total_delay = total_delay
@@ -83,17 +77,14 @@ class RetryExhausted(Exception):
         )
 
 
-def calculate_delay(
-    attempt: int,
-    config: RetryConfig
-) -> float:
+def calculate_delay(attempt: int, config: RetryConfig) -> float:
     """
     Calculate the delay before the next retry attempt.
 
     Uses exponential backoff with optional jitter.
     """
     # Exponential backoff: base_delay * (exponential_base ^ attempt)
-    delay = config.base_delay * (config.exponential_base ** attempt)
+    delay = config.base_delay * (config.exponential_base**attempt)
 
     # Cap at max_delay
     delay = min(delay, config.max_delay)
@@ -106,10 +97,7 @@ def calculate_delay(
     return max(0, delay)
 
 
-def should_retry(
-    exception: Exception,
-    config: RetryConfig
-) -> bool:
+def should_retry(exception: Exception, config: RetryConfig) -> bool:
     """
     Determine if an exception should trigger a retry.
     """
@@ -192,7 +180,7 @@ def retry_with_backoff(
                             f"Retry exhausted for {func.__name__}",
                             attempts=attempt + 1,
                             last_exception=e,
-                            total_delay=total_delay
+                            total_delay=total_delay,
                         )
 
                     delay = calculate_delay(attempt, config)
@@ -218,7 +206,7 @@ def retry_with_backoff(
                 f"Retry exhausted for {func.__name__}",
                 attempts=config.max_retries + 1,
                 last_exception=last_exc,
-                total_delay=total_delay
+                total_delay=total_delay,
             )
 
         @wraps(func)
@@ -241,7 +229,7 @@ def retry_with_backoff(
                             f"Retry exhausted for {func.__name__}",
                             attempts=attempt + 1,
                             last_exception=e,
-                            total_delay=total_delay
+                            total_delay=total_delay,
                         )
 
                     delay = calculate_delay(attempt, config)
@@ -266,7 +254,7 @@ def retry_with_backoff(
                 f"Retry exhausted for {func.__name__}",
                 attempts=config.max_retries + 1,
                 last_exception=last_exc,
-                total_delay=total_delay
+                total_delay=total_delay,
             )
 
         # Return appropriate wrapper based on function type
@@ -282,7 +270,7 @@ async def retry_async(
     *args,
     config: Optional[RetryConfig] = None,
     on_retry: Optional[Callable[[int, Exception, float], None]] = None,
-    **kwargs
+    **kwargs,
 ) -> Any:
     """
     Retry an async function with exponential backoff.
@@ -318,7 +306,7 @@ async def retry_async(
                     "Retry exhausted",
                     attempts=attempt + 1,
                     last_exception=e,
-                    total_delay=total_delay
+                    total_delay=total_delay,
                 )
 
             delay = calculate_delay(attempt, config)
@@ -337,5 +325,5 @@ async def retry_async(
         "Retry exhausted",
         attempts=config.max_retries + 1,
         last_exception=last_exc,
-        total_delay=total_delay
+        total_delay=total_delay,
     )

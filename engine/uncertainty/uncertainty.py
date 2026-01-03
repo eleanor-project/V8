@@ -31,7 +31,6 @@ from engine.schemas.pipeline_types import UncertaintyResult, PrecedentAlignmentR
 
 
 class UncertaintyEngineV8:
-
     def __init__(self):
         pass
 
@@ -42,7 +41,7 @@ class UncertaintyEngineV8:
         self,
         critics: Dict[str, CriticResult],
         model_used: str,
-        precedent_alignment: PrecedentAlignmentResult
+        precedent_alignment: PrecedentAlignmentResult,
     ) -> UncertaintyResult:
         """
         Compute all uncertainty dimensions.
@@ -67,10 +66,7 @@ class UncertaintyEngineV8:
         # ----------------------------------------------------------
         # 4. Composite uncertainty
         # ----------------------------------------------------------
-        epistemic = self._epistemic_uncertainty(
-            critic_divergence=critic_div,
-            drift=drift_u
-        )
+        epistemic = self._epistemic_uncertainty(critic_divergence=critic_div, drift=drift_u)
 
         aleatoric = self._aleatoric_uncertainty(
             precedent_conflict=conflict_u,
@@ -93,7 +89,7 @@ class UncertaintyEngineV8:
             conflict=conflict_u,
             drift=drift_u,
             model_u=model_u,
-            overall=overall
+            overall=overall,
         )
 
         return {
@@ -104,10 +100,8 @@ class UncertaintyEngineV8:
             "model_stability_uncertainty": model_u,
             "overall_uncertainty": overall,
             "needs_escalation": needs_escalation,
-            "explanation": explain
+            "explanation": explain,
         }
-
-
 
     # ============================================================
     # Critic Divergence (Epistemic)
@@ -130,8 +124,6 @@ class UncertaintyEngineV8:
         # Normalize to 0–1 range (max meaningful var ~ 2)
         return max(0.0, min(1.0, variance / 2.0))
 
-
-
     # ============================================================
     # Precedent Conflict Uncertainty
     # ============================================================
@@ -144,8 +136,6 @@ class UncertaintyEngineV8:
         """
 
         return float(alignment.get("conflict_level", 0.0))
-
-
 
     # ============================================================
     # Model Stability Uncertainty
@@ -169,8 +159,6 @@ class UncertaintyEngineV8:
 
         return 0.2
 
-
-
     # ============================================================
     # Epistemic Uncertainty (Critic Divergence + Drift)
     # ============================================================
@@ -183,12 +171,7 @@ class UncertaintyEngineV8:
         """
 
         # Weighted sum
-        return max(0.0, min(1.0,
-            (critic_divergence * 0.6) +
-            (drift * 0.4)
-        ))
-
-
+        return max(0.0, min(1.0, (critic_divergence * 0.6) + (drift * 0.4)))
 
     # ============================================================
     # Aleatoric Uncertainty (Conflict)
@@ -199,8 +182,6 @@ class UncertaintyEngineV8:
         """
 
         return max(0.0, min(1.0, precedent_conflict))
-
-
 
     # ============================================================
     # Combine All Uncertainties
@@ -214,13 +195,7 @@ class UncertaintyEngineV8:
             model instability (10%)
         """
 
-        return max(0.0, min(1.0,
-            (epistemic * 0.5) +
-            (aleatoric * 0.4) +
-            (model_u * 0.1)
-        ))
-
-
+        return max(0.0, min(1.0, (epistemic * 0.5) + (aleatoric * 0.4) + (model_u * 0.1)))
 
     # ============================================================
     # Natural Language Summary

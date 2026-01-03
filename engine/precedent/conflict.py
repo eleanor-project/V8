@@ -17,9 +17,9 @@ from typing import Dict, Any
 
 
 class PrecedentConflictV8:
-
-    def detect(self, precedent_case: Dict[str, Any], deliberation_state: Dict[str, Any]) -> Dict[str, Any]:
-
+    def detect(
+        self, precedent_case: Dict[str, Any], deliberation_state: Dict[str, Any]
+    ) -> Dict[str, Any]:
         if precedent_case is None:
             return {"conflict_detected": False, "reasons": []}
 
@@ -40,10 +40,9 @@ class PrecedentConflictV8:
             reasons.append(f"Reversal of previous violations: {list(reversed_violations)}")
 
         # Priority hierarchies
-        if precedent_case.get("priority_order") != deliberation_state.get("constitutional_priority_order"):
+        if precedent_case.get("priority_order") != deliberation_state.get(
+            "constitutional_priority_order"
+        ):
             reasons.append("Priority hierarchy mismatch detected.")
 
-        return {
-            "conflict_detected": len(reasons) > 0,
-            "reasons": reasons
-        }
+        return {"conflict_detected": len(reasons) > 0, "reasons": reasons}

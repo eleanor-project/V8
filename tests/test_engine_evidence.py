@@ -1,5 +1,6 @@
 import pytest
 
+
 @pytest.mark.asyncio
 async def test_evidence_recorder_records(engine):
     await engine.recorder.record(

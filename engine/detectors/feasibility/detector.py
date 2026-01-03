@@ -23,6 +23,7 @@ from ..signals import DetectorSignal
 @dataclass
 class DetectionPattern:
     """Configuration for detection pattern."""
+
     category: str
     patterns: List[str]
     keywords: List[str]
@@ -37,11 +38,9 @@ DETECTION_PATTERNS = [
             r"\\b(overnight|instant|immediate|instantly)\\s+(success|results|solution|fix)\\b",
             r"\\b(in|within)\\s+(a|one)\\s+(day|hour|minute)\\b",
         ],
-        keywords=[
-            "overnight success", "instant solution", "in one day"
-        ],
+        keywords=["overnight success", "instant solution", "in one day"],
         severity_weight=0.7,
-        description="Unrealistic or impossible timelines"
+        description="Unrealistic or impossible timelines",
     ),
     DetectionPattern(
         category="resource_underestimation",
@@ -49,22 +48,18 @@ DETECTION_PATTERNS = [
             r"\\b(zero|no|minimal|tiny)\\s+(cost|effort|work|resources)\\b",
             r"\\b(free|costless|effortless)\\s+(solution|implementation)",
         ],
-        keywords=[
-            "zero cost", "no effort", "completely free"
-        ],
+        keywords=["zero cost", "no effort", "completely free"],
         severity_weight=0.65,
-        description="Severe resource underestimation"
+        description="Severe resource underestimation",
     ),
     DetectionPattern(
         category="guaranteed_success",
         patterns=[
             r"\\b(100%|perfect|flawless|guaranteed)\\s+(success|accuracy|results)\\b",
         ],
-        keywords=[
-            "100% success", "guaranteed results", "perfect accuracy"
-        ],
+        keywords=["100% success", "guaranteed results", "perfect accuracy"],
         severity_weight=0.6,
-        description="Unrealistic guarantees"
+        description="Unrealistic guarantees",
     ),
 ]
 
@@ -114,7 +109,7 @@ class FeasibilityDetector(Detector):
                 "violations": violations,
                 "text_excerpt": text[:500],
             },
-            flags=self._generate_flags(violations)
+            flags=self._generate_flags(violations),
         )
 
     def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
@@ -127,26 +122,30 @@ class FeasibilityDetector(Detector):
             for pattern in self._compiled_patterns[dp.category]:
                 matches = pattern.findall(text)
                 if matches:
-                    violations.append({
-                        "category": dp.category,
-                        "detection_method": "regex",
-                        "severity_score": dp.severity_weight,
-                        "description": dp.description,
-                        "matches": matches[:3],
-                    })
+                    violations.append(
+                        {
+                            "category": dp.category,
+                            "detection_method": "regex",
+                            "severity_score": dp.severity_weight,
+                            "description": dp.description,
+                            "matches": matches[:3],
+                        }
+                    )
                     break
 
             # Strategy 2: Keyword detection
             for keyword in dp.keywords:
                 if keyword.lower() in text_lower:
                     if not any(v["category"] == dp.category for v in violations):
-                        violations.append({
-                            "category": dp.category,
-                            "detection_method": "keyword",
-                            "severity_score": dp.severity_weight * 0.9,
-                            "description": dp.description,
-                            "keyword_matched": keyword,
-                        })
+                        violations.append(
+                            {
+                                "category": dp.category,
+                                "detection_method": "keyword",
+                                "severity_score": dp.severity_weight * 0.9,
+                                "description": dp.description,
+                                "keyword_matched": keyword,
+                            }
+                        )
                     break
 
         return violations

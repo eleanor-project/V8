@@ -24,6 +24,7 @@ from ..signals import DetectorSignal
 @dataclass
 class DetectionPattern:
     """Configuration for detection pattern."""
+
     category: str
     patterns: List[str]
     keywords: List[str]
@@ -38,22 +39,18 @@ DETECTION_PATTERNS = [
             r"\\b(permanent|irreversible|forever|can't undo|cannot undo)\\b",
             r"\\b(no going back|point of no return)\\b",
         ],
-        keywords=[
-            "permanent", "irreversible", "can't undo", "no going back"
-        ],
+        keywords=["permanent", "irreversible", "can't undo", "no going back"],
         severity_weight=0.85,
-        description="Permanent or irreversible consequences"
+        description="Permanent or irreversible consequences",
     ),
     DetectionPattern(
         category="destructive_action",
         patterns=[
             r"\\b(delete|destroy|eliminate)\\s+(all|everything|permanently)\\b",
         ],
-        keywords=[
-            "delete all", "destroy everything"
-        ],
+        keywords=["delete all", "destroy everything"],
         severity_weight=0.9,
-        description="Destructive non-recoverable actions"
+        description="Destructive non-recoverable actions",
     ),
 ]
 
@@ -103,7 +100,7 @@ class IrreversibleHarmDetector(Detector):
                 "violations": violations,
                 "text_excerpt": text[:500],
             },
-            flags=self._generate_flags(violations)
+            flags=self._generate_flags(violations),
         )
 
     def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
@@ -116,26 +113,30 @@ class IrreversibleHarmDetector(Detector):
             for pattern in self._compiled_patterns[dp.category]:
                 matches = pattern.findall(text)
                 if matches:
-                    violations.append({
-                        "category": dp.category,
-                        "detection_method": "regex",
-                        "severity_score": dp.severity_weight,
-                        "description": dp.description,
-                        "matches": matches[:3],
-                    })
+                    violations.append(
+                        {
+                            "category": dp.category,
+                            "detection_method": "regex",
+                            "severity_score": dp.severity_weight,
+                            "description": dp.description,
+                            "matches": matches[:3],
+                        }
+                    )
                     break
 
             # Strategy 2: Keyword detection
             for keyword in dp.keywords:
                 if keyword.lower() in text_lower:
                     if not any(v["category"] == dp.category for v in violations):
-                        violations.append({
-                            "category": dp.category,
-                            "detection_method": "keyword",
-                            "severity_score": dp.severity_weight * 0.9,
-                            "description": dp.description,
-                            "keyword_matched": keyword,
-                        })
+                        violations.append(
+                            {
+                                "category": dp.category,
+                                "detection_method": "keyword",
+                                "severity_score": dp.severity_weight * 0.9,
+                                "description": dp.description,
+                                "keyword_matched": keyword,
+                            }
+                        )
                     break
 
         return violations

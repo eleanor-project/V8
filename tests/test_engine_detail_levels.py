@@ -1,5 +1,6 @@
 import pytest
 
+
 @pytest.mark.asyncio
 async def test_detail_levels(engine):
     for level in [1, 2, 3]:

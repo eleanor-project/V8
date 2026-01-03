@@ -20,11 +20,7 @@ class Case:
 
 
 class ReviewTriggerEvaluator:
-    def __init__(
-        self,
-        severity_threshold: float = 1.5,
-        disagreement_threshold: float = 0.6
-    ):
+    def __init__(self, severity_threshold: float = 1.5, disagreement_threshold: float = 0.6):
         self.severity_threshold = severity_threshold
         self.disagreement_threshold = disagreement_threshold
 
@@ -54,7 +50,4 @@ class ReviewTriggerEvaluator:
         if uncertainty_flags:
             triggers.append("uncertainty_present")
 
-        return {
-            "review_required": len(triggers) > 0,
-            "triggers": triggers
-        }
+        return {"review_required": len(triggers) > 0, "triggers": triggers}

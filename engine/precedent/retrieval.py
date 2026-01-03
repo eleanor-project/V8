@@ -29,8 +29,8 @@ from engine.schemas.pipeline_types import (
     PrecedentCaseResult,
 )
 
-class PrecedentRetrievalV8:
 
+class PrecedentRetrievalV8:
     def __init__(
         self,
         store_client,
@@ -55,7 +55,9 @@ class PrecedentRetrievalV8:
     # ---------------------------------------------------------------
     #  Semantic + normative alignment scoring
     # ---------------------------------------------------------------
-    def _score_alignment(self, case: PrecedentCaseResult, critic_outputs: List[CriticResult]) -> float:
+    def _score_alignment(
+        self, case: PrecedentCaseResult, critic_outputs: List[CriticResult]
+    ) -> float:
         """
         Compute a rough alignment score based on:
           - overlap of values invoked

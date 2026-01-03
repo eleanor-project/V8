@@ -27,7 +27,6 @@ from typing import Awaitable, Dict, Any, Callable
 
 
 class OrchestratorV8:
-
     def __init__(
         self,
         critics: Dict[str, Callable[[Any], Awaitable[Dict[str, Any]]]],
@@ -48,10 +47,7 @@ class OrchestratorV8:
             "value": None,
             "score": 0,
             "violation": False,
-            "details": {
-                "error": error,
-                "critic_failed": True
-            }
+            "details": {"error": error, "critic_failed": True},
         }
 
     # ---------------------------------------------------------------
@@ -67,10 +63,7 @@ class OrchestratorV8:
         Executes a critic with timeout and error handling.
         """
         try:
-            result = await asyncio.wait_for(
-                critic_fn(input_snapshot),
-                timeout=self.timeout
-            )
+            result = await asyncio.wait_for(critic_fn(input_snapshot), timeout=self.timeout)
             return result
 
         except Exception as e:
@@ -103,8 +96,7 @@ class OrchestratorV8:
                 # Should never hit here because _run_critic handles errors,
                 # but we defensively guard the pipeline.
                 critic_outputs[name] = self._critic_failure_template(
-                    name,
-                    f"Unhandled orchestrator exception: {str(e)}"
+                    name, f"Unhandled orchestrator exception: {str(e)}"
                 )
 
         return critic_outputs

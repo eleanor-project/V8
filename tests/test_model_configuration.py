@@ -11,6 +11,7 @@ from engine.critics.rights import RightsCriticV8
 
 class MockModel:
     """Mock model for testing."""
+
     def __init__(self, name="mock"):
         self.name = name
 
@@ -277,11 +278,7 @@ class TestIntegration:
         # Note: evaluate() requires a model that has generate()
         # In real use, this would be a proper LLM model instance
         try:
-            await critic.evaluate(
-                model=mock_model,
-                input_text="test input",
-                context={}
-            )
+            await critic.evaluate(model=mock_model, input_text="test input", context={})
             # If it doesn't crash, the hybrid approach works
             assert True
         except Exception as e:

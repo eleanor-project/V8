@@ -11,6 +11,7 @@ def get_app_without_startup():
     during lightweight smoke tests.
     """
     import os
+
     os.environ.setdefault("AUTH_ENABLED", "false")
     os.environ.setdefault("ELEANOR_SKIP_READINESS", "true")
     # Stub optional heavy deps to avoid import errors

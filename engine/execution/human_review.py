@@ -23,14 +23,13 @@ TIER_2_ACK_STATEMENT = (
     "I acknowledge the identified constitutional risks and accept responsibility for proceeding."
 )
 
-TIER_3_DETERMINATION_STATEMENT = (
-    "I affirmatively determine the appropriate course of action in light of the identified constitutional risks."
-)
+TIER_3_DETERMINATION_STATEMENT = "I affirmatively determine the appropriate course of action in light of the identified constitutional risks."
 
 
 # ---------------------------------------------------------
 # Human Review Enforcement
 # ---------------------------------------------------------
+
 
 def enforce_human_review(
     *,
@@ -100,6 +99,7 @@ def enforce_human_review(
 # Validation Logic
 # ---------------------------------------------------------
 
+
 def _validate_human_action(
     *,
     required_action: HumanActionType,
@@ -121,15 +121,11 @@ def _validate_human_action(
     # Statement enforcement
     if escalation_tier == EscalationTier.TIER_2:
         if human_action.statement.strip() != TIER_2_ACK_STATEMENT:
-            raise ValueError(
-                "Invalid acknowledgment statement for Tier 2 escalation."
-            )
+            raise ValueError("Invalid acknowledgment statement for Tier 2 escalation.")
 
     if escalation_tier == EscalationTier.TIER_3:
         if human_action.statement.strip() != TIER_3_DETERMINATION_STATEMENT:
-            raise ValueError(
-                "Invalid determination statement for Tier 3 escalation."
-            )
+            raise ValueError("Invalid determination statement for Tier 3 escalation.")
 
     # Ensure linkage to escalation signals
     required_ids = {
@@ -137,20 +133,16 @@ def _validate_human_action(
         for s in aggregation_result.escalation_summary.triggering_signals
     }
 
-    provided_ids = {
-        f"{s.critic_id}:{s.clause_id}"
-        for s in human_action.linked_escalations
-    }
+    provided_ids = {f"{s.critic_id}:{s.clause_id}" for s in human_action.linked_escalations}
 
     if required_ids - provided_ids:
-        raise ValueError(
-            "Human action does not reference all triggering escalation signals."
-        )
+        raise ValueError("Human action does not reference all triggering escalation signals.")
 
 
 # ---------------------------------------------------------
 # Blocking Helper
 # ---------------------------------------------------------
+
 
 def _blocked_decision(
     aggregation_result: AggregationResult,
@@ -171,6 +163,7 @@ def _blocked_decision(
 # ---------------------------------------------------------
 # Audit Record Creation (Immutable)
 # ---------------------------------------------------------
+
 
 def _create_audit_record(
     *,

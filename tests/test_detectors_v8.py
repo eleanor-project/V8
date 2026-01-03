@@ -14,11 +14,12 @@ import pytest
 # Hallucination Detector Tests
 # ============================================================
 
-class TestHallucinationDetector:
 
+class TestHallucinationDetector:
     @pytest.fixture
     def detector(self):
         from engine.detectors.hallucination.detector import HallucinationDetector
+
         return HallucinationDetector()
 
     @pytest.mark.asyncio
@@ -105,11 +106,12 @@ class TestHallucinationDetector:
 # Discrimination Detector Tests
 # ============================================================
 
-class TestDiscriminationDetector:
 
+class TestDiscriminationDetector:
     @pytest.fixture
     def detector(self):
         from engine.detectors.discrimination.detector import DiscriminationDetector
+
         return DiscriminationDetector()
 
     @pytest.mark.asyncio
@@ -185,11 +187,12 @@ class TestDiscriminationDetector:
 # Coercion Detector Tests
 # ============================================================
 
-class TestCoercionDetector:
 
+class TestCoercionDetector:
     @pytest.fixture
     def detector(self):
         from engine.detectors.coercion.detector import CoercionDetector
+
         return CoercionDetector()
 
     @pytest.mark.asyncio
@@ -239,7 +242,9 @@ class TestCoercionDetector:
 
         assert result is not None
         # Should detect pressure language
-        assert result.metadata["risk_score"] > 0.3 or "pressure" in result.metadata.get("categories", [])
+        assert result.metadata["risk_score"] > 0.3 or "pressure" in result.metadata.get(
+            "categories", []
+        )
 
     @pytest.mark.asyncio
     async def test_autonomy_denial(self, detector):
@@ -283,6 +288,7 @@ class TestCoercionDetector:
 # ============================================================
 # Detector Integration Tests
 # ============================================================
+
 
 class TestDetectorIntegration:
     """Tests for detector output format consistency."""

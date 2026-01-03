@@ -14,13 +14,14 @@ from engine.router.adapters import (
     GPTAdapter,
     ClaudeAdapter,
     GrokAdapter,
-    OllamaAdapter
+    OllamaAdapter,
 )
 
 
 # ============================================================
 # BaseLLMAdapter Tests
 # ============================================================
+
 
 def test_base_adapter_not_implemented():
     """Test that BaseLLMAdapter raises NotImplementedError."""
@@ -32,6 +33,7 @@ def test_base_adapter_not_implemented():
 
 def test_base_adapter_subclass_implementation():
     """Test that subclasses can implement __call__."""
+
     class MyAdapter(BaseLLMAdapter):
         def __call__(self, prompt: str) -> str:
             return f"Response to: {prompt}"
@@ -45,6 +47,7 @@ def test_base_adapter_subclass_implementation():
 # ============================================================
 # AdapterRegistry Tests
 # ============================================================
+
 
 def test_adapter_registry_creation():
     """Test creating an empty adapter registry."""
@@ -119,16 +122,17 @@ def test_adapter_registry_list():
 # GPTAdapter Tests
 # ============================================================
 
+
 def test_gpt_adapter_import_error():
     """Test GPTAdapter raises ImportError when OpenAI not installed."""
-    with patch('engine.router.adapters.OpenAIClient', None):
+    with patch("engine.router.adapters.OpenAIClient", None):
         with pytest.raises(ImportError) as exc_info:
             GPTAdapter()
 
         assert "OpenAI SDK not installed" in str(exc_info.value)
 
 
-@patch('engine.router.adapters.OpenAIClient')
+@patch("engine.router.adapters.OpenAIClient")
 def test_gpt_adapter_initialization(mock_openai_client):
     """Test GPTAdapter initialization."""
     adapter = GPTAdapter(model="gpt-4", api_key="test_key")
@@ -137,7 +141,7 @@ def test_gpt_adapter_initialization(mock_openai_client):
     mock_openai_client.assert_called_once_with(api_key="test_key")
 
 
-@patch('engine.router.adapters.OpenAIClient')
+@patch("engine.router.adapters.OpenAIClient")
 def test_gpt_adapter_call(mock_openai_client):
     """Test GPTAdapter __call__ method."""
     # Setup mock
@@ -163,16 +167,17 @@ def test_gpt_adapter_call(mock_openai_client):
 # ClaudeAdapter Tests
 # ============================================================
 
+
 def test_claude_adapter_import_error():
     """Test ClaudeAdapter raises ImportError when anthropic not installed."""
-    with patch('engine.router.adapters.anthropic', None):
+    with patch("engine.router.adapters.anthropic", None):
         with pytest.raises(ImportError) as exc_info:
             ClaudeAdapter()
 
         assert "Anthropic SDK not installed" in str(exc_info.value)
 
 
-@patch('engine.router.adapters.anthropic')
+@patch("engine.router.adapters.anthropic")
 def test_claude_adapter_initialization(mock_anthropic):
     """Test ClaudeAdapter initialization."""
     adapter = ClaudeAdapter(model="claude-3-opus", api_key="test_key")
@@ -181,7 +186,7 @@ def test_claude_adapter_initialization(mock_anthropic):
     mock_anthropic.Anthropic.assert_called_once_with(api_key="test_key")
 
 
-@patch('engine.router.adapters.anthropic')
+@patch("engine.router.adapters.anthropic")
 def test_claude_adapter_call(mock_anthropic):
     """Test ClaudeAdapter __call__ method."""
     # Setup mock
@@ -207,6 +212,7 @@ def test_claude_adapter_call(mock_anthropic):
 # GrokAdapter Tests
 # ============================================================
 
+
 def test_grok_adapter_initialization():
     """Test GrokAdapter initialization."""
     adapter = GrokAdapter(model="grok-beta", api_key="test_key")
@@ -215,15 +221,13 @@ def test_grok_adapter_initialization():
     assert adapter.api_key == "test_key"
 
 
-@patch('engine.router.adapters.httpx.AsyncClient')
+@patch("engine.router.adapters.httpx.AsyncClient")
 @pytest.mark.asyncio
 async def test_grok_adapter_call(mock_post):
     """Test GrokAdapter __call__ method."""
     # Setup mock
     mock_response = Mock()
-    mock_response.json.return_value = {
-        "choices": [{"message": {"content": "Grok response"}}]
-    }
+    mock_response.json.return_value = {"choices": [{"message": {"content": "Grok response"}}]}
     mock_client = AsyncMock()
     mock_client.__aenter__.return_value = mock_client
     mock_client.post = AsyncMock(return_value=mock_response)
@@ -243,6 +247,7 @@ async def test_grok_adapter_call(mock_post):
 # OllamaAdapter Tests
 # ============================================================
 
+
 def test_ollama_adapter_initialization():
     """Test OllamaAdapter initialization."""
     adapter = OllamaAdapter(model="llama3")
@@ -250,15 +255,13 @@ def test_ollama_adapter_initialization():
     assert adapter.model == "llama3"
 
 
-@patch('engine.router.adapters.httpx.AsyncClient')
+@patch("engine.router.adapters.httpx.AsyncClient")
 @pytest.mark.asyncio
 async def test_ollama_adapter_call(mock_post):
     """Test OllamaAdapter __call__ method."""
     # Setup mock
     mock_response = Mock()
-    mock_response.json.return_value = {
-        "response": "Ollama response"
-    }
+    mock_response.json.return_value = {"response": "Ollama response"}
     mock_client = AsyncMock()
     mock_client.__aenter__.return_value = mock_client
     mock_client.post = AsyncMock(return_value=mock_response)
@@ -275,7 +278,7 @@ async def test_ollama_adapter_call(mock_post):
     assert call_args[1]["json"]["prompt"] == "Hello Ollama"
 
 
-@patch('engine.router.adapters.httpx.AsyncClient')
+@patch("engine.router.adapters.httpx.AsyncClient")
 @pytest.mark.asyncio
 async def test_ollama_adapter_call_empty_response(mock_post):
     """Test OllamaAdapter handles missing response field."""
@@ -298,13 +301,12 @@ async def test_ollama_adapter_call_empty_response(mock_post):
 # bootstrap_default_registry Tests
 # ============================================================
 
+
 def test_bootstrap_registry_empty():
     """Test bootstrapping registry with no keys."""
-    with patch('engine.router.adapters.OpenAIClient', None), \
-         patch('engine.router.adapters.anthropic', None), \
-         patch('engine.router.adapters.AutoTokenizer', None), \
-         patch('os.getenv', return_value=None):
-
+    with patch("engine.router.adapters.OpenAIClient", None), patch(
+        "engine.router.adapters.anthropic", None
+    ), patch("engine.router.adapters.AutoTokenizer", None), patch("os.getenv", return_value=None):
         registry = bootstrap_default_registry()
         adapters = registry.list()
 
@@ -312,26 +314,24 @@ def test_bootstrap_registry_empty():
         assert "ollama" in adapters
 
 
-@patch('engine.router.adapters.OpenAIClient')
+@patch("engine.router.adapters.OpenAIClient")
 def test_bootstrap_registry_with_openai(mock_openai):
     """Test bootstrapping registry with OpenAI key."""
-    with patch('engine.router.adapters.anthropic', None), \
-         patch('engine.router.adapters.AutoTokenizer', None), \
-         patch('os.getenv', return_value=None):
-
+    with patch("engine.router.adapters.anthropic", None), patch(
+        "engine.router.adapters.AutoTokenizer", None
+    ), patch("os.getenv", return_value=None):
         registry = bootstrap_default_registry(openai_key="test_key")
         adapters = registry.list()
 
         assert "gpt" in adapters
 
 
-@patch('engine.router.adapters.anthropic')
+@patch("engine.router.adapters.anthropic")
 def test_bootstrap_registry_with_anthropic(mock_anthropic):
     """Test bootstrapping registry with Anthropic key."""
-    with patch('engine.router.adapters.OpenAIClient', None), \
-         patch('engine.router.adapters.AutoTokenizer', None), \
-         patch('os.getenv', return_value=None):
-
+    with patch("engine.router.adapters.OpenAIClient", None), patch(
+        "engine.router.adapters.AutoTokenizer", None
+    ), patch("os.getenv", return_value=None):
         registry = bootstrap_default_registry(anthropic_key="test_key")
         adapters = registry.list()
 
@@ -340,11 +340,9 @@ def test_bootstrap_registry_with_anthropic(mock_anthropic):
 
 def test_bootstrap_registry_with_xai_key():
     """Test bootstrapping registry with xAI key."""
-    with patch('engine.router.adapters.OpenAIClient', None), \
-         patch('engine.router.adapters.anthropic', None), \
-         patch('engine.router.adapters.AutoTokenizer', None), \
-         patch('os.getenv', return_value=None):
-
+    with patch("engine.router.adapters.OpenAIClient", None), patch(
+        "engine.router.adapters.anthropic", None
+    ), patch("engine.router.adapters.AutoTokenizer", None), patch("os.getenv", return_value=None):
         registry = bootstrap_default_registry(xai_key="test_key")
         adapters = registry.list()
 
@@ -353,10 +351,9 @@ def test_bootstrap_registry_with_xai_key():
 
 def test_bootstrap_registry_ollama_env_single():
     """Test bootstrapping with OLLAMA_MODEL environment variable."""
-    with patch('engine.router.adapters.OpenAIClient', None), \
-         patch('engine.router.adapters.anthropic', None), \
-         patch('engine.router.adapters.AutoTokenizer', None), \
-         patch('os.getenv') as mock_getenv:
+    with patch("engine.router.adapters.OpenAIClient", None), patch(
+        "engine.router.adapters.anthropic", None
+    ), patch("engine.router.adapters.AutoTokenizer", None), patch("os.getenv") as mock_getenv:
 
         def getenv_side_effect(key, default=None):
             if key == "OLLAMA_MODEL":
@@ -374,10 +371,9 @@ def test_bootstrap_registry_ollama_env_single():
 
 def test_bootstrap_registry_ollama_env_multiple():
     """Test bootstrapping with OLLAMA_MODELS environment variable."""
-    with patch('engine.router.adapters.OpenAIClient', None), \
-         patch('engine.router.adapters.anthropic', None), \
-         patch('engine.router.adapters.AutoTokenizer', None), \
-         patch('os.getenv') as mock_getenv:
+    with patch("engine.router.adapters.OpenAIClient", None), patch(
+        "engine.router.adapters.anthropic", None
+    ), patch("engine.router.adapters.AutoTokenizer", None), patch("os.getenv") as mock_getenv:
 
         def getenv_side_effect(key, default=None):
             if key == "OLLAMA_MODELS":
@@ -393,13 +389,13 @@ def test_bootstrap_registry_ollama_env_multiple():
         assert len(adapters) >= 2  # At least some ollama models
 
 
-@patch('engine.router.adapters.AutoTokenizer')
-@patch('engine.router.adapters.AutoModelForCausalLM')
+@patch("engine.router.adapters.AutoTokenizer")
+@patch("engine.router.adapters.AutoModelForCausalLM")
 def test_bootstrap_registry_hf_models(mock_model, mock_tokenizer):
     """Test bootstrapping with HuggingFace models."""
-    with patch('engine.router.adapters.OpenAIClient', None), \
-         patch('engine.router.adapters.anthropic', None), \
-         patch('os.getenv') as mock_getenv:
+    with patch("engine.router.adapters.OpenAIClient", None), patch(
+        "engine.router.adapters.anthropic", None
+    ), patch("os.getenv") as mock_getenv:
 
         def getenv_side_effect(key, default=None):
             if key == "HF_MODELS":
@@ -421,16 +417,15 @@ def test_bootstrap_registry_hf_models(mock_model, mock_tokenizer):
             pass
 
 
-@patch('engine.router.adapters.OpenAIClient')
+@patch("engine.router.adapters.OpenAIClient")
 def test_bootstrap_registry_handles_registration_errors(mock_openai):
     """Test that registration errors are handled gracefully."""
     # Make GPT adapter raise exception during registration
     mock_openai.side_effect = Exception("API Error")
 
-    with patch('engine.router.adapters.anthropic', None), \
-         patch('engine.router.adapters.AutoTokenizer', None), \
-         patch('os.getenv', return_value=None):
-
+    with patch("engine.router.adapters.anthropic", None), patch(
+        "engine.router.adapters.AutoTokenizer", None
+    ), patch("os.getenv", return_value=None):
         # Should not raise, should handle error gracefully
         registry = bootstrap_default_registry(openai_key="test_key")
 

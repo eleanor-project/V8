@@ -82,7 +82,7 @@ class ConfigurationError(EleanorV8Exception):
 
 class EvidenceRecordingError(EleanorV8Exception):
     """Raised when evidence recording fails critically.
-    
+
     This is distinct from best-effort logging failures.
     Used when evidence recording is required for compliance.
     """

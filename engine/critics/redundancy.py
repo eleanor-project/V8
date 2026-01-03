@@ -80,13 +80,11 @@ class RedundancyEngine:
             "audit_report": self._generate_audit_report(
                 intra_critic_deduplication, cross_critic_preservation
             ),
-            "constitutional_compliance": "PASS - Cross-critic dissent preserved verbatim"
+            "constitutional_compliance": "PASS - Cross-critic dissent preserved verbatim",
         }
 
     def _deduplicate_within_critic(
-        self,
-        critic_name: str,
-        evaluation: Dict[str, Any]
+        self, critic_name: str, evaluation: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         Deduplicate violations within a single critic's output.
@@ -99,10 +97,7 @@ class RedundancyEngine:
         if not violations:
             return {
                 "cleaned_output": evaluation,
-                "deduplication_log": {
-                    "duplicates_removed": 0,
-                    "details": []
-                }
+                "deduplication_log": {"duplicates_removed": 0, "details": []},
             }
 
         # Track unique violations
@@ -119,10 +114,9 @@ class RedundancyEngine:
                 unique_violations.append(violation)
                 seen_hashes.add(violation_hash)
             else:
-                duplicates_found.append({
-                    "violation": str(violation)[:100],
-                    "reason": "Duplicate within same critic"
-                })
+                duplicates_found.append(
+                    {"violation": str(violation)[:100], "reason": "Duplicate within same critic"}
+                )
 
         # Build cleaned output
         cleaned_output = {
@@ -131,16 +125,16 @@ class RedundancyEngine:
             "deduplication_metadata": {
                 "original_count": len(violations),
                 "deduplicated_count": len(unique_violations),
-                "duplicates_removed": len(violations) - len(unique_violations)
-            }
+                "duplicates_removed": len(violations) - len(unique_violations),
+            },
         }
 
         return {
             "cleaned_output": cleaned_output,
             "deduplication_log": {
                 "duplicates_removed": len(duplicates_found),
-                "details": duplicates_found
-            }
+                "details": duplicates_found,
+            },
         }
 
     def _normalize_violation(self, violation: Any) -> str:
@@ -171,7 +165,7 @@ class RedundancyEngine:
         critic_names = list(critics.keys())
 
         for i, critic1_name in enumerate(critic_names):
-            for critic2_name in critic_names[i+1:]:
+            for critic2_name in critic_names[i + 1 :]:
                 critic1 = critics[critic1_name]
                 critic2 = critics[critic2_name]
 
@@ -187,20 +181,22 @@ class RedundancyEngine:
                 shared_keywords = [kw for kw in overlap_keywords if kw in text1 and kw in text2]
 
                 if shared_keywords:
-                    preservation_log.append({
-                        "critics": [critic1_name, critic2_name],
-                        "shared_concerns": shared_keywords,
-                        "status": "PRESERVED - Both critic signals maintained verbatim",
-                        "constitutional_principle": "Dissent preservation (Handbook Section 4)",
-                        "note": "Overlap may be intentional per Handbook Section 5"
-                    })
+                    preservation_log.append(
+                        {
+                            "critics": [critic1_name, critic2_name],
+                            "shared_concerns": shared_keywords,
+                            "status": "PRESERVED - Both critic signals maintained verbatim",
+                            "constitutional_principle": "Dissent preservation (Handbook Section 4)",
+                            "note": "Overlap may be intentional per Handbook Section 5",
+                        }
+                    )
 
         return preservation_log
 
     def _generate_audit_report(
         self,
         intra_critic_deduplication: Dict[str, Dict[str, Any]],
-        cross_critic_preservation: List[Dict[str, Any]]
+        cross_critic_preservation: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Generate audit report for transparency."""
 
@@ -209,7 +205,8 @@ class RedundancyEngine:
         )
 
         critics_with_duplicates = [
-            name for name, log in intra_critic_deduplication.items()
+            name
+            for name, log in intra_critic_deduplication.items()
             if log["duplicates_removed"] > 0
         ]
 
@@ -220,10 +217,10 @@ class RedundancyEngine:
             "constitutional_compliance": {
                 "dissent_preservation": "ENFORCED",
                 "cross_critic_consolidation": "PROHIBITED",
-                "intra_critic_deduplication": "ALLOWED"
+                "intra_critic_deduplication": "ALLOWED",
             },
             "handbook_reference": "Constitutional Critics & Escalation Governance Handbook v8.1, Section 4",
-            "audit_note": "All cross-critic signals preserved verbatim per constitutional requirements"
+            "audit_note": "All cross-critic signals preserved verbatim per constitutional requirements",
         }
 
 
@@ -231,9 +228,9 @@ class RedundancyEngine:
 # CONSTITUTIONAL COMPLIANCE VALIDATOR
 # ============================================================
 
+
 def validate_no_cross_critic_suppression(
-    original_critics: Dict[str, Dict[str, Any]],
-    processed_critics: Dict[str, Dict[str, Any]]
+    original_critics: Dict[str, Dict[str, Any]], processed_critics: Dict[str, Dict[str, Any]]
 ) -> Dict[str, Any]:
     """
     Validate that no cross-critic dissent was suppressed.
@@ -248,12 +245,14 @@ def validate_no_cross_critic_suppression(
 
     for critic_name in original_critics.keys():
         if critic_name not in processed_critics:
-            violations.append({
-                "type": "critic_removed",
-                "critic": critic_name,
-                "severity": "CRITICAL",
-                "description": f"Critic '{critic_name}' was removed entirely"
-            })
+            violations.append(
+                {
+                    "type": "critic_removed",
+                    "critic": critic_name,
+                    "severity": "CRITICAL",
+                    "description": f"Critic '{critic_name}' was removed entirely",
+                }
+            )
             continue
 
         original = original_critics[critic_name]
@@ -264,30 +263,34 @@ def validate_no_cross_critic_suppression(
         processed_escalation = processed.get("escalation")
 
         if original_escalation and not processed_escalation:
-            violations.append({
-                "type": "escalation_suppressed",
-                "critic": critic_name,
-                "severity": "CRITICAL",
-                "description": f"Escalation signal from '{critic_name}' was suppressed"
-            })
+            violations.append(
+                {
+                    "type": "escalation_suppressed",
+                    "critic": critic_name,
+                    "severity": "CRITICAL",
+                    "description": f"Escalation signal from '{critic_name}' was suppressed",
+                }
+            )
 
         # Check severity wasn't reduced (except for intra-critic deduplication metadata)
         original_severity = original.get("severity", 0.0)
         processed_severity = processed.get("severity", 0.0)
 
         if processed_severity < original_severity * 0.99:  # Allow for float rounding
-            violations.append({
-                "type": "severity_reduced",
-                "critic": critic_name,
-                "severity": "HIGH",
-                "description": f"Severity reduced from {original_severity} to {processed_severity}",
-                "note": "Severity reduction across critics violates dissent preservation"
-            })
+            violations.append(
+                {
+                    "type": "severity_reduced",
+                    "critic": critic_name,
+                    "severity": "HIGH",
+                    "description": f"Severity reduced from {original_severity} to {processed_severity}",
+                    "note": "Severity reduction across critics violates dissent preservation",
+                }
+            )
 
     return {
         "compliant": len(violations) == 0,
         "violations": violations,
         "status": "PASS" if len(violations) == 0 else "FAIL",
         "constitutional_principle": "Dissent preservation must be maintained",
-        "handbook_reference": "Section 2.2, Section 4"
+        "handbook_reference": "Section 2.2, Section 4",
     }

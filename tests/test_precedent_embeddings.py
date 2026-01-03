@@ -14,13 +14,14 @@ from engine.precedent.embeddings import (
     ClaudeEmbeddingAdapter,
     GrokEmbeddingAdapter,
     OllamaEmbeddingAdapter,
-    bootstrap_embedding_registry
+    bootstrap_embedding_registry,
 )
 
 
 # ============================================================
 # BaseEmbeddingAdapter Tests
 # ============================================================
+
 
 def test_base_embedding_adapter_not_implemented():
     """Test that BaseEmbeddingAdapter raises NotImplementedError."""
@@ -32,6 +33,7 @@ def test_base_embedding_adapter_not_implemented():
 
 def test_base_embedding_adapter_subclass():
     """Test that subclasses can implement embed."""
+
     class TestAdapter(BaseEmbeddingAdapter):
         def embed(self, text: str):
             return [0.1, 0.2, 0.3]
@@ -45,6 +47,7 @@ def test_base_embedding_adapter_subclass():
 # ============================================================
 # EmbeddingRegistry Tests
 # ============================================================
+
 
 def test_embedding_registry_creation():
     """Test creating an empty embedding registry."""
@@ -117,16 +120,17 @@ def test_embedding_registry_list():
 # GPTEmbeddingAdapter Tests
 # ============================================================
 
+
 def test_gpt_embedding_adapter_import_error():
     """Test GPTEmbeddingAdapter raises ImportError when OpenAI not installed."""
-    with patch('engine.precedent.embeddings.OpenAIClient', None):
+    with patch("engine.precedent.embeddings.OpenAIClient", None):
         with pytest.raises(ImportError) as exc_info:
             GPTEmbeddingAdapter()
 
         assert "OpenAI SDK not installed" in str(exc_info.value)
 
 
-@patch('engine.precedent.embeddings.OpenAIClient')
+@patch("engine.precedent.embeddings.OpenAIClient")
 def test_gpt_embedding_adapter_initialization(mock_openai):
     """Test GPTEmbeddingAdapter initialization."""
     adapter = GPTEmbeddingAdapter(model="text-embedding-3-large", api_key="test_key")
@@ -135,7 +139,7 @@ def test_gpt_embedding_adapter_initialization(mock_openai):
     mock_openai.assert_called_once_with(api_key="test_key")
 
 
-@patch('engine.precedent.embeddings.OpenAIClient')
+@patch("engine.precedent.embeddings.OpenAIClient")
 def test_gpt_embedding_adapter_embed(mock_openai):
     """Test GPTEmbeddingAdapter embed method."""
     # Setup mock
@@ -161,6 +165,7 @@ def test_gpt_embedding_adapter_embed(mock_openai):
 # GrokEmbeddingAdapter Tests
 # ============================================================
 
+
 def test_grok_embedding_adapter_initialization():
     """Test GrokEmbeddingAdapter initialization."""
     adapter = GrokEmbeddingAdapter(model="grok-embed", api_key="test_key")
@@ -169,14 +174,12 @@ def test_grok_embedding_adapter_initialization():
     assert adapter.api_key == "test_key"
 
 
-@patch('engine.precedent.embeddings.requests.post')
+@patch("engine.precedent.embeddings.requests.post")
 def test_grok_embedding_adapter_embed(mock_post):
     """Test GrokEmbeddingAdapter embed method."""
     # Setup mock
     mock_response = Mock()
-    mock_response.json.return_value = {
-        "data": [{"embedding": [0.1, 0.2, 0.3]}]
-    }
+    mock_response.json.return_value = {"data": [{"embedding": [0.1, 0.2, 0.3]}]}
     mock_post.return_value = mock_response
 
     # Test
@@ -191,6 +194,7 @@ def test_grok_embedding_adapter_embed(mock_post):
 # OllamaEmbeddingAdapter Tests
 # ============================================================
 
+
 def test_ollama_embedding_adapter_initialization():
     """Test OllamaEmbeddingAdapter initialization."""
     adapter = OllamaEmbeddingAdapter(model="llama3")
@@ -198,14 +202,12 @@ def test_ollama_embedding_adapter_initialization():
     assert adapter.model == "llama3"
 
 
-@patch('engine.precedent.embeddings.requests.post')
+@patch("engine.precedent.embeddings.requests.post")
 def test_ollama_embedding_adapter_embed(mock_post):
     """Test OllamaEmbeddingAdapter embed method."""
     # Setup mock
     mock_response = Mock()
-    mock_response.json.return_value = {
-        "embedding": [0.5, 0.6, 0.7, 0.8]
-    }
+    mock_response.json.return_value = {"embedding": [0.5, 0.6, 0.7, 0.8]}
     mock_post.return_value = mock_response
 
     # Test
@@ -222,22 +224,20 @@ def test_ollama_embedding_adapter_embed(mock_post):
 # ClaudeEmbeddingAdapter Tests
 # ============================================================
 
-@patch('engine.precedent.embeddings.os.getenv')
+
+@patch("engine.precedent.embeddings.os.getenv")
 def test_claude_embedding_adapter_initialization(mock_getenv):
     """Test ClaudeEmbeddingAdapter initialization."""
     mock_getenv.return_value = None
 
-    with patch('builtins.__import__', side_effect=ImportError):
-        adapter = ClaudeEmbeddingAdapter(
-            api_key="test_key",
-            fallback_to_local=False
-        )
+    with patch("builtins.__import__", side_effect=ImportError):
+        adapter = ClaudeEmbeddingAdapter(api_key="test_key", fallback_to_local=False)
 
         assert adapter.model == "voyage-large-2"
         assert adapter.api_key == "test_key"
 
 
-@patch('engine.precedent.embeddings.os.getenv')
+@patch("engine.precedent.embeddings.os.getenv")
 def test_claude_embedding_adapter_voyage_success(mock_getenv):
     """Test ClaudeEmbeddingAdapter with Voyage AI."""
     mock_getenv.return_value = None
@@ -248,9 +248,10 @@ def test_claude_embedding_adapter_voyage_success(mock_getenv):
     mock_result.embeddings = [[0.1, 0.2, 0.3]]
     mock_voyage_client.embed.return_value = mock_result
 
-    with patch('builtins.__import__') as mock_import:
+    with patch("builtins.__import__") as mock_import:
+
         def import_side_effect(name, *args, **kwargs):
-            if name == 'voyageai':
+            if name == "voyageai":
                 mock_voyageai = Mock()
                 mock_voyageai.Client.return_value = mock_voyage_client
                 return mock_voyageai
@@ -270,9 +271,10 @@ def test_claude_embedding_adapter_voyage_success(mock_getenv):
 # bootstrap_embedding_registry Tests
 # ============================================================
 
+
 def test_bootstrap_embedding_registry_empty():
     """Test bootstrapping embedding registry with no keys."""
-    with patch('engine.precedent.embeddings.SentenceTransformer', None):
+    with patch("engine.precedent.embeddings.SentenceTransformer", None):
         registry = bootstrap_embedding_registry()
         adapters = registry.list()
 
@@ -280,10 +282,10 @@ def test_bootstrap_embedding_registry_empty():
         assert "ollama" in adapters
 
 
-@patch('engine.precedent.embeddings.OpenAIClient')
+@patch("engine.precedent.embeddings.OpenAIClient")
 def test_bootstrap_embedding_registry_with_openai(mock_openai):
     """Test bootstrapping with OpenAI key."""
-    with patch('engine.precedent.embeddings.SentenceTransformer', None):
+    with patch("engine.precedent.embeddings.SentenceTransformer", None):
         registry = bootstrap_embedding_registry(openai_key="test_key")
         adapters = registry.list()
 
@@ -292,14 +294,14 @@ def test_bootstrap_embedding_registry_with_openai(mock_openai):
 
 def test_bootstrap_embedding_registry_with_xai():
     """Test bootstrapping with xAI key."""
-    with patch('engine.precedent.embeddings.SentenceTransformer', None):
+    with patch("engine.precedent.embeddings.SentenceTransformer", None):
         registry = bootstrap_embedding_registry(xai_key="test_key")
         adapters = registry.list()
 
         assert "grok" in adapters
 
 
-@patch('engine.precedent.embeddings.SentenceTransformer')
+@patch("engine.precedent.embeddings.SentenceTransformer")
 def test_bootstrap_embedding_registry_with_hf(mock_st):
     """Test bootstrapping with HuggingFace."""
     registry = bootstrap_embedding_registry()
@@ -311,13 +313,11 @@ def test_bootstrap_embedding_registry_with_hf(mock_st):
 
 def test_bootstrap_embedding_registry_all_keys():
     """Test bootstrapping with all API keys."""
-    with patch('engine.precedent.embeddings.OpenAIClient'), \
-         patch('engine.precedent.embeddings.SentenceTransformer'):
-
+    with patch("engine.precedent.embeddings.OpenAIClient"), patch(
+        "engine.precedent.embeddings.SentenceTransformer"
+    ):
         registry = bootstrap_embedding_registry(
-            openai_key="openai_key",
-            anthropic_key="anthropic_key",
-            xai_key="xai_key"
+            openai_key="openai_key", anthropic_key="anthropic_key", xai_key="xai_key"
         )
         adapters = registry.list()
 

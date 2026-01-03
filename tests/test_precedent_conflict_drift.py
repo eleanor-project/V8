@@ -13,13 +13,13 @@ from engine.precedent.drift import PrecedentDriftV8
 # Precedent Conflict Tests
 # ============================================================
 
+
 def test_conflict_no_conflict_when_no_precedent():
     """Test that no conflict is detected when there's no precedent."""
     detector = PrecedentConflictV8()
 
     result = detector.detect(
-        precedent_case=None,
-        deliberation_state={"values_violated": ["privacy", "autonomy"]}
+        precedent_case=None, deliberation_state={"values_violated": ["privacy", "autonomy"]}
     )
 
     assert result["conflict_detected"] is False
@@ -32,12 +32,12 @@ def test_conflict_no_conflict_when_identical():
 
     precedent = {
         "violated_values": ["privacy"],
-        "priority_order": ["dignity", "autonomy", "privacy"]
+        "priority_order": ["dignity", "autonomy", "privacy"],
     }
 
     deliberation = {
         "values_violated": ["privacy"],
-        "constitutional_priority_order": ["dignity", "autonomy", "privacy"]
+        "constitutional_priority_order": ["dignity", "autonomy", "privacy"],
     }
 
     result = detector.detect(precedent, deliberation)
@@ -50,14 +50,11 @@ def test_conflict_newly_violated_values():
     """Test detection of newly violated values."""
     detector = PrecedentConflictV8()
 
-    precedent = {
-        "violated_values": ["privacy"],
-        "priority_order": ["dignity", "autonomy"]
-    }
+    precedent = {"violated_values": ["privacy"], "priority_order": ["dignity", "autonomy"]}
 
     deliberation = {
         "values_violated": ["privacy", "autonomy"],  # autonomy is newly violated
-        "constitutional_priority_order": ["dignity", "autonomy"]
+        "constitutional_priority_order": ["dignity", "autonomy"],
     }
 
     result = detector.detect(precedent, deliberation)
@@ -72,14 +69,11 @@ def test_conflict_reversed_violations():
     """Test detection of reversed violations."""
     detector = PrecedentConflictV8()
 
-    precedent = {
-        "violated_values": ["privacy", "autonomy"],
-        "priority_order": ["dignity"]
-    }
+    precedent = {"violated_values": ["privacy", "autonomy"], "priority_order": ["dignity"]}
 
     deliberation = {
         "values_violated": ["privacy"],  # autonomy no longer violated
-        "constitutional_priority_order": ["dignity"]
+        "constitutional_priority_order": ["dignity"],
     }
 
     result = detector.detect(precedent, deliberation)
@@ -94,14 +88,11 @@ def test_conflict_priority_mismatch():
     """Test detection of priority hierarchy mismatch."""
     detector = PrecedentConflictV8()
 
-    precedent = {
-        "violated_values": [],
-        "priority_order": ["dignity", "autonomy", "privacy"]
-    }
+    precedent = {"violated_values": [], "priority_order": ["dignity", "autonomy", "privacy"]}
 
     deliberation = {
         "values_violated": [],
-        "constitutional_priority_order": ["autonomy", "dignity", "privacy"]  # Different order
+        "constitutional_priority_order": ["autonomy", "dignity", "privacy"],  # Different order
     }
 
     result = detector.detect(precedent, deliberation)
@@ -115,14 +106,11 @@ def test_conflict_multiple_conflicts():
     """Test detection of multiple types of conflicts simultaneously."""
     detector = PrecedentConflictV8()
 
-    precedent = {
-        "violated_values": ["privacy"],
-        "priority_order": ["dignity", "autonomy"]
-    }
+    precedent = {"violated_values": ["privacy"], "priority_order": ["dignity", "autonomy"]}
 
     deliberation = {
         "values_violated": ["autonomy"],  # Different violations
-        "constitutional_priority_order": ["autonomy", "dignity"]  # Different priority
+        "constitutional_priority_order": ["autonomy", "dignity"],  # Different priority
     }
 
     result = detector.detect(precedent, deliberation)
@@ -134,6 +122,7 @@ def test_conflict_multiple_conflicts():
 # ============================================================
 # Precedent Drift Tests
 # ============================================================
+
 
 def test_drift_empty_scores():
     """Test drift computation with no historical scores."""

@@ -1,5 +1,6 @@
 import pytest
 
+
 @pytest.mark.asyncio
 async def test_uncertainty_engine_optional(engine):
     critic_results = await engine._run_critics_parallel("text", {}, "trace")

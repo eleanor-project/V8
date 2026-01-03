@@ -1,5 +1,6 @@
 import pytest
 
+
 @pytest.mark.asyncio
 async def test_rights_critic_has_priority(engine):
     result = await engine.run("hello", detail_level=3)

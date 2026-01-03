@@ -12,6 +12,7 @@ from engine.schemas.escalation import (
 )
 from engine.schemas.pipeline_types import CriticResult
 
+
 class BaseCriticV8:
     """
     Base class for all ELEANOR V8 critics.
@@ -44,13 +45,7 @@ class BaseCriticV8:
 
     SEVERITY_LEVELS = ["INFO", "WARNING", "VIOLATION", "CRITICAL"]
 
-    def __init__(
-        self,
-        name: str,
-        version: str = "8.0",
-        model=None,
-        registry=None
-    ):
+    def __init__(self, name: str, version: str = "8.0", model=None, registry=None):
         """
         Initialize critic with optional model configuration.
 
@@ -124,7 +119,9 @@ class BaseCriticV8:
             return "VIOLATION"
         return "CRITICAL"
 
-    def build_evidence(self, *, score: float, rationale: str, principle: str, evidence: Dict[str, Any], flags=None):
+    def build_evidence(
+        self, *, score: float, rationale: str, principle: str, evidence: Dict[str, Any], flags=None
+    ):
         return {
             "critic_id": f"{self.name}:{self.version}",
             "timestamp": time.time(),
@@ -134,13 +131,14 @@ class BaseCriticV8:
             "rationale": rationale,
             "evidence": evidence,
             "flags": flags or [],
-            "uuid": str(uuid.uuid4())
+            "uuid": str(uuid.uuid4()),
         }
 
 
 # ============================================================
 # ConstitutionalCritic — structured escalation output
 # ============================================================
+
 
 class ConstitutionalCritic(ABC):
     """

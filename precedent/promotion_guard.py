@@ -26,8 +26,6 @@ def assert_promotion_allowed(case_id: str):
     )[0]
 
     if latest.get("outcome") in ("contested", "rejected"):
-        raise PromotionBlocked(
-            f"Case {case_id} outcome blocks promotion: {latest.get('outcome')}"
-        )
+        raise PromotionBlocked(f"Case {case_id} outcome blocks promotion: {latest.get('outcome')}")
 
     return True

@@ -36,6 +36,7 @@ from engine.utils.critic_names import canonical_critic_name
 
 class ModelTier(Enum):
     """Model performance/cost tiers."""
+
     PREMIUM = "premium"  # Highest accuracy, highest cost (e.g., Opus)
     STANDARD = "standard"  # Balanced (e.g., Sonnet)
     ECONOMY = "economy"  # Fast, cheap (e.g., Haiku)
@@ -44,6 +45,7 @@ class ModelTier(Enum):
 @dataclass
 class ModelConfig:
     """Configuration for a model instance."""
+
     model_id: str
     provider: str  # "anthropic", "openai", etc.
     tier: ModelTier
@@ -96,7 +98,9 @@ class ModelRegistry:
         }
 
         # Routing strategies
-        self.routing_strategy: Optional[Callable[[str, Dict[str, Any], "ModelRegistry"], Optional[str]]] = None
+        self.routing_strategy: Optional[
+            Callable[[str, Dict[str, Any], "ModelRegistry"], Optional[str]]
+        ] = None
 
         # Metrics/monitoring hooks
         self.metrics_callback: Optional[Callable[[str, Dict[str, Any]], None]] = None
@@ -177,9 +181,7 @@ class ModelRegistry:
         self.tier_models[tier] = model_id
 
     def get_model_for_critic(
-        self,
-        critic_name: str,
-        context: Optional[Dict[str, Any]] = None
+        self, critic_name: str, context: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         Get the appropriate model for a critic.
@@ -202,10 +204,7 @@ class ModelRegistry:
 
         # Hook for metrics/monitoring
         if self.metrics_callback:
-            self.metrics_callback("model_request", {
-                "critic": critic_name,
-                "context": context
-            })
+            self.metrics_callback("model_request", {"critic": critic_name, "context": context})
 
         # 1. Custom routing strategy
         if self.routing_strategy:
@@ -246,11 +245,9 @@ class ModelRegistry:
     def _record_assignment(self, critic_name: str, model_id: str, source: str):
         """Record model assignment for observability."""
         if self.metrics_callback:
-            self.metrics_callback("model_assigned", {
-                "critic": critic_name,
-                "model": model_id,
-                "source": source
-            })
+            self.metrics_callback(
+                "model_assigned", {"critic": critic_name, "model": model_id, "source": source}
+            )
 
     @classmethod
     def from_yaml(cls, config_path: str) -> "ModelRegistry":
@@ -281,7 +278,7 @@ class ModelRegistry:
         Returns:
             Configured ModelRegistry instance
         """
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             config = yaml.safe_load(f)
 
         registry = cls(default_model_id=config.get("default_model", "claude-sonnet-4.5"))
@@ -307,13 +304,13 @@ class ModelRegistry:
     @classmethod
     def from_json(cls, config_path: str) -> "ModelRegistry":
         """Load registry configuration from JSON file."""
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             config = json.load(f)
 
         # Convert to YAML format internally (same structure)
         # Save temporarily and use from_yaml
         temp_yaml = Path(config_path).parent / "temp_config.yaml"
-        with open(temp_yaml, 'w') as f:
+        with open(temp_yaml, "w") as f:
             yaml.dump(config, f)
 
         registry = cls.from_yaml(str(temp_yaml))
@@ -327,14 +324,14 @@ class ModelRegistry:
             "default_model": self.default_model_id,
             "critics": {
                 **{name: {"model": model} for name, model in self.critic_models.items()},
-                **{name: {"tier": tier.value} for name, tier in self.critic_tiers.items()}
+                **{name: {"tier": tier.value} for name, tier in self.critic_tiers.items()},
             },
-            "tiers": {tier.value: model for tier, model in self.tier_models.items()}
+            "tiers": {tier.value: model for tier, model in self.tier_models.items()},
         }
 
     def save_yaml(self, config_path: str):
         """Save current configuration to YAML file."""
-        with open(config_path, 'w') as f:
+        with open(config_path, "w") as f:
             yaml.dump(self.to_dict(), f, default_flow_style=False)
 
     def set_routing_strategy(
@@ -414,17 +411,17 @@ class ModelRegistry:
             else:
                 source = "default"
 
-            assignments[critic_name] = {
-                "model": model_id,
-                "source": source
-            }
+            assignments[critic_name] = {"model": model_id, "source": source}
 
         return assignments
 
 
 # Predefined routing strategies
 
-def cost_optimizer_strategy(critic_name: str, context: Dict[str, Any], registry: ModelRegistry) -> Optional[str]:
+
+def cost_optimizer_strategy(
+    critic_name: str, context: Dict[str, Any], registry: ModelRegistry
+) -> Optional[str]:
     """
     Route based on cost optimization.
 
@@ -438,7 +435,9 @@ def cost_optimizer_strategy(critic_name: str, context: Dict[str, Any], registry:
     return registry.tier_models[ModelTier.ECONOMY]
 
 
-def priority_based_strategy(critic_name: str, context: Dict[str, Any], registry: ModelRegistry) -> Optional[str]:
+def priority_based_strategy(
+    critic_name: str, context: Dict[str, Any], registry: ModelRegistry
+) -> Optional[str]:
     """
     Route based on priority context.
 
@@ -454,7 +453,9 @@ def priority_based_strategy(critic_name: str, context: Dict[str, Any], registry:
     return None  # Use default routing
 
 
-def budget_aware_strategy(critic_name: str, context: Dict[str, Any], registry: ModelRegistry) -> Optional[str]:
+def budget_aware_strategy(
+    critic_name: str, context: Dict[str, Any], registry: ModelRegistry
+) -> Optional[str]:
     """
     Route based on budget constraints.
     """
