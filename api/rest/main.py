@@ -1068,7 +1068,7 @@ async def deliberate(
         }
 
         # persist replay record
-        replay_store.save(
+        await replay_store.save_async(
             {
                 "trace_id": response_payload["trace_id"],
                 "input": payload.input,
@@ -1423,7 +1423,7 @@ async def replay_trace(
     """
     Retrieve a stored deliberation and optionally re-run it through the current engine.
     """
-    record = replay_store.get(trace_id)
+    record = await replay_store.get_async(trace_id)
     if record is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Trace ID not found in replay log"
@@ -1498,7 +1498,7 @@ async def replay_trace(
         "replay_of": trace_id,
     }
 
-    replay_store.save(
+    await replay_store.save_async(
         {
             "trace_id": rerun_payload["trace_id"],
             "input": input_text,

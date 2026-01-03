@@ -11,8 +11,12 @@ Provides:
 from engine.security.secrets import (
     SecretsProvider,
     EnvironmentSecretsProvider,
+    EnvironmentSecretProvider,
     AWSSecretsProvider,
     VaultSecretsProvider,
+    build_secret_provider_from_settings,
+    get_llm_api_key,
+    get_llm_api_key_sync,
 )
 from engine.security.sanitizer import SecretsSanitizer
 from engine.security.audit import SecureAuditLogger
@@ -20,8 +24,12 @@ from engine.security.audit import SecureAuditLogger
 __all__ = [
     "SecretsProvider",
     "EnvironmentSecretsProvider",
+    "EnvironmentSecretProvider",
     "AWSSecretsProvider",
     "VaultSecretsProvider",
+    "build_secret_provider_from_settings",
+    "get_llm_api_key",
+    "get_llm_api_key_sync",
     "SecretsSanitizer",
     "SecureAuditLogger",
 ]

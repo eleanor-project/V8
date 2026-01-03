@@ -27,6 +27,8 @@ from typing import Any, Optional, Awaitable, TYPE_CHECKING
 
 import httpx
 
+from engine.utils.http_client import get_async_client
+
 if TYPE_CHECKING:
     from openai import OpenAI as OpenAIClient
 else:
@@ -60,10 +62,10 @@ DEFAULT_HTTP_TIMEOUT = _get_timeout()
 
 async def _post_json(url: str, payload: dict, headers: Optional[dict] = None) -> Any:
     timeout = DEFAULT_HTTP_TIMEOUT
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
-        return resp.json()
+    client = await get_async_client()
+    resp = await client.post(url, headers=headers, json=payload, timeout=timeout)
+    resp.raise_for_status()
+    return resp.json()
 
 
 # ============================================================

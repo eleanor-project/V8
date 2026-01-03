@@ -7,11 +7,12 @@ Provides pluggable secrets providers:
 - VaultSecretsProvider: Production (HashiCorp Vault)
 """
 
+import asyncio
 import logging
 import os
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,10 @@ class SecretsProvider(ABC):
         if secret is None:
             raise ValueError(f"Required secret not found: {key}")
         return secret
+
+    async def refresh_secrets(self) -> None:
+        """Refresh cached secrets (no-op by default)."""
+        return None
 
 
 class EnvironmentSecretsProvider(SecretsProvider):
@@ -77,6 +82,14 @@ class EnvironmentSecretsProvider(SecretsProvider):
             for k in os.environ.keys()
             if k.startswith(self.prefix)
         ]
+
+
+class EnvironmentSecretProvider(EnvironmentSecretsProvider):
+    """Backwards-compatible alias with optional cache_ttl parameter."""
+
+    def __init__(self, prefix: str = "ELEANOR_", cache_ttl: Optional[int] = None):
+        super().__init__(prefix=prefix)
+        self.cache_ttl = cache_ttl
 
 
 class AWSSecretsProvider(SecretsProvider):
@@ -204,6 +217,10 @@ class AWSSecretsProvider(SecretsProvider):
             )
             return []
 
+    async def refresh_secrets(self) -> None:
+        """Clear cached secrets so they are reloaded on next access."""
+        self._cache.clear()
+
 
 class VaultSecretsProvider(SecretsProvider):
     """
@@ -303,3 +320,76 @@ class VaultSecretsProvider(SecretsProvider):
                 exc_info=True,
             )
             return []
+
+
+_LLM_KEY_MAP = {
+    "openai": ("OPENAI_API_KEY", "OPENAI_KEY"),
+    "anthropic": ("ANTHROPIC_API_KEY", "ANTHROPIC_KEY"),
+    "xai": ("XAI_API_KEY", "XAI_KEY"),
+    "grok": ("XAI_API_KEY", "XAI_KEY"),
+}
+
+
+def _candidate_keys(provider: str) -> Iterable[str]:
+    normalized = provider.lower()
+    return _LLM_KEY_MAP.get(normalized, (provider.upper(),))
+
+
+def get_llm_api_key_sync(provider: str, secret_provider: SecretsProvider) -> Optional[str]:
+    """Fetch LLM API key via secret provider with env var fallback."""
+    for key in _candidate_keys(provider):
+        value = secret_provider.get_secret(key)
+        if value:
+            return value
+        fallback = os.getenv(key)
+        if fallback:
+            return fallback
+    return None
+
+
+async def get_llm_api_key(provider: str, secret_provider: SecretsProvider) -> Optional[str]:
+    """Async wrapper for fetching LLM API keys (supports networked providers)."""
+    return await asyncio.to_thread(get_llm_api_key_sync, provider, secret_provider)
+
+
+def build_secret_provider_from_settings(settings: Any) -> SecretsProvider:
+    """Build the configured secret provider from Eleanor settings."""
+    provider = getattr(settings.security, "secret_provider", "env")
+    provider = str(provider).lower()
+    cache_ttl = getattr(settings.security, "secrets_cache_ttl", 300)
+
+    if provider == "aws":
+        aws_cfg = settings.security.aws
+        prefix = getattr(aws_cfg, "secret_prefix", "eleanor/")
+        if prefix and not prefix.endswith("/"):
+            prefix = f"{prefix}/"
+        return AWSSecretsProvider(
+            region_name=getattr(aws_cfg, "region", "us-west-2"),
+            cache_ttl=cache_ttl,
+            prefix=prefix,
+        )
+    if provider == "vault":
+        vault_cfg = settings.security.vault
+        vault_addr = getattr(vault_cfg, "address", None)
+        if not vault_addr:
+            raise ValueError("Vault address required for vault secrets provider")
+        return VaultSecretsProvider(
+            vault_addr=vault_addr,
+            vault_token=getattr(vault_cfg, "token", None),
+            mount_point=getattr(vault_cfg, "mount_path", "secret/eleanor"),
+        )
+    if provider == "env":
+        return EnvironmentSecretProvider(cache_ttl=cache_ttl)
+    raise ValueError(f"Unknown secret_provider: {provider}")
+
+
+__all__ = [
+    "SecretsProvider",
+    "EnvironmentSecretsProvider",
+    "EnvironmentSecretProvider",
+    "AWSSecretsProvider",
+    "VaultSecretsProvider",
+    "build_secret_provider_from_settings",
+    "get_llm_api_key_sync",
+    "get_llm_api_key",
+]

@@ -336,13 +336,16 @@ class TestWeaviatePrecedentStore:
 class TestPGVectorPrecedentStore:
     """Test PGVectorPrecedentStore."""
 
-    def test_initialization_valid_table_name(self):
+    def test_initialization_valid_table_name(self, monkeypatch):
         """Test PGVector store initialization with valid table name."""
         from engine.precedent.stores import PGVectorPrecedentStore
 
-        with patch("engine.precedent.stores.psycopg2.connect") as mock_connect:
+        monkeypatch.delenv("PG_POOL_MIN", raising=False)
+        monkeypatch.delenv("PG_POOL_MAX", raising=False)
+
+        with patch("engine.precedent.stores.ThreadedConnectionPool") as mock_pool:
             mock_conn = Mock()
-            mock_connect.return_value = mock_conn
+            mock_pool.return_value = mock_conn
 
             def embed_fn(text):
                 return [0.1, 0.2]
@@ -350,8 +353,8 @@ class TestPGVectorPrecedentStore:
             store = PGVectorPrecedentStore("dbname=test", table_name="precedent", embed_fn=embed_fn)
 
             assert store.table == "precedent"
-            assert store.conn == mock_conn
-            mock_connect.assert_called_once_with("dbname=test")
+            assert store.pool == mock_conn
+            mock_pool.assert_called_once_with(1, 5, "dbname=test")
 
     def test_initialization_invalid_table_name(self):
         """Test PGVector store rejects invalid table names."""
@@ -426,30 +429,36 @@ class TestPGVectorPrecedentStore:
 
             assert results == []
 
-    def test_context_manager(self):
+    def test_context_manager(self, monkeypatch):
         """Test PGVector store as context manager."""
         from engine.precedent.stores import PGVectorPrecedentStore
 
-        with patch("engine.precedent.stores.psycopg2.connect") as mock_connect:
+        monkeypatch.delenv("PG_POOL_MIN", raising=False)
+        monkeypatch.delenv("PG_POOL_MAX", raising=False)
+
+        with patch("engine.precedent.stores.ThreadedConnectionPool") as mock_pool:
             mock_conn = Mock()
-            mock_connect.return_value = mock_conn
+            mock_pool.return_value = mock_conn
 
             def embed_fn(text):
                 return [0.1]
 
             with PGVectorPrecedentStore("dbname=test", embed_fn=embed_fn) as store:
-                assert store.conn == mock_conn
+                assert store.pool == mock_conn
 
             # Should close connection on exit
-            mock_conn.close.assert_called_once()
+            mock_conn.closeall.assert_called_once()
 
-    def test_close_method(self):
+    def test_close_method(self, monkeypatch):
         """Test PGVector store close method."""
         from engine.precedent.stores import PGVectorPrecedentStore
 
-        with patch("engine.precedent.stores.psycopg2.connect") as mock_connect:
+        monkeypatch.delenv("PG_POOL_MIN", raising=False)
+        monkeypatch.delenv("PG_POOL_MAX", raising=False)
+
+        with patch("engine.precedent.stores.ThreadedConnectionPool") as mock_pool:
             mock_conn = Mock()
-            mock_connect.return_value = mock_conn
+            mock_pool.return_value = mock_conn
 
             def embed_fn(text):
                 return [0.1]
@@ -457,7 +466,7 @@ class TestPGVectorPrecedentStore:
             store = PGVectorPrecedentStore("dbname=test", embed_fn=embed_fn)
             store.close()
 
-            mock_conn.close.assert_called_once()
+            mock_conn.closeall.assert_called_once()
 
 
 # ============================================================
