@@ -113,6 +113,30 @@ def _estimate_embedding_cache_entries(
     return max(1, estimated)
 
 
+def _parse_memory_gb(value: Optional[Any]) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        raw = value.strip().lower()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+        suffixes = {"gb": 1.0, "g": 1.0, "mb": 1.0 / 1024, "m": 1.0 / 1024}
+        for suffix, factor in suffixes.items():
+            if raw.endswith(suffix):
+                number = raw[: -len(suffix)].strip()
+                try:
+                    return float(number) * factor
+                except ValueError:
+                    return None
+    return None
+
+
 def _resolve_dependencies(
     *,
     config: "EngineConfig",
@@ -345,7 +369,7 @@ class EleanorEngineV8:
                     preferred_devices=preferred_devices,
                     mixed_precision=settings.gpu.memory.mixed_precision,
                     num_streams=settings.gpu.async_ops.num_streams,
-                    max_memory_per_gpu=settings.gpu.memory.max_memory_per_gpu,
+                    max_memory_per_gpu=_parse_memory_gb(settings.gpu.memory.max_memory_per_gpu),
                     log_memory_stats=settings.gpu.memory.log_memory_stats,
                     memory_check_interval=settings.gpu.memory.memory_check_interval,
                     default_batch_size=settings.gpu.batching.default_batch_size,
@@ -1044,7 +1068,7 @@ class EleanorEngineV8:
             )
 
         try:
-            return await breaker.call(
+            result = await breaker.call(
                 self._run_single_critic,
                 name,
                 critic_ref,
@@ -1054,6 +1078,7 @@ class EleanorEngineV8:
                 trace_id,
                 evidence_records,
             )
+            return cast(CriticResult, result)
         except CircuitBreakerOpen as exc:
             if self.degradation_enabled:
                 if degraded_components is not None:
@@ -1098,7 +1123,7 @@ class EleanorEngineV8:
                 evidence_records,
             ) in items
         ]
-        return await asyncio.gather(*tasks, return_exceptions=True)
+        return cast(List[Any], await asyncio.gather(*tasks, return_exceptions=True))
 
     async def _run_critics_parallel(
         self,
@@ -1144,7 +1169,7 @@ class EleanorEngineV8:
                 )
                 for name, critic_ref in critic_items
             ]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            results = cast(List[Any], await asyncio.gather(*tasks, return_exceptions=True))
         output: CriticResultsMap = {}
         for (critic_name, _), result in zip(critic_items, results):
             if isinstance(result, CriticEvaluationError):
@@ -1215,7 +1240,7 @@ class EleanorEngineV8:
                         list(critic_results.values()),
                     )
                     if inspect.isawaitable(result):
-                        return await result
+                        return cast(Optional[PrecedentRetrievalResult], await result)
                     return cast(Optional[PrecedentRetrievalResult], result)
 
                 if self.cache_manager:
@@ -1247,13 +1272,16 @@ class EleanorEngineV8:
                         )
                         if inspect.isawaitable(retrieval_meta):
                             retrieval_meta = await retrieval_meta
+                retrieval_meta_dict = cast(PrecedentRetrievalResult, retrieval_meta or {})
                 cases = cast(
                     List[Dict[str, Any]],
-                    retrieval_meta.get("precedent_cases") or retrieval_meta.get("cases") or [],
+                    retrieval_meta_dict.get("precedent_cases")
+                    or retrieval_meta_dict.get("cases")
+                    or [],
                 )
                 query_embedding = cast(
                     List[float],
-                    retrieval_meta.get("query_embedding") or [],
+                    retrieval_meta_dict.get("query_embedding") or [],
                 )
             except Exception as exc:
                 raise PrecedentRetrievalError(
@@ -1586,8 +1614,11 @@ class EleanorEngineV8:
             try:
                 breaker = self._get_circuit_breaker("router")
                 if breaker is not None:
-                    router_data = await breaker.call(
-                        self._select_model, text, context, timings, router_diagnostics
+                    router_data = cast(
+                        Dict[str, Any],
+                        await breaker.call(
+                            self._select_model, text, context, timings, router_diagnostics
+                        ),
                     )
                 else:
                     router_data = await self._select_model(
@@ -1659,12 +1690,15 @@ class EleanorEngineV8:
             try:
                 breaker = self._get_circuit_breaker("precedent")
                 if breaker is not None:
-                    precedent_data = await breaker.call(
-                        self._run_precedent_alignment,
-                        critic_results=critic_results,
-                        trace_id=trace_id,
-                        text=text,
-                        timings=timings,
+                    precedent_data = cast(
+                        Optional[PrecedentAlignmentResult],
+                        await breaker.call(
+                            self._run_precedent_alignment,
+                            critic_results=critic_results,
+                            trace_id=trace_id,
+                            text=text,
+                            timings=timings,
+                        ),
                     )
                 else:
                     precedent_data = await self._run_precedent_alignment(
@@ -1676,9 +1710,12 @@ class EleanorEngineV8:
             except CircuitBreakerOpen as exc:
                 if self.degradation_enabled:
                     degraded_components.append("precedent")
-                    precedent_data = await DegradationStrategy.precedent_fallback(
-                        error=exc,
-                        context={"trace_id": trace_id},
+                    precedent_data = cast(
+                        PrecedentAlignmentResult,
+                        await DegradationStrategy.precedent_fallback(
+                            error=exc,
+                            context={"trace_id": trace_id},
+                        ),
                     )
                 else:
                     raise
@@ -1686,9 +1723,12 @@ class EleanorEngineV8:
                 self._emit_error(exc, stage="precedent", trace_id=trace_id, context=context)
                 if self.degradation_enabled:
                     degraded_components.append("precedent")
-                    precedent_data = await DegradationStrategy.precedent_fallback(
-                        error=exc,
-                        context={"trace_id": trace_id},
+                    precedent_data = cast(
+                        PrecedentAlignmentResult,
+                        await DegradationStrategy.precedent_fallback(
+                            error=exc,
+                            context={"trace_id": trace_id},
+                        ),
                     )
                 else:
                     precedent_data = None
@@ -1699,12 +1739,15 @@ class EleanorEngineV8:
             try:
                 breaker = self._get_circuit_breaker("uncertainty")
                 if breaker is not None:
-                    uncertainty_data = await breaker.call(
-                        self._run_uncertainty_engine,
-                        precedent_alignment=precedent_data,
-                        critic_results=critic_results,
-                        model_name=engine_model_info.model_name,
-                        timings=timings,
+                    uncertainty_data = cast(
+                        Optional[UncertaintyResult],
+                        await breaker.call(
+                            self._run_uncertainty_engine,
+                            precedent_alignment=precedent_data,
+                            critic_results=critic_results,
+                            model_name=engine_model_info.model_name,
+                            timings=timings,
+                        ),
                     )
                 else:
                     uncertainty_data = await self._run_uncertainty_engine(
@@ -1716,9 +1759,12 @@ class EleanorEngineV8:
             except CircuitBreakerOpen as exc:
                 if self.degradation_enabled:
                     degraded_components.append("uncertainty")
-                    uncertainty_data = await DegradationStrategy.uncertainty_fallback(
-                        error=exc,
-                        context={"trace_id": trace_id},
+                    uncertainty_data = cast(
+                        UncertaintyResult,
+                        await DegradationStrategy.uncertainty_fallback(
+                            error=exc,
+                            context={"trace_id": trace_id},
+                        ),
                     )
                 else:
                     raise
@@ -1726,9 +1772,12 @@ class EleanorEngineV8:
                 self._emit_error(exc, stage="uncertainty", trace_id=trace_id, context=context)
                 if self.degradation_enabled:
                     degraded_components.append("uncertainty")
-                    uncertainty_data = await DegradationStrategy.uncertainty_fallback(
-                        error=exc,
-                        context={"trace_id": trace_id},
+                    uncertainty_data = cast(
+                        UncertaintyResult,
+                        await DegradationStrategy.uncertainty_fallback(
+                            error=exc,
+                            context={"trace_id": trace_id},
+                        ),
                     )
                 else:
                     uncertainty_data = None
@@ -1842,8 +1891,8 @@ class EleanorEngineV8:
 
             forensic_data = EngineForensicData(
                 detector_metadata=detector_payload or {},
-                uncertainty_graph=uncertainty_data or {},
-                precedent_alignment=precedent_data or {},
+                uncertainty_graph=cast(UncertaintyResult, uncertainty_data or {}),
+                precedent_alignment=cast(PrecedentAlignmentResult, precedent_data or {}),
                 router_diagnostics=router_diagnostics,
                 timings=timings,
                 evidence_references=[
@@ -1958,8 +2007,11 @@ class EleanorEngineV8:
             try:
                 breaker = self._get_circuit_breaker("router")
                 if breaker is not None:
-                    router_data = await breaker.call(
-                        self._select_model, text, context, timings, router_diagnostics
+                    router_data = cast(
+                        Dict[str, Any],
+                        await breaker.call(
+                            self._select_model, text, context, timings, router_diagnostics
+                        ),
                     )
                 else:
                     router_data = await self._select_model(
@@ -2067,12 +2119,14 @@ class EleanorEngineV8:
                         critic=critic_name,
                         context=context,
                     )
-                    fallback = (
+                    critic_fallback = (
                         crit_error.details.get("result")
                         if isinstance(crit_error.details, dict)
                         else None
                     )
-                    res = fallback or self._build_critic_error_result(critic_name, crit_error)
+                    res = critic_fallback or self._build_critic_error_result(
+                        critic_name, crit_error
+                    )
                 elif isinstance(res, Exception):
                     unknown_error = res
                     critic_error = CriticEvaluationError(
@@ -2134,12 +2188,14 @@ class EleanorEngineV8:
                         critic=critic_name,
                         context=context,
                     )
-                    fallback = (
+                    critic_fallback = (
                         crit_error.details.get("result")
                         if isinstance(crit_error.details, dict)
                         else None
                     )
-                    res = fallback or self._build_critic_error_result(critic_name, crit_error)
+                    res = critic_fallback or self._build_critic_error_result(
+                        critic_name, crit_error
+                    )
                 elif isinstance(res, Exception):
                     unknown_error = res
                     critic_error = CriticEvaluationError(
@@ -2179,12 +2235,15 @@ class EleanorEngineV8:
             try:
                 breaker = self._get_circuit_breaker("precedent")
                 if breaker is not None:
-                    precedent_data = await breaker.call(
-                        self._run_precedent_alignment,
-                        critic_results,
-                        trace_id,
-                        text,
-                        timings=timings,
+                    precedent_data = cast(
+                        Optional[PrecedentAlignmentResult],
+                        await breaker.call(
+                            self._run_precedent_alignment,
+                            critic_results,
+                            trace_id,
+                            text,
+                            timings=timings,
+                        ),
                     )
                 else:
                     precedent_data = await self._run_precedent_alignment(
@@ -2198,9 +2257,12 @@ class EleanorEngineV8:
             except CircuitBreakerOpen as exc:
                 if self.degradation_enabled:
                     degraded_components.append("precedent")
-                    precedent_data = await DegradationStrategy.precedent_fallback(
-                        error=exc,
-                        context={"trace_id": trace_id},
+                    precedent_data = cast(
+                        PrecedentAlignmentResult,
+                        await DegradationStrategy.precedent_fallback(
+                            error=exc,
+                            context={"trace_id": trace_id},
+                        ),
                     )
                     yield {
                         "event": "precedent_alignment",
@@ -2213,9 +2275,12 @@ class EleanorEngineV8:
                 self._emit_error(exc, stage="precedent", trace_id=trace_id, context=context)
                 if self.degradation_enabled:
                     degraded_components.append("precedent")
-                    precedent_data = await DegradationStrategy.precedent_fallback(
-                        error=exc,
-                        context={"trace_id": trace_id},
+                    precedent_data = cast(
+                        PrecedentAlignmentResult,
+                        await DegradationStrategy.precedent_fallback(
+                            error=exc,
+                            context={"trace_id": trace_id},
+                        ),
                     )
                 else:
                     precedent_data = None
@@ -2231,12 +2296,15 @@ class EleanorEngineV8:
             try:
                 breaker = self._get_circuit_breaker("uncertainty")
                 if breaker is not None:
-                    uncertainty_data = await breaker.call(
-                        self._run_uncertainty_engine,
-                        precedent_alignment=precedent_data,
-                        critic_results=critic_results,
-                        model_name=engine_model_info.model_name,
-                        timings=timings,
+                    uncertainty_data = cast(
+                        Optional[UncertaintyResult],
+                        await breaker.call(
+                            self._run_uncertainty_engine,
+                            precedent_alignment=precedent_data,
+                            critic_results=critic_results,
+                            model_name=engine_model_info.model_name,
+                            timings=timings,
+                        ),
                     )
                 else:
                     uncertainty_data = await self._run_uncertainty_engine(
@@ -2253,9 +2321,12 @@ class EleanorEngineV8:
             except CircuitBreakerOpen as exc:
                 if self.degradation_enabled:
                     degraded_components.append("uncertainty")
-                    uncertainty_data = await DegradationStrategy.uncertainty_fallback(
-                        error=exc,
-                        context={"trace_id": trace_id},
+                    uncertainty_data = cast(
+                        UncertaintyResult,
+                        await DegradationStrategy.uncertainty_fallback(
+                            error=exc,
+                            context={"trace_id": trace_id},
+                        ),
                     )
                     yield {
                         "event": "uncertainty",
@@ -2268,9 +2339,12 @@ class EleanorEngineV8:
                 self._emit_error(exc, stage="uncertainty", trace_id=trace_id, context=context)
                 if self.degradation_enabled:
                     degraded_components.append("uncertainty")
-                    uncertainty_data = await DegradationStrategy.uncertainty_fallback(
-                        error=exc,
-                        context={"trace_id": trace_id},
+                    uncertainty_data = cast(
+                        UncertaintyResult,
+                        await DegradationStrategy.uncertainty_fallback(
+                            error=exc,
+                            context={"trace_id": trace_id},
+                        ),
                     )
                 else:
                     uncertainty_data = None

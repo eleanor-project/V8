@@ -11,10 +11,13 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+torch: Optional[Any]
 try:
-    import torch
+    import torch as _torch
 except ImportError:  # pragma: no cover - torch optional
     torch = None
+else:
+    torch = _torch
 
 
 @dataclass
@@ -85,7 +88,7 @@ class GPUManager:
 
         torch_available = torch is not None and sys.modules.get("torch") is not None
 
-        if not torch_available:
+        if not torch_available or torch is None:
             logger.warning(
                 "PyTorch not installed. GPU acceleration unavailable. "
                 "Install with: pip install torch"
@@ -93,6 +96,8 @@ class GPUManager:
             self.device = None
             self.devices_available = 0
             return
+
+        assert torch is not None
 
         self.devices_available = torch.cuda.device_count() if torch.cuda.is_available() else 0
 
@@ -210,6 +215,10 @@ class GPUManager:
     def health_check(self) -> Dict[str, Any]:
         """Return a health snapshot for all available devices."""
         if not self.is_available():
+            mode = "cpu" if torch is not None else "unavailable"
+            return {"healthy": False, "mode": mode, "devices": []}
+
+        if self.device is None:
             mode = "cpu" if torch is not None else "unavailable"
             return {"healthy": False, "mode": mode, "devices": []}
 

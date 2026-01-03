@@ -31,6 +31,8 @@ class CriticResult(TypedDict, total=False):
     rationale: str
     flags: List[str]
     uuid: str
+    degraded: bool
+    degradation_reason: str
 
 
 CriticResultsMap = Dict[str, CriticResult]
@@ -94,6 +96,8 @@ class AggregationOutput(TypedDict, total=False):
     rights_impacted: List[str]
     dissent: Optional[Dict[str, object]]
     error: Dict[str, object]
+    degraded_components: List[str]
+    is_degraded: bool
 
 
 __all__ = [

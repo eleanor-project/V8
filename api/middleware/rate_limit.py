@@ -345,6 +345,7 @@ def rate_limit(
             redis_url=os.getenv("RATE_LIMIT_REDIS_URL") or None,
             key_prefix=os.getenv("RATE_LIMIT_KEY_PREFIX", "eleanor:rate_limit:"),
         )
+        limiter: Any
         if config.redis_url:
             limiter = RedisTokenBucketRateLimiter(config)
         else:

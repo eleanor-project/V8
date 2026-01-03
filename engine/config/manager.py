@@ -27,6 +27,7 @@ class ConfigManager:
 
     _instance: Optional["ConfigManager"] = None
     _lock = Lock()
+    _initialized: bool = False
 
     def __new__(cls) -> "ConfigManager":
         if cls._instance is None:

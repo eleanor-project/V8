@@ -3,7 +3,7 @@ GPU-Accelerated Embeddings - Fast similarity search on GPU
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import hashlib
 
@@ -138,14 +138,15 @@ class GPUEmbeddingCache:
         else:
             raise ValueError("Model must have 'encode' or 'forward' method")
 
+        embedding_tensor = cast(torch.Tensor, embedding)
         # Move to GPU if not already there
-        embedding = embedding.to(self.device)
+        embedding_tensor = cast(torch.Tensor, embedding_tensor.to(self.device))
 
         # Cache it
         if use_cache:
-            self.cache_embedding(text, embedding)
+            self.cache_embedding(text, embedding_tensor)
 
-        return embedding
+        return embedding_tensor
 
     def batch_compute_embeddings(
         self,
@@ -181,7 +182,7 @@ class GPUEmbeddingCache:
                 batch_embs = torch.stack([self.compute_embedding(text, model) for text in batch])
 
             # Move to GPU
-            batch_embs = batch_embs.to(self.device)
+            batch_embs = cast(torch.Tensor, batch_embs.to(self.device))
             embeddings.append(batch_embs)
 
         # Concatenate all batches

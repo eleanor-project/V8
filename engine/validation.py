@@ -374,16 +374,16 @@ class InputValidator:
             return sanitized_list, changed
 
         if isinstance(value, tuple):
-            sanitized_list: List[Any] = []
+            sanitized_tuple: List[Any] = []
             changed = True
             for item in value:
                 sanitized_item, item_changed = self._sanitize_context_value(
                     item,
                     current_depth=current_depth + 1,
                 )
-                sanitized_list.append(sanitized_item)
+                sanitized_tuple.append(sanitized_item)
                 changed = changed or item_changed
-            return sanitized_list, changed
+            return sanitized_tuple, changed
 
         if isinstance(value, str):
             sanitized_value, value_changed = self._sanitize_string(value)
