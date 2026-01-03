@@ -59,10 +59,12 @@ class DependencyFactory:
         """
         if backend == "mock":
             from engine.mocks import MockRouter
+
             return MockRouter(**kwargs)
 
         # Default: Use RouterV8
         from engine.router.router import RouterV8
+
         return RouterV8(**kwargs)
 
     @staticmethod
@@ -81,9 +83,11 @@ class DependencyFactory:
         """
         if detectors and "mock" in detectors:
             from engine.mocks import MockDetectorEngine
+
             return MockDetectorEngine()
 
         from engine.detectors.engine import DetectorEngineV8
+
         return DetectorEngineV8(detectors=detectors or {}, **kwargs)
 
     @staticmethod
@@ -102,9 +106,11 @@ class DependencyFactory:
         """
         if jsonl_path == "mock":
             from engine.mocks import MockEvidenceRecorder
+
             return MockEvidenceRecorder()
 
         from engine.recorder.evidence_recorder import EvidenceRecorder
+
         return EvidenceRecorder(jsonl_path=jsonl_path, **kwargs)
 
     @staticmethod
@@ -124,6 +130,7 @@ class DependencyFactory:
         if custom_critics:
             if "mock" in custom_critics:
                 from engine.mocks import MockCritic
+
                 return {"mock": MockCritic}
             return custom_critics
 
@@ -163,9 +170,11 @@ class DependencyFactory:
 
         if kwargs.get("mock"):
             from engine.mocks import MockPrecedentEngine
+
             return MockPrecedentEngine()
 
         from engine.precedent.alignment import PrecedentAlignmentEngineV8
+
         return PrecedentAlignmentEngineV8(**kwargs)
 
     @staticmethod
@@ -189,6 +198,7 @@ class DependencyFactory:
 
         if kwargs.get("mock"):
             from engine.mocks import MockPrecedentRetriever
+
             return MockPrecedentRetriever()
 
         from engine.precedent.retrieval import PrecedentRetrievalV8
@@ -225,9 +235,11 @@ class DependencyFactory:
 
         if kwargs.get("mock"):
             from engine.mocks import MockUncertaintyEngine
+
             return MockUncertaintyEngine()
 
         from engine.uncertainty.uncertainty import UncertaintyEngineV8
+
         return UncertaintyEngineV8(**kwargs)
 
     @staticmethod
@@ -249,9 +261,11 @@ class DependencyFactory:
 
         if kwargs.get("mock"):
             from engine.mocks import MockAggregator
+
             return MockAggregator()
 
         from engine.aggregator.aggregator import AggregatorV8
+
         return AggregatorV8(**kwargs)
 
     @staticmethod
@@ -268,9 +282,11 @@ class DependencyFactory:
         """
         if kwargs.get("mock"):
             from engine.mocks import MockReviewTriggerEvaluator
+
             return MockReviewTriggerEvaluator()
 
         from governance.review_triggers import ReviewTriggerEvaluator
+
         return ReviewTriggerEvaluator(**kwargs)
 
     @classmethod
@@ -318,7 +334,9 @@ class DependencyFactory:
             precedent_retriever=cls.create_precedent_retriever(
                 enabled=enable_precedent, store_client=precedent_store, **mock_kwargs
             ),
-            uncertainty_engine=cls.create_uncertainty_engine(enabled=enable_uncertainty, **mock_kwargs),
+            uncertainty_engine=cls.create_uncertainty_engine(
+                enabled=enable_uncertainty, **mock_kwargs
+            ),
             aggregator=cls.create_aggregator(**mock_kwargs),
             review_trigger_evaluator=cls.create_review_trigger_evaluator(**mock_kwargs),
             critic_models=critic_models,

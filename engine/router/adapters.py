@@ -70,6 +70,7 @@ async def _post_json(url: str, payload: dict, headers: Optional[dict] = None) ->
 #  Base Adapter Pattern
 # ============================================================
 
+
 class BaseLLMAdapter:
     """All adapters must subclass this and implement __call__."""
 
@@ -80,6 +81,7 @@ class BaseLLMAdapter:
 # ============================================================
 #  GPT Adapter (OpenAI)
 # ============================================================
+
 
 class GPTAdapter(BaseLLMAdapter):
     """Adapter for GPT-4.1, GPT-5, etc. via OpenAI API."""
@@ -92,8 +94,7 @@ class GPTAdapter(BaseLLMAdapter):
 
     def __call__(self, prompt: str) -> str:
         response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}]
+            model=self.model, messages=[{"role": "user", "content": prompt}]
         )
         content: Any = response.choices[0].message.content
         return str(content).strip()
@@ -102,6 +103,7 @@ class GPTAdapter(BaseLLMAdapter):
 # ============================================================
 #  Claude Adapter (Anthropic)
 # ============================================================
+
 
 class ClaudeAdapter(BaseLLMAdapter):
     """Adapter for Claude 3.x models."""
@@ -114,9 +116,7 @@ class ClaudeAdapter(BaseLLMAdapter):
 
     def __call__(self, prompt: str) -> str:
         response = self.client.messages.create(
-            model=self.model,
-            max_tokens=2048,
-            messages=[{"role": "user", "content": prompt}]
+            model=self.model, max_tokens=2048, messages=[{"role": "user", "content": prompt}]
         )
         return str(response.content[0].text).strip()
 
@@ -124,6 +124,7 @@ class ClaudeAdapter(BaseLLMAdapter):
 # ============================================================
 #  Grok Adapter (xAI)
 # ============================================================
+
 
 class GrokAdapter(BaseLLMAdapter):
     """Adapter for Grok 1.5 / Grok 3 via xAI’s HTTP API."""
@@ -136,10 +137,7 @@ class GrokAdapter(BaseLLMAdapter):
         url = "https://api.x.ai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {self.api_key}"}
 
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}]
-        }
+        payload = {"model": self.model, "messages": [{"role": "user", "content": prompt}]}
 
         data: Any = await _post_json(url, payload, headers=headers)
         return str(data["choices"][0]["message"]["content"]).strip()
@@ -148,6 +146,7 @@ class GrokAdapter(BaseLLMAdapter):
 # ============================================================
 #  Llama HF Adapter (Transformers)
 # ============================================================
+
 
 class LlamaHFAdapter(BaseLLMAdapter):
     """Adapter for running Llama locally via HuggingFace Transformers."""
@@ -171,6 +170,7 @@ class LlamaHFAdapter(BaseLLMAdapter):
 #  Ollama Local Adapter
 # ============================================================
 
+
 class OllamaAdapter(BaseLLMAdapter):
     """Adapter for running local models via Ollama HTTP endpoints."""
 
@@ -188,6 +188,7 @@ class OllamaAdapter(BaseLLMAdapter):
 # ============================================================
 #  Unified Adapter Registry
 # ============================================================
+
 
 class AdapterRegistry:
     """
@@ -213,6 +214,7 @@ class AdapterRegistry:
 # ============================================================
 #  Helper: Bootstrap Common Adapters
 # ============================================================
+
 
 def bootstrap_default_registry(
     openai_key=None,

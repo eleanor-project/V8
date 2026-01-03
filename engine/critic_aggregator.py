@@ -12,19 +12,12 @@ def aggregate(critic_outputs: List[CriticOutput]) -> dict:
     """
 
     # Sort by severity descending (moral gravity)
-    ordered = sorted(
-        critic_outputs,
-        key=lambda c: c.severity,
-        reverse=True
-    )
+    ordered = sorted(critic_outputs, key=lambda c: c.severity, reverse=True)
 
     # Build deliberation lines for UI
     deliberation = []
     for c in ordered:
-        line = (
-            f"{c.critic}: {c.concern} "
-            f"[severity {c.severity}] — {c.principle}"
-        )
+        line = f"{c.critic}: {c.concern} " f"[severity {c.severity}] — {c.principle}"
         if c.precedent:
             line += f"\n  ⚖️  {c.precedent}"
         deliberation.append(line)
@@ -44,11 +37,6 @@ def aggregate(critic_outputs: List[CriticOutput]) -> dict:
     if dominant.uncertainty:
         explanation += f"Uncertainty noted: {dominant.uncertainty} "
 
-    explanation += (
-        "Other perspectives were considered, but did not outweigh the primary concern."
-    )
+    explanation += "Other perspectives were considered, but did not outweigh the primary concern."
 
-    return {
-        "deliberation": deliberation,
-        "final_answer": explanation
-    }
+    return {"deliberation": deliberation, "final_answer": explanation}

@@ -19,9 +19,14 @@ from engine.critics.consistency import ConsistencyEngine, CharterViolationType
 from engine.critics.redundancy import RedundancyEngine, validate_no_cross_critic_suppression
 from engine.critics.privacy import PrivacyIdentityCritic
 from engine.critics.rules import (
-    CLAUSES, CriticDomain, HumanAction,
-    get_clause, get_clauses_by_critic, get_clauses_by_tier,
-    validate_clause_id, get_clause_statistics
+    CLAUSES,
+    CriticDomain,
+    HumanAction,
+    get_clause,
+    get_clauses_by_critic,
+    get_clauses_by_tier,
+    validate_clause_id,
+    get_clause_statistics,
 )
 from engine.schemas.escalation import EscalationTier
 
@@ -29,6 +34,7 @@ from engine.schemas.escalation import EscalationTier
 # ============================================================
 # TEST 1: RedundancyEngine - Dissent Preservation
 # ============================================================
+
 
 def test_redundancy_preserves_cross_critic_dissent():
     """
@@ -49,69 +55,80 @@ def test_redundancy_preserves_cross_critic_dissent():
             "severity": 2.5,
             "violations": [
                 {"category": "discrimination", "description": "Protected class bias detected"},
-                {"category": "discrimination", "description": "Protected class bias detected"}  # Duplicate within critic
+                {
+                    "category": "discrimination",
+                    "description": "Protected class bias detected",
+                },  # Duplicate within critic
             ],
             "escalation": {
                 "clause_id": "F1",
                 "tier": "tier_3",
-                "reason": "Systematic discrimination"
+                "reason": "Systematic discrimination",
             },
-            "justification": "Detected discrimination patterns"
+            "justification": "Detected discrimination patterns",
         },
         "dignity": {
             "severity": 2.3,
             "violations": [
-                {"category": "discrimination", "description": "Instrumentalization of protected class"}
+                {
+                    "category": "discrimination",
+                    "description": "Instrumentalization of protected class",
+                }
             ],
             "escalation": {
                 "clause_id": "D2",
                 "tier": "tier_2",
-                "reason": "Dignity violation through discrimination"
+                "reason": "Dignity violation through discrimination",
             },
-            "justification": "Discrimination violates inherent dignity"
+            "justification": "Discrimination violates inherent dignity",
         },
         "privacy": {
             "severity": 1.0,
-            "violations": [
-                {"category": "inference", "description": "Minor identity inference"}
-            ],
-            "justification": "Low-severity privacy concern"
-        }
+            "violations": [{"category": "inference", "description": "Minor identity inference"}],
+            "justification": "Low-severity privacy concern",
+        },
     }
 
     result = engine.deduplicate(critics)
 
     # CRITICAL ASSERTION: All three critics must still exist
-    assert len(result["deduplicated_critics"]) == 3, \
-        "❌ CONSTITUTIONAL VIOLATION: Critic was removed entirely"
+    assert (
+        len(result["deduplicated_critics"]) == 3
+    ), "❌ CONSTITUTIONAL VIOLATION: Critic was removed entirely"
 
     # CRITICAL ASSERTION: Escalation signals preserved
     fairness_output = result["deduplicated_critics"]["fairness"]
     dignity_output = result["deduplicated_critics"]["dignity"]
 
-    assert fairness_output.get("escalation") is not None, \
-        "❌ CONSTITUTIONAL VIOLATION: Fairness escalation suppressed"
-    assert dignity_output.get("escalation") is not None, \
-        "❌ CONSTITUTIONAL VIOLATION: Dignity escalation suppressed"
+    assert (
+        fairness_output.get("escalation") is not None
+    ), "❌ CONSTITUTIONAL VIOLATION: Fairness escalation suppressed"
+    assert (
+        dignity_output.get("escalation") is not None
+    ), "❌ CONSTITUTIONAL VIOLATION: Dignity escalation suppressed"
 
     # CRITICAL ASSERTION: Severities not reduced across critics
-    assert fairness_output.get("severity", 0) >= 2.4, \
-        "❌ CONSTITUTIONAL VIOLATION: Fairness severity reduced"
-    assert dignity_output.get("severity", 0) >= 2.2, \
-        "❌ CONSTITUTIONAL VIOLATION: Dignity severity reduced"
+    assert (
+        fairness_output.get("severity", 0) >= 2.4
+    ), "❌ CONSTITUTIONAL VIOLATION: Fairness severity reduced"
+    assert (
+        dignity_output.get("severity", 0) >= 2.2
+    ), "❌ CONSTITUTIONAL VIOLATION: Dignity severity reduced"
 
     # POSITIVE ASSERTION: Intra-critic deduplication occurred
     fairness_violations = fairness_output.get("violations", [])
-    assert len(fairness_violations) == 1, \
-        "❌ Intra-critic deduplication failed (should remove duplicate within fairness)"
+    assert (
+        len(fairness_violations) == 1
+    ), "❌ Intra-critic deduplication failed (should remove duplicate within fairness)"
 
     # POSITIVE ASSERTION: Cross-critic preservation documented
     preservation = result["cross_critic_preservation"]
     print(f"✓ Cross-critic preservation events: {len(preservation)}")
 
     # Constitutional compliance check
-    assert result["constitutional_compliance"] == "PASS - Cross-critic dissent preserved verbatim", \
-        "❌ Constitutional compliance failed"
+    assert (
+        result["constitutional_compliance"] == "PASS - Cross-critic dissent preserved verbatim"
+    ), "❌ Constitutional compliance failed"
 
     print("✓ All escalation signals preserved verbatim")
     print("✓ No cross-critic severity reduction")
@@ -133,13 +150,13 @@ def test_redundancy_constitutional_validator():
         "fairness": {
             "severity": 2.5,
             "violations": ["discrimination"],
-            "escalation": {"clause_id": "F1", "tier": "tier_3"}
+            "escalation": {"clause_id": "F1", "tier": "tier_3"},
         },
         "dignity": {
             "severity": 2.0,
             "violations": ["degradation"],
-            "escalation": {"clause_id": "D1", "tier": "tier_2"}
-        }
+            "escalation": {"clause_id": "D1", "tier": "tier_2"},
+        },
     }
 
     # SCENARIO 1: Compliant processing (no changes)
@@ -147,13 +164,13 @@ def test_redundancy_constitutional_validator():
         "fairness": {
             "severity": 2.5,
             "violations": ["discrimination"],
-            "escalation": {"clause_id": "F1", "tier": "tier_3"}
+            "escalation": {"clause_id": "F1", "tier": "tier_3"},
         },
         "dignity": {
             "severity": 2.0,
             "violations": ["degradation"],
-            "escalation": {"clause_id": "D1", "tier": "tier_2"}
-        }
+            "escalation": {"clause_id": "D1", "tier": "tier_2"},
+        },
     }
 
     validation = validate_no_cross_critic_suppression(original, processed_compliant)
@@ -171,16 +188,17 @@ def test_redundancy_constitutional_validator():
         "dignity": {
             "severity": 2.0,
             "violations": ["degradation"],
-            "escalation": {"clause_id": "D1", "tier": "tier_2"}
-        }
+            "escalation": {"clause_id": "D1", "tier": "tier_2"},
+        },
     }
 
     validation = validate_no_cross_critic_suppression(original, processed_violation1)
     assert not validation["compliant"], "❌ Failed to detect escalation suppression"
     assert validation["status"] == "FAIL", "❌ Status should be FAIL"
     assert len(validation["violations"]) > 0, "❌ Should report violations"
-    assert any(v["type"] == "escalation_suppressed" for v in validation["violations"]), \
-        "❌ Should flag escalation_suppressed"
+    assert any(
+        v["type"] == "escalation_suppressed" for v in validation["violations"]
+    ), "❌ Should flag escalation_suppressed"
     print("✓ Validator correctly detects escalation suppression")
 
     # SCENARIO 3: Severity reduction (VIOLATION)
@@ -188,19 +206,20 @@ def test_redundancy_constitutional_validator():
         "fairness": {
             "severity": 1.0,  # Reduced from 2.5! VIOLATION!
             "violations": ["discrimination"],
-            "escalation": {"clause_id": "F1", "tier": "tier_3"}
+            "escalation": {"clause_id": "F1", "tier": "tier_3"},
         },
         "dignity": {
             "severity": 2.0,
             "violations": ["degradation"],
-            "escalation": {"clause_id": "D1", "tier": "tier_2"}
-        }
+            "escalation": {"clause_id": "D1", "tier": "tier_2"},
+        },
     }
 
     validation = validate_no_cross_critic_suppression(original, processed_violation2)
     assert not validation["compliant"], "❌ Failed to detect severity reduction"
-    assert any(v["type"] == "severity_reduced" for v in validation["violations"]), \
-        "❌ Should flag severity_reduced"
+    assert any(
+        v["type"] == "severity_reduced" for v in validation["violations"]
+    ), "❌ Should flag severity_reduced"
     print("✓ Validator correctly detects severity reduction")
 
     # SCENARIO 4: Critic removal (VIOLATION)
@@ -208,15 +227,16 @@ def test_redundancy_constitutional_validator():
         "fairness": {
             "severity": 2.5,
             "violations": ["discrimination"],
-            "escalation": {"clause_id": "F1", "tier": "tier_3"}
+            "escalation": {"clause_id": "F1", "tier": "tier_3"},
         }
         # Dignity critic removed entirely! VIOLATION!
     }
 
     validation = validate_no_cross_critic_suppression(original, processed_violation3)
     assert not validation["compliant"], "❌ Failed to detect critic removal"
-    assert any(v["type"] == "critic_removed" for v in validation["violations"]), \
-        "❌ Should flag critic_removed"
+    assert any(
+        v["type"] == "critic_removed" for v in validation["violations"]
+    ), "❌ Should flag critic_removed"
     print("✓ Validator correctly detects critic removal")
 
     print("✅ TEST PASSED: Constitutional validator catches all violation types\n")
@@ -225,6 +245,7 @@ def test_redundancy_constitutional_validator():
 # ============================================================
 # TEST 3: ConsistencyEngine - Charter Compliance
 # ============================================================
+
 
 def test_consistency_charter_boundary_validation():
     """
@@ -244,20 +265,14 @@ def test_consistency_charter_boundary_validation():
             "severity": 2.0,
             "violations": ["disparate impact on protected class"],
             "justification": "Detected differential treatment patterns",
-            "escalation": {
-                "clause_id": "F1",
-                "tier": "tier_3"
-            }
+            "escalation": {"clause_id": "F1", "tier": "tier_3"},
         },
         "autonomy": {
             "severity": 1.5,
             "violations": ["consent mechanism missing"],
             "justification": "No meaningful consent path for data collection",
-            "escalation": {
-                "clause_id": "A1",
-                "tier": "tier_2"
-            }
-        }
+            "escalation": {"clause_id": "A1", "tier": "tier_2"},
+        },
     }
 
     result = engine.validate_charter_compliance(compliant_critics)
@@ -275,13 +290,15 @@ def test_consistency_charter_boundary_validation():
             "escalation": {
                 # Missing clause_id! VIOLATION!
                 "tier": "tier_3"
-            }
+            },
         }
     }
 
     result = engine.validate_charter_compliance(missing_clause_id)
     assert not result["compliant"], "❌ Failed to detect missing clause_id"
-    violations = [v for v in result["violations"] if v["type"] == CharterViolationType.MISSING_CLAUSE_ID.value]
+    violations = [
+        v for v in result["violations"] if v["type"] == CharterViolationType.MISSING_CLAUSE_ID.value
+    ]
     assert len(violations) > 0, "❌ Should flag missing clause_id"
     print("✓ Correctly detects missing clause_id")
 
@@ -293,14 +310,16 @@ def test_consistency_charter_boundary_validation():
             "justification": "Detected discrimination",
             "escalation": {
                 "clause_id": "D1",  # Dignity clause used by Fairness! VIOLATION!
-                "tier": "tier_3"
-            }
+                "tier": "tier_3",
+            },
         }
     }
 
     result = engine.validate_charter_compliance(invalid_clause_id)
     assert not result["compliant"], "❌ Failed to detect invalid clause_id"
-    violations = [v for v in result["violations"] if v["type"] == CharterViolationType.INVALID_CLAUSE_ID.value]
+    violations = [
+        v for v in result["violations"] if v["type"] == CharterViolationType.INVALID_CLAUSE_ID.value
+    ]
     assert len(violations) > 0, "❌ Should flag invalid clause_id"
     print("✓ Correctly detects invalid clause_id for critic")
 
@@ -313,13 +332,15 @@ def test_consistency_charter_boundary_validation():
             "escalation": {
                 "clause_id": "A1"
                 # Missing tier! VIOLATION!
-            }
+            },
         }
     }
 
     result = engine.validate_charter_compliance(missing_tier)
     assert not result["compliant"], "❌ Failed to detect missing tier"
-    violations = [v for v in result["violations"] if v["type"] == CharterViolationType.MISSING_TIER.value]
+    violations = [
+        v for v in result["violations"] if v["type"] == CharterViolationType.MISSING_TIER.value
+    ]
     assert len(violations) > 0, "❌ Should flag missing tier"
     print("✓ Correctly detects missing tier")
 
@@ -329,14 +350,14 @@ def test_consistency_charter_boundary_validation():
             "severity": 2.0,
             "violations": ["discrimination"],
             "justification": "Detected discrimination patterns",
-            "escalation": {"clause_id": "F1", "tier": "tier_3"}
+            "escalation": {"clause_id": "F1", "tier": "tier_3"},
         },
         "dignity": {
             "severity": 1.8,
             "violations": ["discrimination via instrumentalization"],
             "justification": "Discrimination violates dignity",
-            "escalation": {"clause_id": "D2", "tier": "tier_2"}
-        }
+            "escalation": {"clause_id": "D2", "tier": "tier_2"},
+        },
     }
 
     result = engine.validate_charter_compliance(intentional_overlap)
@@ -354,6 +375,7 @@ def test_consistency_charter_boundary_validation():
 # TEST 4: CLAUSES Registry - Constitutional Clause Definitions
 # ============================================================
 
+
 def test_clauses_registry_completeness():
     """
     Test that CLAUSES registry contains all 22 constitutional clauses.
@@ -366,19 +388,34 @@ def test_clauses_registry_completeness():
 
     expected_clauses = [
         # Autonomy (3)
-        "A1", "A2", "A3",
+        "A1",
+        "A2",
+        "A3",
         # Dignity (3)
-        "D1", "D2", "D3",
+        "D1",
+        "D2",
+        "D3",
         # Privacy (4)
-        "P1", "P2", "P3", "P4",
+        "P1",
+        "P2",
+        "P3",
+        "P4",
         # Fairness (3)
-        "F1", "F2", "F3",
+        "F1",
+        "F2",
+        "F3",
         # Due Process (3)
-        "DP1", "DP2", "DP3",
+        "DP1",
+        "DP2",
+        "DP3",
         # Precedent (3)
-        "PR1", "PR2", "PR3",
+        "PR1",
+        "PR2",
+        "PR3",
         # Uncertainty (3)
-        "U1", "U2", "U3"
+        "U1",
+        "U2",
+        "U3",
     ]
 
     assert len(expected_clauses) == 22, "❌ Test setup error: should expect 22 clauses"
@@ -389,8 +426,7 @@ def test_clauses_registry_completeness():
         if clause_id not in CLAUSES:
             missing_clauses.append(clause_id)
 
-    assert len(missing_clauses) == 0, \
-        f"❌ Missing clauses in registry: {missing_clauses}"
+    assert len(missing_clauses) == 0, f"❌ Missing clauses in registry: {missing_clauses}"
 
     print("✓ All 22 constitutional clauses present in registry")
 
@@ -451,10 +487,14 @@ def test_clauses_tier_and_human_action_mappings():
 
     # All clauses must have valid tier and human action
     for clause_id, clause in CLAUSES.items():
-        assert clause.tier in [EscalationTier.TIER_2, EscalationTier.TIER_3], \
-            f"❌ {clause_id} has invalid tier: {clause.tier}"
-        assert clause.human_action in [HumanAction.ACKNOWLEDGMENT, HumanAction.DETERMINATION], \
-            f"❌ {clause_id} has invalid human_action: {clause.human_action}"
+        assert clause.tier in [
+            EscalationTier.TIER_2,
+            EscalationTier.TIER_3,
+        ], f"❌ {clause_id} has invalid tier: {clause.tier}"
+        assert clause.human_action in [
+            HumanAction.ACKNOWLEDGMENT,
+            HumanAction.DETERMINATION,
+        ], f"❌ {clause_id} has invalid human_action: {clause.human_action}"
 
     print("✓ All clauses have valid tier and human action mappings")
     print("✅ TEST PASSED: Tier and human action mappings correct\n")
@@ -472,16 +512,18 @@ def test_clauses_utility_functions():
     fairness_clauses = get_clauses_by_critic(CriticDomain.FAIRNESS)
     assert len(fairness_clauses) == 3, "❌ Fairness should have 3 clauses (F1, F2, F3)"
     clause_ids = [c.clause_id for c in fairness_clauses]
-    assert "F1" in clause_ids and "F2" in clause_ids and "F3" in clause_ids, \
-        "❌ Fairness clauses incomplete"
+    assert (
+        "F1" in clause_ids and "F2" in clause_ids and "F3" in clause_ids
+    ), "❌ Fairness clauses incomplete"
     print(f"✓ get_clauses_by_critic(FAIRNESS): {clause_ids}")
 
     # Test get_clauses_by_tier
     tier_2_clauses = get_clauses_by_tier(EscalationTier.TIER_2)
     tier_3_clauses = get_clauses_by_tier(EscalationTier.TIER_3)
 
-    assert len(tier_2_clauses) + len(tier_3_clauses) == 22, \
-        "❌ Total tier 2 + tier 3 clauses should equal 22"
+    assert (
+        len(tier_2_clauses) + len(tier_3_clauses) == 22
+    ), "❌ Total tier 2 + tier 3 clauses should equal 22"
     print(f"✓ get_clauses_by_tier: Tier 2={len(tier_2_clauses)}, Tier 3={len(tier_3_clauses)}")
 
     # Test validate_clause_id
@@ -501,6 +543,7 @@ def test_clauses_utility_functions():
 # TEST 7: Privacy & Identity Critic
 # ============================================================
 
+
 def test_privacy_p1_identity_inference():
     """
     TEST: Verify P1 (Non-consensual identity inference) escalates to TIER_3.
@@ -518,16 +561,15 @@ def test_privacy_p1_identity_inference():
     result = critic.evaluate(identity_inference=True)
 
     # Assertions
-    assert result.severity_score >= 0.9, \
-        "❌ P1 violation should have severity >= 0.9"
-    assert len(result.concerns) >= 1, \
-        "❌ P1 violation should generate concerns"
-    assert result.escalation is not None, \
-        "❌ P1 violation must escalate"
-    assert result.escalation.tier == EscalationTier.TIER_3, \
-        f"❌ P1 must escalate to TIER_3, got {result.escalation.tier}"
-    assert result.escalation.clause_id == "P1", \
-        f"❌ Expected clause_id='P1', got '{result.escalation.clause_id}'"
+    assert result.severity_score >= 0.9, "❌ P1 violation should have severity >= 0.9"
+    assert len(result.concerns) >= 1, "❌ P1 violation should generate concerns"
+    assert result.escalation is not None, "❌ P1 violation must escalate"
+    assert (
+        result.escalation.tier == EscalationTier.TIER_3
+    ), f"❌ P1 must escalate to TIER_3, got {result.escalation.tier}"
+    assert (
+        result.escalation.clause_id == "P1"
+    ), f"❌ Expected clause_id='P1', got '{result.escalation.clause_id}'"
 
     print("✅ P1 (Identity Inference) validation passed")
     print(f"   - Severity: {result.severity_score}")
@@ -553,16 +595,15 @@ def test_privacy_p2_persistent_identity():
     result = critic.evaluate(persistent_identity=True)
 
     # Assertions
-    assert result.severity_score >= 0.85, \
-        "❌ P2 violation should have severity >= 0.85"
-    assert len(result.concerns) >= 1, \
-        "❌ P2 violation should generate concerns"
-    assert result.escalation is not None, \
-        "❌ P2 violation must escalate"
-    assert result.escalation.tier == EscalationTier.TIER_3, \
-        f"❌ P2 must escalate to TIER_3, got {result.escalation.tier}"
-    assert result.escalation.clause_id == "P2", \
-        f"❌ Expected clause_id='P2', got '{result.escalation.clause_id}'"
+    assert result.severity_score >= 0.85, "❌ P2 violation should have severity >= 0.85"
+    assert len(result.concerns) >= 1, "❌ P2 violation should generate concerns"
+    assert result.escalation is not None, "❌ P2 violation must escalate"
+    assert (
+        result.escalation.tier == EscalationTier.TIER_3
+    ), f"❌ P2 must escalate to TIER_3, got {result.escalation.tier}"
+    assert (
+        result.escalation.clause_id == "P2"
+    ), f"❌ Expected clause_id='P2', got '{result.escalation.clause_id}'"
 
     print("✅ P2 (Persistent Identity) validation passed")
     print(f"   - Severity: {result.severity_score}")
@@ -588,16 +629,15 @@ def test_privacy_p3_context_collapse():
     result = critic.evaluate(context_mismatch=True)
 
     # Assertions
-    assert result.severity_score >= 0.7, \
-        "❌ P3 violation should have severity >= 0.7"
-    assert len(result.concerns) >= 1, \
-        "❌ P3 violation should generate concerns"
-    assert result.escalation is not None, \
-        "❌ P3 violation must escalate"
-    assert result.escalation.tier == EscalationTier.TIER_2, \
-        f"❌ P3 must escalate to TIER_2, got {result.escalation.tier}"
-    assert result.escalation.clause_id == "P3", \
-        f"❌ Expected clause_id='P3', got '{result.escalation.clause_id}'"
+    assert result.severity_score >= 0.7, "❌ P3 violation should have severity >= 0.7"
+    assert len(result.concerns) >= 1, "❌ P3 violation should generate concerns"
+    assert result.escalation is not None, "❌ P3 violation must escalate"
+    assert (
+        result.escalation.tier == EscalationTier.TIER_2
+    ), f"❌ P3 must escalate to TIER_2, got {result.escalation.tier}"
+    assert (
+        result.escalation.clause_id == "P3"
+    ), f"❌ Expected clause_id='P3', got '{result.escalation.clause_id}'"
 
     print("✅ P3 (Context Collapse) validation passed")
     print(f"   - Severity: {result.severity_score}")
@@ -623,16 +663,15 @@ def test_privacy_p4_secondary_use():
     result = critic.evaluate(secondary_use=True)
 
     # Assertions
-    assert result.severity_score >= 0.75, \
-        "❌ P4 violation should have severity >= 0.75"
-    assert len(result.concerns) >= 1, \
-        "❌ P4 violation should generate concerns"
-    assert result.escalation is not None, \
-        "❌ P4 violation must escalate"
-    assert result.escalation.tier == EscalationTier.TIER_2, \
-        f"❌ P4 must escalate to TIER_2, got {result.escalation.tier}"
-    assert result.escalation.clause_id == "P4", \
-        f"❌ Expected clause_id='P4', got '{result.escalation.clause_id}'"
+    assert result.severity_score >= 0.75, "❌ P4 violation should have severity >= 0.75"
+    assert len(result.concerns) >= 1, "❌ P4 violation should generate concerns"
+    assert result.escalation is not None, "❌ P4 violation must escalate"
+    assert (
+        result.escalation.tier == EscalationTier.TIER_2
+    ), f"❌ P4 must escalate to TIER_2, got {result.escalation.tier}"
+    assert (
+        result.escalation.clause_id == "P4"
+    ), f"❌ Expected clause_id='P4', got '{result.escalation.clause_id}'"
 
     print("✅ P4 (Secondary Use) validation passed")
     print(f"   - Severity: {result.severity_score}")
@@ -656,35 +695,22 @@ def test_privacy_escalation_priority():
 
     # Test 1: P1 takes priority over P2, P3, P4
     result = critic.evaluate(
-        identity_inference=True,
-        persistent_identity=True,
-        context_mismatch=True,
-        secondary_use=True
+        identity_inference=True, persistent_identity=True, context_mismatch=True, secondary_use=True
     )
 
-    assert result.escalation.clause_id == "P1", \
-        "❌ P1 should have highest priority"
+    assert result.escalation.clause_id == "P1", "❌ P1 should have highest priority"
     print("✅ P1 has highest priority")
 
     # Test 2: P2 takes priority over P3, P4
-    result = critic.evaluate(
-        persistent_identity=True,
-        context_mismatch=True,
-        secondary_use=True
-    )
+    result = critic.evaluate(persistent_identity=True, context_mismatch=True, secondary_use=True)
 
-    assert result.escalation.clause_id == "P2", \
-        "❌ P2 should take priority over P3/P4"
+    assert result.escalation.clause_id == "P2", "❌ P2 should take priority over P3/P4"
     print("✅ P2 prioritized over P3/P4")
 
     # Test 3: P3 takes priority over P4
-    result = critic.evaluate(
-        context_mismatch=True,
-        secondary_use=True
-    )
+    result = critic.evaluate(context_mismatch=True, secondary_use=True)
 
-    assert result.escalation.clause_id == "P3", \
-        "❌ P3 should take priority over P4"
+    assert result.escalation.clause_id == "P3", "❌ P3 should take priority over P4"
     print("✅ P3 prioritized over P4")
 
     print("✅ Privacy escalation priority validation passed")
@@ -704,12 +730,9 @@ def test_privacy_no_violations():
     # Test: No violations
     result = critic.evaluate()
 
-    assert result.severity_score == 0.0, \
-        "❌ No violations should have severity 0.0"
-    assert len(result.concerns) == 0, \
-        "❌ No violations should have no concerns"
-    assert result.escalation is None, \
-        "❌ No violations should not escalate"
+    assert result.severity_score == 0.0, "❌ No violations should have severity 0.0"
+    assert len(result.concerns) == 0, "❌ No violations should have no concerns"
+    assert result.escalation is None, "❌ No violations should not escalate"
 
     print("✅ No privacy violations correctly handled")
     print(f"   - Severity: {result.severity_score}")
@@ -720,6 +743,7 @@ def test_privacy_no_violations():
 # ============================================================
 # MAIN TEST RUNNER
 # ============================================================
+
 
 def main():
     """Run all constitutional compliance tests."""
@@ -766,12 +790,14 @@ def main():
         print("\n❌ CONSTITUTIONAL COMPLIANCE TEST FAILED:")
         print(f"   {str(e)}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
     except Exception as e:
         print("\n❌ UNEXPECTED ERROR:")
         print(f"   {str(e)}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

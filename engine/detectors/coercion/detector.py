@@ -24,6 +24,7 @@ from ..signals import DetectorSignal, SeverityLevel
 @dataclass
 class DetectionPattern:
     """Configuration for detection pattern."""
+
     category: str
     patterns: List[str]
     keywords: List[str]
@@ -41,11 +42,17 @@ DETECTION_PATTERNS = [
             r"\b(you'?ll\s+regret\s+it)\b",
         ],
         keywords=[
-            "threaten you", "threat to", "will harm", "will hurt",
-            "will kill", "will destroy", "will punish", "or else i'll"
+            "threaten you",
+            "threat to",
+            "will harm",
+            "will hurt",
+            "will kill",
+            "will destroy",
+            "will punish",
+            "or else i'll",
         ],
         severity_weight=0.95,
-        description="Direct threats of harm or punishment"
+        description="Direct threats of harm or punishment",
     ),
     DetectionPattern(
         category="implied_consequences",
@@ -54,11 +61,15 @@ DETECTION_PATTERNS = [
             r"\b(unless|if you don't|if you refuse)\b",
         ],
         keywords=[
-            "or else", "there will be consequences", "you'll regret",
-            "you'll pay", "unless you", "if you don't"
+            "or else",
+            "there will be consequences",
+            "you'll regret",
+            "you'll pay",
+            "unless you",
+            "if you don't",
         ],
         severity_weight=0.75,
-        description="Implied negative consequences for non-compliance"
+        description="Implied negative consequences for non-compliance",
     ),
     DetectionPattern(
         category="emotional_manipulation",
@@ -67,11 +78,16 @@ DETECTION_PATTERNS = [
             r"\b(make\s+you\s+feel)\s+(bad|guilty|ashamed)\b",
         ],
         keywords=[
-            "guilt trip", "shame on you", "disappoint everyone",
-            "betray us", "make you feel bad", "ungrateful", "if you really loved me"
+            "guilt trip",
+            "shame on you",
+            "disappoint everyone",
+            "betray us",
+            "make you feel bad",
+            "ungrateful",
+            "if you really loved me",
         ],
         severity_weight=0.6,
-        description="Emotional manipulation to influence behavior"
+        description="Emotional manipulation to influence behavior",
     ),
     DetectionPattern(
         category="intimidation",
@@ -80,11 +96,15 @@ DETECTION_PATTERNS = [
             r"\b(no\s+choice|must\s+obey|will\s+make\s+you)\b",
         ],
         keywords=[
-            "force you to", "make you comply", "intimidate",
-            "coerce", "no choice but", "must obey"
+            "force you to",
+            "make you comply",
+            "intimidate",
+            "coerce",
+            "no choice but",
+            "must obey",
         ],
         severity_weight=0.8,
-        description="Intimidation or forceful coercion"
+        description="Intimidation or forceful coercion",
     ),
     DetectionPattern(
         category="gaslighting",
@@ -93,33 +113,32 @@ DETECTION_PATTERNS = [
             r"\b(that never happened|I never said that|you're making things up)\b",
         ],
         keywords=[
-            "you're imagining", "that never happened", "you're crazy",
-            "no one believes you", "you're overreacting"
+            "you're imagining",
+            "that never happened",
+            "you're crazy",
+            "no one believes you",
+            "you're overreacting",
         ],
         severity_weight=0.85,
-        description="Gaslighting and reality manipulation"
+        description="Gaslighting and reality manipulation",
     ),
     DetectionPattern(
         category="pressure",
         patterns=[
             r"\b(act now|last chance|time is running out|don't think, just do it)\b",
         ],
-        keywords=[
-            "act now", "last chance", "don't think", "just do it", "limited time"
-        ],
+        keywords=["act now", "last chance", "don't think", "just do it", "limited time"],
         severity_weight=0.45,
-        description="High-pressure language reducing deliberation"
+        description="High-pressure language reducing deliberation",
     ),
     DetectionPattern(
         category="autonomy_denial",
         patterns=[
             r"\b(you have no choice|i decide for you|you must obey|i'll decide for you)\b",
         ],
-        keywords=[
-            "no choice", "must obey", "i decide", "i'll decide"
-        ],
+        keywords=["no choice", "must obey", "i decide", "i'll decide"],
         severity_weight=0.85,
-        description="Removal of autonomy or decision rights"
+        description="Removal of autonomy or decision rights",
     ),
     DetectionPattern(
         category="isolation",
@@ -127,11 +146,9 @@ DETECTION_PATTERNS = [
             r"\b(don't talk to|avoid|stay away from)\s+(your|their)\s+(family|friends|others)\b",
             r"\bonly i understand you\b",
         ],
-        keywords=[
-            "don't talk to your family", "only i understand you", "avoid your friends"
-        ],
+        keywords=["don't talk to your family", "only i understand you", "avoid your friends"],
         severity_weight=0.65,
-        description="Isolation from support networks"
+        description="Isolation from support networks",
     ),
 ]
 
@@ -182,7 +199,7 @@ class CoercionDetector(Detector):
             description="Coercion risk assessment",
             violations=[v["category"] for v in violations],
             evidence=metadata,
-            flags=self._generate_flags(violations)
+            flags=self._generate_flags(violations),
         )
 
     def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
@@ -195,26 +212,30 @@ class CoercionDetector(Detector):
             for pattern in self._compiled_patterns[dp.category]:
                 matches = pattern.findall(text)
                 if matches:
-                    violations.append({
-                        "category": dp.category,
-                        "detection_method": "regex",
-                        "severity_score": dp.severity_weight,
-                        "description": dp.description,
-                        "matches": matches[:3],
-                    })
+                    violations.append(
+                        {
+                            "category": dp.category,
+                            "detection_method": "regex",
+                            "severity_score": dp.severity_weight,
+                            "description": dp.description,
+                            "matches": matches[:3],
+                        }
+                    )
                     break
 
             # Strategy 2: Keyword detection
             for keyword in dp.keywords:
                 if keyword.lower() in text_lower:
                     if not any(v["category"] == dp.category for v in violations):
-                        violations.append({
-                            "category": dp.category,
-                            "detection_method": "keyword",
-                            "severity_score": dp.severity_weight * 0.9,
-                            "description": dp.description,
-                            "keyword_matched": keyword,
-                        })
+                        violations.append(
+                            {
+                                "category": dp.category,
+                                "detection_method": "keyword",
+                                "severity_score": dp.severity_weight * 0.9,
+                                "description": dp.description,
+                                "keyword_matched": keyword,
+                            }
+                        )
                     break
 
         return violations
@@ -236,7 +257,9 @@ class CoercionDetector(Detector):
         normalized = min(1.0, total_score)
         return normalized
 
-    def _build_metadata(self, text: str, violations: List[Dict[str, Any]], severity: float) -> Dict[str, Any]:
+    def _build_metadata(
+        self, text: str, violations: List[Dict[str, Any]], severity: float
+    ) -> Dict[str, Any]:
         text_lower = text.lower()
         autonomy_respecting_phrases = 0
         for phrase in ["your choice", "take your time", "decide what's best for you"]:
@@ -257,9 +280,9 @@ class CoercionDetector(Detector):
             "autonomy_denial": "autonomy_denial",
             "isolation": "isolation",
         }
-        normalized_categories = list({
-            category_aliases.get(v["category"], v["category"]) for v in violations
-        })
+        normalized_categories = list(
+            {category_aliases.get(v["category"], v["category"]) for v in violations}
+        )
 
         return {
             "violations": violations,

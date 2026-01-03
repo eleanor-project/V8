@@ -55,8 +55,8 @@ PRIORITY_ORDER = [
 #  AggregatorV8
 # ============================================================
 
-class AggregatorV8:
 
+class AggregatorV8:
     def __init__(self):
         pass
 
@@ -173,7 +173,7 @@ class AggregatorV8:
                 "severity": severity,
                 "violations": violations,
                 "justification": justification,
-                "raw": data
+                "raw": data,
             }
 
         return normalized
@@ -198,25 +198,17 @@ class AggregatorV8:
         for critic in PRIORITY_ORDER:
             entry = critics_norm.get(critic, {})
             sev = entry.get("severity", 0.0)
-            if sev >= 2.0:   # threshold for constitutional relevance
-                violations.append({
-                    "critic": critic,
-                    "severity": sev,
-                    "type": "constitutional_violation"
-                })
+            if sev >= 2.0:  # threshold for constitutional relevance
+                violations.append(
+                    {"critic": critic, "severity": sev, "type": "constitutional_violation"}
+                )
 
         highest = None
         if violations:
             # highest priority by lexicographic order
-            highest = sorted(
-                violations,
-                key=lambda v: PRIORITY_ORDER.index(v["critic"])
-            )[0]
+            highest = sorted(violations, key=lambda v: PRIORITY_ORDER.index(v["critic"]))[0]
 
-        return {
-            "violations": violations,
-            "highest_priority_violation": highest
-        }
+        return {"violations": violations, "highest_priority_violation": highest}
 
     # ----------------------------------------------------------
     # STEP 3: Apply precedent weighting
@@ -251,10 +243,7 @@ class AggregatorV8:
             else:
                 sev_adj = sev * (1 - (align * 0.3))
 
-            adjusted[name] = {
-                **entry,
-                "precedent_adjusted_severity": max(0.0, min(3.0, sev_adj))
-            }
+            adjusted[name] = {**entry, "precedent_adjusted_severity": max(0.0, min(3.0, sev_adj))}
 
         return adjusted
 
@@ -279,10 +268,7 @@ class AggregatorV8:
             sev = entry["precedent_adjusted_severity"]
             sev_u = sev * (1 + 0.5 * u)
 
-            adjusted[name] = {
-                **entry,
-                "final_severity": max(0.0, min(3.0, sev_u))
-            }
+            adjusted[name] = {**entry, "final_severity": max(0.0, min(3.0, sev_u))}
 
         return adjusted
 
@@ -296,17 +282,12 @@ class AggregatorV8:
             • average_severity
         """
 
-        severities = [
-            c["final_severity"] for c in critics_final.values()
-        ]
+        severities = [c["final_severity"] for c in critics_final.values()]
 
         avg = statistics.mean(severities) if severities else 0.0
         total = sum(severities)
 
-        return {
-            "average_severity": avg,
-            "total_severity": total
-        }
+        return {"average_severity": avg, "total_severity": total}
 
     # ----------------------------------------------------------
     # STEP 6: Decision Logic

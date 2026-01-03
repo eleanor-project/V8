@@ -24,7 +24,7 @@ def configure_logging(
 ) -> None:
     """
     Configure structured logging for ELEANOR.
-    
+
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
         json_logs: Use JSON format (True for production, False for dev)
@@ -36,7 +36,7 @@ def configure_logging(
         stream=sys.stdout,
         level=getattr(logging, log_level.upper()),
     )
-    
+
     # Processors for all modes
     processors: list[Processor] = [
         structlog.stdlib.filter_by_level,
@@ -47,7 +47,7 @@ def configure_logging(
         StackInfoRenderer(),
         format_exc_info,
     ]
-    
+
     # Add renderer based on mode
     if development_mode and not json_logs:
         # Colored console for development
@@ -55,7 +55,7 @@ def configure_logging(
     else:
         # JSON for production
         processors.append(JSONRenderer())
-    
+
     # Configure structlog
     structlog.configure(
         processors=processors,
@@ -69,10 +69,10 @@ def configure_logging(
 def get_logger(name: Optional[str] = None):
     """
     Get structured logger instance.
-    
+
     Args:
         name: Logger name (defaults to caller's module)
-    
+
     Returns:
         Structlog logger instance
     """

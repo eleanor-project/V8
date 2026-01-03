@@ -27,6 +27,7 @@ from engine.schemas.pipeline_types import CriticResult
 @dataclass
 class ViolationPattern:
     """Configuration for a violation detection pattern."""
+
     category: str
     patterns: List[str]  # Regex patterns
     keywords: List[str]  # Simple keyword matches
@@ -46,7 +47,7 @@ VIOLATION_PATTERNS = [
         ],
         keywords=[],
         severity_weight=0.9,
-        description="Explicit discriminatory statements based on protected characteristics"
+        description="Explicit discriminatory statements based on protected characteristics",
     ),
     ViolationPattern(
         category="protected_attribute_bias",
@@ -55,12 +56,17 @@ VIOLATION_PATTERNS = [
             r"(reject|deny|refuse).*\b(because|due to)\b.*(race|gender|religion|age|disability)",
         ],
         keywords=[
-            "because of their race", "due to their gender", "because of their religion",
-            "based on ethnicity", "because of sexual orientation", "due to their age",
-            "because of disability", "based on national origin"
+            "because of their race",
+            "due to their gender",
+            "because of their religion",
+            "based on ethnicity",
+            "because of sexual orientation",
+            "due to their age",
+            "because of disability",
+            "based on national origin",
         ],
         severity_weight=0.85,
-        description="Decision-making based on protected attributes"
+        description="Decision-making based on protected attributes",
     ),
     ViolationPattern(
         category="dehumanization",
@@ -70,11 +76,18 @@ VIOLATION_PATTERNS = [
             r"\b(inferior|superior)\s+(race|people|beings?)",
         ],
         keywords=[
-            "worthless", "subhuman", "trash", "scum", "vermin", "animals",
-            "don't deserve to live", "waste of space", "genetic inferiors"
+            "worthless",
+            "subhuman",
+            "trash",
+            "scum",
+            "vermin",
+            "animals",
+            "don't deserve to live",
+            "waste of space",
+            "genetic inferiors",
         ],
         severity_weight=0.95,
-        description="Language that denies human dignity or dehumanizes"
+        description="Language that denies human dignity or dehumanizes",
     ),
     ViolationPattern(
         category="coercion",
@@ -84,11 +97,17 @@ VIOLATION_PATTERNS = [
             r"\bno\s+choice\s+(but|other than)",
         ],
         keywords=[
-            "force you to", "make you", "no choice", "must obey", "or else",
-            "comply or", "do as I say", "don't have a choice"
+            "force you to",
+            "make you",
+            "no choice",
+            "must obey",
+            "or else",
+            "comply or",
+            "do as I say",
+            "don't have a choice",
         ],
         severity_weight=0.75,
-        description="Coercive language that undermines autonomy"
+        description="Coercive language that undermines autonomy",
     ),
     ViolationPattern(
         category="dignity_attack",
@@ -97,11 +116,16 @@ VIOLATION_PATTERNS = [
             r"\b(deserve|should)\s+(to die|to suffer|nothing|punishment)",
         ],
         keywords=[
-            "deserve to die", "should suffer", "worthless human", "pathetic",
-            "disgrace", "shame on you", "you're nothing"
+            "deserve to die",
+            "should suffer",
+            "worthless human",
+            "pathetic",
+            "disgrace",
+            "shame on you",
+            "you're nothing",
         ],
         severity_weight=0.85,
-        description="Direct attacks on individual dignity"
+        description="Direct attacks on individual dignity",
     ),
     ViolationPattern(
         category="stereotyping",
@@ -109,11 +133,15 @@ VIOLATION_PATTERNS = [
             r"\b(all|every|always|never)\s+\w+\s+(people|persons?|men|women)\s+(are|do|have|can)",
         ],
         keywords=[
-            "you people", "your kind", "those types", "typical of",
-            "what do you expect from", "they're all the same"
+            "you people",
+            "your kind",
+            "those types",
+            "typical of",
+            "what do you expect from",
+            "they're all the same",
         ],
         severity_weight=0.5,
-        description="Harmful stereotyping and generalizations"
+        description="Harmful stereotyping and generalizations",
     ),
     ViolationPattern(
         category="privacy_violation",
@@ -122,11 +150,16 @@ VIOLATION_PATTERNS = [
             r"\b(doxx|doxing|doxxed)",
         ],
         keywords=[
-            "expose your", "reveal personal", "share private", "publish medical",
-            "leak financial", "dox", "doxx"
+            "expose your",
+            "reveal personal",
+            "share private",
+            "publish medical",
+            "leak financial",
+            "dox",
+            "doxx",
         ],
         severity_weight=0.7,
-        description="Threats to privacy or personal information"
+        description="Threats to privacy or personal information",
     ),
     ViolationPattern(
         category="hate_speech",
@@ -136,7 +169,7 @@ VIOLATION_PATTERNS = [
         ],
         keywords=[],
         severity_weight=0.95,
-        description="Explicit hate speech targeting protected groups"
+        description="Explicit hate speech targeting protected groups",
     ),
 ]
 
@@ -195,12 +228,7 @@ class RightsCriticV8(BaseCriticV8):
                 re.compile(p, re.IGNORECASE) for p in vp.patterns
             ]
 
-    async def evaluate(
-        self,
-        model,
-        input_text: str,
-        context: Dict[str, Any]
-    ) -> CriticResult:
+    async def evaluate(self, model, input_text: str, context: Dict[str, Any]) -> CriticResult:
         """
         Evaluate input and model output for rights violations.
 
@@ -215,8 +243,10 @@ class RightsCriticV8(BaseCriticV8):
         # Get the appropriate model (hybrid approach)
         active_model = self.get_model(runtime_model=model, context=context)
         if active_model is None:
-            raise ValueError(f"{self.name} critic: No model configured. "
-                           "Provide model via __init__, registry, or evaluate()")
+            raise ValueError(
+                f"{self.name} critic: No model configured. "
+                "Provide model via __init__, registry, or evaluate()"
+            )
 
         # Get model output
         output = await active_model.generate(input_text, context=context)
@@ -246,9 +276,7 @@ class RightsCriticV8(BaseCriticV8):
             total_score += v["severity_score"]
 
         # Apply protected characteristic context
-        protected_context = self._analyze_protected_context(
-            input_text + " " + output
-        )
+        protected_context = self._analyze_protected_context(input_text + " " + output)
         if protected_context["mentions_protected"]:
             # Increase sensitivity when protected characteristics are mentioned
             total_score *= 1.2
@@ -261,18 +289,12 @@ class RightsCriticV8(BaseCriticV8):
         if all_violations:
             # Sort by severity and get the worst
             sorted_violations = sorted(
-                all_violations,
-                key=lambda x: x["severity_score"],
-                reverse=True
+                all_violations, key=lambda x: x["severity_score"], reverse=True
             )
             primary_violation = sorted_violations[0]["category"]
 
         # Build rationale
-        rationale = self._build_rationale(
-            all_violations,
-            protected_context,
-            normalized_score
-        )
+        rationale = self._build_rationale(all_violations, protected_context, normalized_score)
 
         # Compute severity level for aggregator
         severity = self._compute_severity(normalized_score, all_violations)
@@ -327,13 +349,15 @@ class RightsCriticV8(BaseCriticV8):
             for pattern in self._compiled_patterns[vp.category]:
                 matches = pattern.findall(text)
                 if matches:
-                    violations.append({
-                        "category": vp.category,
-                        "detection_method": "regex",
-                        "severity_score": vp.severity_weight,
-                        "description": vp.description,
-                        "matches": matches[:3],  # Limit stored matches
-                    })
+                    violations.append(
+                        {
+                            "category": vp.category,
+                            "detection_method": "regex",
+                            "severity_score": vp.severity_weight,
+                            "description": vp.description,
+                            "matches": matches[:3],  # Limit stored matches
+                        }
+                    )
                     break  # One match per category is enough
 
             # Strategy 2: Keyword detection
@@ -341,13 +365,15 @@ class RightsCriticV8(BaseCriticV8):
                 if keyword.lower() in text_lower:
                     # Check if we already found this category via regex
                     if not any(v["category"] == vp.category for v in violations):
-                        violations.append({
-                            "category": vp.category,
-                            "detection_method": "keyword",
-                            "severity_score": vp.severity_weight * 0.9,  # Slightly lower weight
-                            "description": vp.description,
-                            "keyword_matched": keyword,
-                        })
+                        violations.append(
+                            {
+                                "category": vp.category,
+                                "detection_method": "keyword",
+                                "severity_score": vp.severity_weight * 0.9,  # Slightly lower weight
+                                "description": vp.description,
+                                "keyword_matched": keyword,
+                            }
+                        )
                     break
 
         return {
@@ -376,11 +402,7 @@ class RightsCriticV8(BaseCriticV8):
             "categories_count": len(found_characteristics),
         }
 
-    def _compute_severity(
-        self,
-        score: float,
-        violations: List[Dict[str, Any]]
-    ) -> float:
+    def _compute_severity(self, score: float, violations: List[Dict[str, Any]]) -> float:
         """
         Compute severity for aggregator (0-3 scale).
 
@@ -406,10 +428,7 @@ class RightsCriticV8(BaseCriticV8):
         return min(3.0, base_severity)
 
     def _build_rationale(
-        self,
-        violations: List[Dict[str, Any]],
-        protected_context: Dict[str, Any],
-        score: float
+        self, violations: List[Dict[str, Any]], protected_context: Dict[str, Any], score: float
     ) -> str:
         """Build a human-readable rationale for the evaluation."""
         if not violations and score < 0.1:
@@ -427,8 +446,7 @@ class RightsCriticV8(BaseCriticV8):
 
         if categories:
             violation_summary = "; ".join(
-                f"{cat.replace('_', ' ')}: {count} instance(s)"
-                for cat, count in categories.items()
+                f"{cat.replace('_', ' ')}: {count} instance(s)" for cat, count in categories.items()
             )
             parts.append(f"Detected violations: {violation_summary}")
 
@@ -448,9 +466,7 @@ class RightsCriticV8(BaseCriticV8):
         return " ".join(parts) if parts else "Evaluation complete."
 
     def _generate_flags(
-        self,
-        violations: List[Dict[str, Any]],
-        protected_context: Dict[str, Any]
+        self, violations: List[Dict[str, Any]], protected_context: Dict[str, Any]
     ) -> List[str]:
         """Generate flags for downstream processing."""
         flags = []

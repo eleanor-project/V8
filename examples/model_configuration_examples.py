@@ -22,6 +22,7 @@ from engine.models import cost_optimizer_strategy, priority_based_strategy
 # Example 1: Explicit Model Configuration (Option 1)
 # ============================================================================
 
+
 async def example_explicit_model():
     """Configure critic with explicit preferred model."""
     print("=" * 60)
@@ -39,13 +40,14 @@ async def example_explicit_model():
 
     print(f"✓ Critic '{critic.name}' configured with explicit model")
     print(f"  Model: {opus_model.__class__.__name__}")
-    print(f"  This critic will always use OpusModel unless overridden at runtime")
+    print("  This critic will always use OpusModel unless overridden at runtime")
     print()
 
 
 # ============================================================================
 # Example 2: Registry-Based Configuration (Option 3)
 # ============================================================================
+
 
 async def example_registry_basic():
     """Configure critics using ModelRegistry."""
@@ -83,6 +85,7 @@ async def example_registry_basic():
 # Example 3: Tier-Based Configuration
 # ============================================================================
 
+
 async def example_registry_tiers():
     """Use performance tiers instead of explicit models."""
     print("=" * 60)
@@ -113,13 +116,16 @@ async def example_registry_tiers():
     for critic_name in ["rights", "fairness", "truth", "risk", "operations"]:
         model_id = registry.get_model_for_critic(critic_name)
         tier = registry.critic_tiers.get(critic_name, "default")
-        print(f"  {critic_name}: {model_id} (tier: {tier.value if hasattr(tier, 'value') else tier})")
+        print(
+            f"  {critic_name}: {model_id} (tier: {tier.value if hasattr(tier, 'value') else tier})"
+        )
     print()
 
 
 # ============================================================================
 # Example 4: Load from YAML Configuration File
 # ============================================================================
+
 
 async def example_yaml_config():
     """Load registry configuration from YAML file."""
@@ -145,6 +151,7 @@ async def example_yaml_config():
 # ============================================================================
 # Example 5: Custom Routing Strategy
 # ============================================================================
+
 
 async def example_custom_routing():
     """Use custom routing strategy for dynamic model selection."""
@@ -174,6 +181,7 @@ async def example_custom_routing():
 # Example 6: Context-Aware Routing
 # ============================================================================
 
+
 async def example_context_aware():
     """Route based on context (priority, budget, etc.)."""
     print("=" * 60)
@@ -202,6 +210,7 @@ async def example_context_aware():
 # ============================================================================
 # Example 7: Hybrid Approach - All Three Methods Together
 # ============================================================================
+
 
 async def example_hybrid_all():
     """Demonstrate hybrid approach with all configuration methods."""
@@ -256,6 +265,7 @@ async def example_hybrid_all():
 # Example 8: Cost Estimation
 # ============================================================================
 
+
 async def example_cost_estimation():
     """Estimate costs for different model configurations."""
     print("=" * 60)
@@ -279,9 +289,7 @@ async def example_cost_estimation():
 
     # Total cost for all critics
     all_critics = ["rights", "fairness", "truth", "risk", "operations"]
-    total_cost = sum(
-        registry.get_cost_estimate(c, 1000) for c in all_critics
-    )
+    total_cost = sum(registry.get_cost_estimate(c, 1000) for c in all_critics)
     print(f"  Total cost for all critics: ${total_cost:.4f} per 1k tokens")
     print()
 
@@ -289,6 +297,7 @@ async def example_cost_estimation():
 # ============================================================================
 # Example 9: Monitoring and Metrics
 # ============================================================================
+
 
 async def example_monitoring():
     """Add monitoring/metrics callbacks."""
@@ -299,10 +308,7 @@ async def example_monitoring():
     registry = ModelRegistry()
 
     # Track metrics
-    metrics = {
-        "requests": 0,
-        "assignments": {}
-    }
+    metrics = {"requests": 0, "assignments": {}}
 
     def metrics_callback(event, data):
         if event == "model_request":
@@ -322,7 +328,7 @@ async def example_monitoring():
 
     print("✓ Metrics collected:")
     print(f"  Total requests: {metrics['requests']}")
-    print(f"  Assignments:")
+    print("  Assignments:")
     for critic, models in metrics["assignments"].items():
         print(f"    {critic}: {len(models)} assignments")
     print()
@@ -331,6 +337,7 @@ async def example_monitoring():
 # ============================================================================
 # Example 10: Save/Load Configuration
 # ============================================================================
+
 
 async def example_save_load():
     """Save and load registry configuration."""
@@ -362,6 +369,7 @@ async def example_save_load():
 # ============================================================================
 # Run All Examples
 # ============================================================================
+
 
 async def main():
     """Run all examples."""

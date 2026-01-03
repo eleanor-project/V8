@@ -16,6 +16,7 @@ from engine.schemas.pipeline_types import (
     UncertaintyResult,
 )
 
+
 @runtime_checkable
 class RouterProtocol(Protocol):
     """Protocol for model router implementations."""
@@ -27,11 +28,11 @@ class RouterProtocol(Protocol):
         context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any] | Awaitable[Dict[str, Any]]:
         """Route request to appropriate model and return response.
-        
+
         Args:
             text: Input text to process
             context: Additional context for routing decision
-            
+
         Returns:
             Dict with keys:
                 - model_name: str
@@ -57,12 +58,12 @@ class CriticProtocol(Protocol):
         context: Dict[str, Any],
     ) -> CriticResult:
         """Evaluate model output against critic's principles.
-        
+
         Args:
             model_adapter: Adapter for generating model responses
             input_text: Original input text
             context: Evaluation context
-            
+
         Returns:
             Dict with keys:
                 - severity: float (0.0-1.0)
@@ -90,11 +91,11 @@ class DetectorEngineProtocol(Protocol):
         context: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Run all detectors on input text.
-        
+
         Args:
             text: Input text to analyze
             context: Detection context
-            
+
         Returns:
             Dict mapping detector names to signal results
         """
@@ -103,10 +104,10 @@ class DetectorEngineProtocol(Protocol):
     @abstractmethod
     def aggregate_signals(self, signals: Dict[str, Any]) -> Dict[str, Any]:
         """Aggregate detector signals into summary.
-        
+
         Args:
             signals: Detector signals from detect_all()
-            
+
         Returns:
             Aggregated summary dict
         """
@@ -134,7 +135,7 @@ class EvidenceRecorderProtocol(Protocol):
         trace_id: str,
     ) -> Any:
         """Record evaluation evidence.
-        
+
         Args:
             critic: Name of critic that generated evidence
             rule_id: Rule identifier
@@ -163,12 +164,12 @@ class PrecedentEngineProtocol(Protocol):
         query_embedding: List[float],
     ) -> PrecedentAlignmentResult:
         """Analyze precedent alignment.
-        
+
         Args:
             critics: Critic evaluation results
             precedent_cases: Retrieved precedent cases
             query_embedding: Query embedding vector
-            
+
         Returns:
             Dict with keys:
                 - alignment_score: float
@@ -191,12 +192,12 @@ class PrecedentRetrieverProtocol(Protocol):
         top_k: int = 5,
     ) -> PrecedentRetrievalResult:
         """Retrieve relevant precedent cases.
-        
+
         Args:
             query: Query text
             critic_results: Critic evaluation results for context
             top_k: Number of cases to retrieve
-            
+
         Returns:
             Dict with keys:
                 - precedent_cases: List[Dict[str, Any]]
@@ -218,12 +219,12 @@ class UncertaintyEngineProtocol(Protocol):
         precedent_alignment: PrecedentAlignmentResult,
     ) -> UncertaintyResult:
         """Compute uncertainty metrics.
-        
+
         Args:
             critics: Critic evaluation results
             model_used: Name of model that generated output
             precedent_alignment: Precedent alignment analysis
-            
+
         Returns:
             Dict with keys:
                 - overall_uncertainty: float (0.0-1.0)
@@ -247,13 +248,13 @@ class AggregatorProtocol(Protocol):
         model_output: str,
     ) -> AggregationOutput:
         """Aggregate all analysis results.
-        
+
         Args:
             critics: Critic evaluation results
             precedent: Precedent alignment analysis
             uncertainty: Uncertainty quantification results
             model_output: Original model output text
-            
+
         Returns:
             Dict with keys:
                 - final_output: str
@@ -271,10 +272,10 @@ class ReviewTriggerEvaluatorProtocol(Protocol):
     @abstractmethod
     def evaluate(self, case: Any) -> Dict[str, Any]:
         """Evaluate if case requires human review.
-        
+
         Args:
             case: Case object with evaluation results
-            
+
         Returns:
             Dict with keys:
                 - review_required: bool

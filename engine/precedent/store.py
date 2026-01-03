@@ -30,6 +30,7 @@ class PrecedentCase:
     """
     Represents a constitutional precedent case for jurisprudence.
     """
+
     case_id: str
     query_text: str
     decision: str  # allow, deny, escalate, constrained_allow
@@ -63,7 +64,9 @@ class BasePrecedentStore(ABC):
         pass
 
     @abstractmethod
-    def search(self, query: str, top_k: int = 5, embedding: Optional[List[float]] = None) -> List[Dict[str, Any]]:
+    def search(
+        self, query: str, top_k: int = 5, embedding: Optional[List[float]] = None
+    ) -> List[Dict[str, Any]]:
         """Search for similar precedent cases. Returns list of case dicts."""
         pass
 
@@ -100,16 +103,16 @@ class InMemoryStore(BasePrecedentStore):
         self._embeddings[case_id] = embedding
         return case_id
 
-    def search(self, query: str, top_k: int = 5, embedding: Optional[List[float]] = None) -> List[Dict[str, Any]]:
+    def search(
+        self, query: str, top_k: int = 5, embedding: Optional[List[float]] = None
+    ) -> List[Dict[str, Any]]:
         if not self._cases:
             return []
 
         if embedding is None:
             # Without embedding, return most recent cases
             sorted_cases = sorted(
-                self._cases.values(),
-                key=lambda c: c.get("timestamp", 0),
-                reverse=True
+                self._cases.values(), key=lambda c: c.get("timestamp", 0), reverse=True
             )
             return sorted_cases[:top_k]
 
@@ -192,10 +195,7 @@ class JSONFileStore(BasePrecedentStore):
         """Save cases to file."""
         try:
             with open(self.file_path, "w") as f:
-                json.dump({
-                    "cases": self._cases,
-                    "embeddings": self._embeddings
-                }, f, indent=2)
+                json.dump({"cases": self._cases, "embeddings": self._embeddings}, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save precedent store: {e}")
 
@@ -207,15 +207,15 @@ class JSONFileStore(BasePrecedentStore):
         self._save()
         return case_id
 
-    def search(self, query: str, top_k: int = 5, embedding: Optional[List[float]] = None) -> List[Dict[str, Any]]:
+    def search(
+        self, query: str, top_k: int = 5, embedding: Optional[List[float]] = None
+    ) -> List[Dict[str, Any]]:
         if not self._cases:
             return []
 
         if embedding is None:
             sorted_cases = sorted(
-                self._cases.values(),
-                key=lambda c: c.get("timestamp", 0),
-                reverse=True
+                self._cases.values(), key=lambda c: c.get("timestamp", 0), reverse=True
             )
             return sorted_cases[:top_k]
 
@@ -284,7 +284,7 @@ class PgVectorStore(BasePrecedentStore):
         connection_string: Optional[str] = None,
         table_name: str = "precedent_cases",
         embedding_dim: int = 1536,
-        pool_size: int = 5
+        pool_size: int = 5,
     ):
         """
         Initialize PgVector store.
@@ -296,8 +296,7 @@ class PgVectorStore(BasePrecedentStore):
             pool_size: Connection pool size
         """
         self.connection_string = connection_string or os.getenv(
-            "POSTGRES_URL",
-            "postgresql://localhost:5432/eleanor"
+            "POSTGRES_URL", "postgresql://localhost:5432/eleanor"
         )
         self.table_name = table_name
         self.embedding_dim = embedding_dim
@@ -310,6 +309,7 @@ class PgVectorStore(BasePrecedentStore):
         try:
             import psycopg2  # type: ignore[import-untyped]
             from psycopg2.extras import RealDictCursor  # type: ignore[import-untyped]
+
             return psycopg2.connect(self.connection_string, cursor_factory=RealDictCursor)
         except ImportError:
             raise ImportError("psycopg2 not installed. Run: pip install psycopg2-binary")
@@ -324,7 +324,8 @@ class PgVectorStore(BasePrecedentStore):
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
             # Create table
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 CREATE TABLE IF NOT EXISTS {self.table_name} (
                     case_id VARCHAR(64) PRIMARY KEY,
                     query_text TEXT NOT NULL,
@@ -337,14 +338,17 @@ class PgVectorStore(BasePrecedentStore):
                     metadata JSONB,
                     embedding vector({self.embedding_dim})
                 )
-            """)
+            """
+            )
 
             # Create index for fast similarity search
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 CREATE INDEX IF NOT EXISTS {self.table_name}_embedding_idx
                 ON {self.table_name} USING ivfflat (embedding vector_cosine_ops)
                 WITH (lists = 100)
-            """)
+            """
+            )
 
             conn.commit()
             self._initialized = True
@@ -359,7 +363,8 @@ class PgVectorStore(BasePrecedentStore):
             self._ensure_table(conn)
 
             with conn.cursor() as cur:
-                cur.execute(f"""
+                cur.execute(
+                    f"""
                     INSERT INTO {self.table_name}
                     (case_id, query_text, decision, values, aggregate_score,
                      critic_outputs, rationale, timestamp, metadata, embedding)
@@ -373,25 +378,29 @@ class PgVectorStore(BasePrecedentStore):
                         rationale = EXCLUDED.rationale,
                         metadata = EXCLUDED.metadata,
                         embedding = EXCLUDED.embedding
-                """, (
-                    case_id,
-                    case.query_text,
-                    case.decision,
-                    case.values,
-                    case.aggregate_score,
-                    json.dumps(case.critic_outputs),
-                    case.rationale,
-                    case.timestamp,
-                    json.dumps(case.metadata),
-                    embedding
-                ))
+                """,
+                    (
+                        case_id,
+                        case.query_text,
+                        case.decision,
+                        case.values,
+                        case.aggregate_score,
+                        json.dumps(case.critic_outputs),
+                        case.rationale,
+                        case.timestamp,
+                        json.dumps(case.metadata),
+                        embedding,
+                    ),
+                )
                 conn.commit()
         finally:
             conn.close()
 
         return case_id
 
-    def search(self, query: str, top_k: int = 5, embedding: Optional[List[float]] = None) -> List[Dict[str, Any]]:
+    def search(
+        self, query: str, top_k: int = 5, embedding: Optional[List[float]] = None
+    ) -> List[Dict[str, Any]]:
         """Search for similar precedent cases using vector similarity."""
         conn = self._get_connection()
         try:
@@ -400,30 +409,38 @@ class PgVectorStore(BasePrecedentStore):
             with conn.cursor() as cur:
                 if embedding:
                     # Vector similarity search
-                    cur.execute(f"""
+                    cur.execute(
+                        f"""
                         SELECT case_id, query_text, decision, values, aggregate_score,
                                critic_outputs, rationale, timestamp, metadata,
                                1 - (embedding <=> %s::vector) as similarity_score
                         FROM {self.table_name}
                         ORDER BY embedding <=> %s::vector
                         LIMIT %s
-                    """, (embedding, embedding, top_k))
+                    """,
+                        (embedding, embedding, top_k),
+                    )
                 else:
                     # Fall back to most recent
-                    cur.execute(f"""
+                    cur.execute(
+                        f"""
                         SELECT case_id, query_text, decision, values, aggregate_score,
                                critic_outputs, rationale, timestamp, metadata,
                                1.0 as similarity_score
                         FROM {self.table_name}
                         ORDER BY timestamp DESC
                         LIMIT %s
-                    """, (top_k,))
+                    """,
+                        (top_k,),
+                    )
 
                 rows = cur.fetchall()
                 results = []
                 for row in rows:
                     case = dict(row)
-                    case["critic_outputs"] = json.loads(case["critic_outputs"]) if case["critic_outputs"] else {}
+                    case["critic_outputs"] = (
+                        json.loads(case["critic_outputs"]) if case["critic_outputs"] else {}
+                    )
                     case["metadata"] = json.loads(case["metadata"]) if case["metadata"] else {}
                     results.append(case)
 
@@ -438,17 +455,22 @@ class PgVectorStore(BasePrecedentStore):
             self._ensure_table(conn)
 
             with conn.cursor() as cur:
-                cur.execute(f"""
+                cur.execute(
+                    f"""
                     SELECT case_id, query_text, decision, values, aggregate_score,
                            critic_outputs, rationale, timestamp, metadata
                     FROM {self.table_name}
                     WHERE case_id = %s
-                """, (case_id,))
+                """,
+                    (case_id,),
+                )
 
                 row = cur.fetchone()
                 if row:
                     case = dict(row)
-                    case["critic_outputs"] = json.loads(case["critic_outputs"]) if case["critic_outputs"] else {}
+                    case["critic_outputs"] = (
+                        json.loads(case["critic_outputs"]) if case["critic_outputs"] else {}
+                    )
                     case["metadata"] = json.loads(case["metadata"]) if case["metadata"] else {}
                     return case
                 return None
@@ -519,8 +541,7 @@ class ChromaStore(BasePrecedentStore):
             self._client = chromadb.Client()
 
         self._collection = self._client.get_or_create_collection(
-            name=collection_name,
-            metadata={"hnsw:space": "cosine"}
+            name=collection_name, metadata={"hnsw:space": "cosine"}
         )
 
     def add(self, case: PrecedentCase, embedding: List[float]) -> str:
@@ -531,30 +552,34 @@ class ChromaStore(BasePrecedentStore):
             ids=[case_id],
             embeddings=[embedding],
             documents=[case.query_text],
-            metadatas=[{
-                "decision": case.decision,
-                "values": json.dumps(case.values),
-                "aggregate_score": case.aggregate_score,
-                "critic_outputs": json.dumps(case.critic_outputs),
-                "rationale": case.rationale,
-                "timestamp": case.timestamp,
-                "metadata": json.dumps(case.metadata),
-            }]
+            metadatas=[
+                {
+                    "decision": case.decision,
+                    "values": json.dumps(case.values),
+                    "aggregate_score": case.aggregate_score,
+                    "critic_outputs": json.dumps(case.critic_outputs),
+                    "rationale": case.rationale,
+                    "timestamp": case.timestamp,
+                    "metadata": json.dumps(case.metadata),
+                }
+            ],
         )
         return case_id
 
-    def search(self, query: str, top_k: int = 5, embedding: Optional[List[float]] = None) -> List[Dict[str, Any]]:
+    def search(
+        self, query: str, top_k: int = 5, embedding: Optional[List[float]] = None
+    ) -> List[Dict[str, Any]]:
         if embedding:
             results = self._collection.query(
                 query_embeddings=[embedding],
                 n_results=top_k,
-                include=["documents", "metadatas", "distances"]
+                include=["documents", "metadatas", "distances"],
             )
         else:
             results = self._collection.query(
                 query_texts=[query],
                 n_results=top_k,
-                include=["documents", "metadatas", "distances"]
+                include=["documents", "metadatas", "distances"],
             )
 
         cases = []

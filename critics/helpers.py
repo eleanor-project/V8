@@ -8,7 +8,9 @@ def parse_critic_response(raw: Dict[str, Any], critic_name: str) -> CriticOutput
     Normalize/validate raw JSON from the LLM into CriticOutput.
     """
     escalation_payload = raw.get("escalation")
-    escalation = EscalationSignal(**escalation_payload) if isinstance(escalation_payload, dict) else None
+    escalation = (
+        EscalationSignal(**escalation_payload) if isinstance(escalation_payload, dict) else None
+    )
 
     return CriticOutput(
         critic=critic_name,

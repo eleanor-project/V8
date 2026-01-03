@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class SecureAuditLogger:
     """
     Audit logger with automatic credential sanitization.
-    
+
     Ensures no secrets leak into audit trails.
     """
 
@@ -35,7 +35,7 @@ class SecureAuditLogger:
     ):
         """
         Log audit event with sanitization.
-        
+
         Args:
             event_type: Type of audit event
             details: Event details (will be sanitized)
@@ -43,14 +43,14 @@ class SecureAuditLogger:
         """
         # Sanitize details
         sanitized_details = self.sanitizer.sanitize_dict(details)
-        
+
         # Log to audit trail
         log_entry = {
             "event_type": event_type,
             "severity": severity,
             "details": sanitized_details,
         }
-        
+
         # Use appropriate log level
         if severity == "ERROR":
             logger.error("audit_event", extra=log_entry)
@@ -69,7 +69,7 @@ class SecureAuditLogger:
     ):
         """
         Log access control event.
-        
+
         Args:
             user: User identifier
             resource: Resource being accessed
@@ -83,10 +83,10 @@ class SecureAuditLogger:
             "action": action,
             "allowed": allowed,
         }
-        
+
         if metadata:
             details["metadata"] = metadata
-        
+
         severity = "INFO" if allowed else "WARNING"
         self.log_audit_event("access_control", details, severity)
 
@@ -99,7 +99,7 @@ class SecureAuditLogger:
     ):
         """
         Log configuration change with sanitization.
-        
+
         Args:
             user: User who made the change
             config_key: Configuration key
@@ -112,7 +112,7 @@ class SecureAuditLogger:
             "old_value": old_value,
             "new_value": new_value,
         }
-        
+
         self.log_audit_event("configuration_change", details, "WARNING")
 
     def log_secret_access(
@@ -123,7 +123,7 @@ class SecureAuditLogger:
     ):
         """
         Log secret access (never logs actual secret value).
-        
+
         Args:
             secret_key: Key of secret accessed
             accessor: Who accessed the secret
@@ -134,6 +134,6 @@ class SecureAuditLogger:
             "accessor": accessor,
             "success": success,
         }
-        
+
         severity = "WARNING" if not success else "INFO"
         self.log_audit_event("secret_access", details, severity)

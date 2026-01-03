@@ -13,7 +13,7 @@ import re
 from engine.schemas.escalation import HumanAction
 
 # Input sanitization pattern - remove potential injection attempts
-SANITIZE_PATTERN = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')
+SANITIZE_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 class DeliberationRequest(BaseModel):
@@ -29,35 +29,28 @@ class DeliberationRequest(BaseModel):
     )
 
     input: str = Field(
-        ...,
-        min_length=1,
-        max_length=100000,
-        description="The input text to deliberate on"
+        ..., min_length=1, max_length=100000, description="The input text to deliberate on"
     )
     context: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Optional context for the deliberation"
+        default_factory=dict, description="Optional context for the deliberation"
     )
-    trace_id: Optional[str] = Field(
-        None,
-        description="Optional trace ID for correlation"
-    )
+    trace_id: Optional[str] = Field(None, description="Optional trace ID for correlation")
     human_action: Optional[HumanAction] = Field(
-        None,
-        description="Optional human action to satisfy escalation gate"
+        None, description="Optional human action to satisfy escalation gate"
     )
 
     @field_validator("input")
     @classmethod
     def sanitize_input(cls, v: str) -> str:
         """Remove control characters and trim whitespace."""
-        v = SANITIZE_PATTERN.sub('', v)
+        v = SANITIZE_PATTERN.sub("", v)
         return v.strip()
 
     @field_validator("context")
     @classmethod
     def validate_context(cls, v: Dict[str, Any]) -> Dict[str, Any]:
         """Ensure context doesn't contain overly nested structures."""
+
         def check_depth(obj: Any, depth: int = 0, max_depth: int = 5) -> bool:
             if depth > max_depth:
                 return False
@@ -81,27 +74,15 @@ class GovernancePreviewRequest(BaseModel):
                 "critics": {"rights": {"severity": 0.5}},
                 "aggregator": {"decision": "allow"},
                 "precedent": {"alignment_score": 0.8},
-                "uncertainty": {"overall_uncertainty": 0.2}
+                "uncertainty": {"overall_uncertainty": 0.2},
             }
         }
     )
 
-    critics: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Mock critic outputs"
-    )
-    aggregator: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Mock aggregator output"
-    )
-    precedent: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Mock precedent data"
-    )
-    uncertainty: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Mock uncertainty data"
-    )
+    critics: Dict[str, Any] = Field(default_factory=dict, description="Mock critic outputs")
+    aggregator: Dict[str, Any] = Field(default_factory=dict, description="Mock aggregator output")
+    precedent: Dict[str, Any] = Field(default_factory=dict, description="Mock precedent data")
+    uncertainty: Dict[str, Any] = Field(default_factory=dict, description="Mock uncertainty data")
 
 
 class CriticOutput(BaseModel):
@@ -137,7 +118,7 @@ class DeliberationResponse(BaseModel):
                 "precedent_alignment": {"alignment_score": 0.8},
                 "uncertainty": {"overall_uncertainty": 0.2},
                 "aggregator_output": {"decision": "allow"},
-                "opa_governance": {"allow": True}
+                "opa_governance": {"allow": True},
             }
         }
     )

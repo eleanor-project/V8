@@ -25,6 +25,7 @@ from ..signals import DetectorSignal
 @dataclass
 class DetectionPattern:
     """Configuration for detection pattern."""
+
     category: str
     patterns: List[str]
     keywords: List[str]
@@ -40,11 +41,16 @@ DETECTION_PATTERNS = [
             r"\b(no choice|only option|have to|must)\b",
         ],
         keywords=[
-            "you must", "you have to", "you need to", "you're required to",
-            "no choice but", "only way", "must do"
+            "you must",
+            "you have to",
+            "you need to",
+            "you're required to",
+            "no choice but",
+            "only way",
+            "must do",
         ],
         severity_weight=0.7,
-        description="Coercive language that removes user choice"
+        description="Coercive language that removes user choice",
     ),
     DetectionPattern(
         category="consent_bypass",
@@ -53,11 +59,14 @@ DETECTION_PATTERNS = [
             r"\b(don't\s+need|no\s+need)\s+(?:to\s+)?(?:ask|consent|approve)\b",
         ],
         keywords=[
-            "without asking", "without permission", "don't need consent",
-            "no need to ask", "assumed consent"
+            "without asking",
+            "without permission",
+            "don't need consent",
+            "no need to ask",
+            "assumed consent",
         ],
         severity_weight=0.8,
-        description="Bypassing user consent or permission"
+        description="Bypassing user consent or permission",
     ),
     DetectionPattern(
         category="manipulation",
@@ -67,11 +76,15 @@ DETECTION_PATTERNS = [
             r"\b(peer\s+pressure|bandwagon|everyone's\s+doing)\b",
         ],
         keywords=[
-            "everyone else", "all your friends", "you really should",
-            "you ought to", "don't be the only one", "join everyone"
+            "everyone else",
+            "all your friends",
+            "you really should",
+            "you ought to",
+            "don't be the only one",
+            "join everyone",
         ],
         severity_weight=0.6,
-        description="Manipulative social pressure tactics"
+        description="Manipulative social pressure tactics",
     ),
     DetectionPattern(
         category="forced_decision",
@@ -81,11 +94,15 @@ DETECTION_PATTERNS = [
             r"\b(or\s+else|otherwise|consequences)\b",
         ],
         keywords=[
-            "decide now", "act immediately", "no time to think",
-            "limited time", "expires soon", "now or never"
+            "decide now",
+            "act immediately",
+            "no time to think",
+            "limited time",
+            "expires soon",
+            "now or never",
         ],
         severity_weight=0.65,
-        description="Artificial urgency to force decisions"
+        description="Artificial urgency to force decisions",
     ),
     DetectionPattern(
         category="compliance_demand",
@@ -93,12 +110,9 @@ DETECTION_PATTERNS = [
             r"\b(obey|comply|submit|follow\s+(?:orders|instructions))\b",
             r"\b(do\s+as\s+(?:I|you're|you\s+are)\s+told)\b",
         ],
-        keywords=[
-            "obey", "comply", "submit", "follow orders",
-            "do as told", "don't question"
-        ],
+        keywords=["obey", "comply", "submit", "follow orders", "do as told", "don't question"],
         severity_weight=0.75,
-        description="Demands for blind compliance"
+        description="Demands for blind compliance",
     ),
 ]
 
@@ -149,7 +163,7 @@ class AutonomyDetector(Detector):
                 "text_excerpt": text[:500],
                 "detection_count": len(violations),
             },
-            flags=self._generate_flags(violations)
+            flags=self._generate_flags(violations),
         )
 
     def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
@@ -162,26 +176,30 @@ class AutonomyDetector(Detector):
             for pattern in self._compiled_patterns[dp.category]:
                 matches = pattern.findall(text)
                 if matches:
-                    violations.append({
-                        "category": dp.category,
-                        "detection_method": "regex",
-                        "severity_score": dp.severity_weight,
-                        "description": dp.description,
-                        "matches": matches[:3],
-                    })
+                    violations.append(
+                        {
+                            "category": dp.category,
+                            "detection_method": "regex",
+                            "severity_score": dp.severity_weight,
+                            "description": dp.description,
+                            "matches": matches[:3],
+                        }
+                    )
                     break
 
             # Strategy 2: Keyword detection
             for keyword in dp.keywords:
                 if keyword.lower() in text_lower:
                     if not any(v["category"] == dp.category for v in violations):
-                        violations.append({
-                            "category": dp.category,
-                            "detection_method": "keyword",
-                            "severity_score": dp.severity_weight * 0.9,
-                            "description": dp.description,
-                            "keyword_matched": keyword,
-                        })
+                        violations.append(
+                            {
+                                "category": dp.category,
+                                "detection_method": "keyword",
+                                "severity_score": dp.severity_weight * 0.9,
+                                "description": dp.description,
+                                "keyword_matched": keyword,
+                            }
+                        )
                     break
 
         return violations

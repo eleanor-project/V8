@@ -20,6 +20,7 @@ dependencies = [
     "httpx>=0.24.0",
     "aiofiles>=23.0.0",
     "python-dotenv>=1.0.0",
+    "cachetools>=5.0",
 ]
 
 [project.optional-dependencies]
@@ -48,7 +49,6 @@ observability = [
 
 cache = [
     "redis>=5.0",
-    "cachetools>=5.0",
 ]
 
 security = [

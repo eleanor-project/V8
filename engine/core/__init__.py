@@ -51,6 +51,7 @@ def _wrap_llm_adapter(fn):
         if hasattr(result, "__await__"):
             result = await result
         return result
+
     return _adapter
 
 
@@ -144,6 +145,7 @@ def _build_precedent_layer(
         if backend == "weaviate":
             try:
                 import weaviate
+
                 client = weaviate.Client(url=os.getenv("WEAVIATE_URL", "http://localhost:8080"))  # type: ignore[call-arg]
                 store = WeaviatePrecedentStore(
                     client=client,
@@ -157,21 +159,27 @@ def _build_precedent_layer(
             table = os.getenv("PG_TABLE", "precedent")
             if conn:
                 try:
-                    store = PGVectorPrecedentStore(conn_string=conn, table_name=table, embed_fn=embed_fn)
+                    store = PGVectorPrecedentStore(
+                        conn_string=conn, table_name=table, embed_fn=embed_fn
+                    )
                 except Exception:
                     store = None
         else:
+
             class MemoryStore:
                 def __init__(self, embed_fn=None):
                     self.items = []
                     self.embed_fn = embed_fn or (lambda x: [])
 
                 def add(self, text, metadata=None):
-                    self.items.append({"text": text, "metadata": metadata or {}, "embedding": self.embed_fn(text)})
+                    self.items.append(
+                        {"text": text, "metadata": metadata or {}, "embedding": self.embed_fn(text)}
+                    )
 
                 def search(self, q, top_k=5):
                     # naive search; return top_k in insertion order
                     return self.items[:top_k]
+
             store = MemoryStore(embed_fn=embed_fn)
 
     if store and PrecedentRetrievalV8 is not None:
@@ -185,12 +193,14 @@ class HeuristicDetector:
     Lightweight detector to reduce empty detector registry: scans for coercion
     and harmful patterns and returns DetectorSignal-like dicts.
     """
+
     def __init__(self, name: str, patterns):
         self.name = name
         self.patterns = patterns
 
     async def detect(self, text: str, context: dict):
         import re
+
         matches = []
         for pat in self.patterns:
             regex = re.compile(pat, re.IGNORECASE)
@@ -353,16 +363,22 @@ def build_eleanor_engine_v8(
     )
 
     detectors = {
-        "coercion": HeuristicDetector("coercion", [r"no choice", r"you must", r"or else", r"cannot refuse"]),
+        "coercion": HeuristicDetector(
+            "coercion", [r"no choice", r"you must", r"or else", r"cannot refuse"]
+        ),
         "hallucination": HeuristicDetector("hallucination", [r"\bmake up\b", r"\binvented\b"]),
-        "privacy": HeuristicDetector("privacy", [r"reveal personal", r"publish.*private", r"share.*medical"]),
+        "privacy": HeuristicDetector(
+            "privacy", [r"reveal personal", r"publish.*private", r"share.*medical"]
+        ),
     }
 
     detector_engine = DetectorEngineV8(detectors=cast(Dict[str, Any], detectors))
 
     uncertainty = UncertaintyEngineV8() if UncertaintyEngineV8 is not None else None
     aggregator = AggregatorV8()
-    precedent_engine = PrecedentAlignmentEngineV8() if PrecedentAlignmentEngineV8 is not None else None
+    precedent_engine = (
+        PrecedentAlignmentEngineV8() if PrecedentAlignmentEngineV8 is not None else None
+    )
     engine_config = EngineConfig.from_settings(settings) if settings else EngineConfig()
 
     engine_instance = create_engine(
@@ -392,6 +408,8 @@ def build_eleanor_engine_v8(
 
 
 __all__ = ["build_eleanor_engine_v8"]
+
+
 def _parse_float_env(var_name: str) -> Optional[float]:
     val = os.getenv(var_name)
     if not val:

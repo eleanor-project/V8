@@ -45,6 +45,7 @@ ws_router = APIRouter()
 # Governance resolution helper
 # -------------------------------------
 
+
 def resolve_final_decision(aggregator_decision: Optional[str], opa_result: Dict[str, Any]) -> str:
     if not opa_result.get("allow", True):
         return "deny"
@@ -70,10 +71,7 @@ def map_assessment_label(decision: Optional[str]) -> str:
 # Utility: Send JSON safely
 # -------------------------------------
 async def ws_send(ws: WebSocket, event_type: str, payload: dict):
-    await ws.send_text(json.dumps({
-        "event": event_type,
-        "data": payload
-    }))
+    await ws.send_text(json.dumps({"event": event_type, "data": payload}))
 
 
 async def require_ws_auth(ws: WebSocket) -> bool:
@@ -114,14 +112,18 @@ def resolve_execution_decision(
     aggregated: Dict[str, Any],
     human_action: Optional[HumanAction],
 ) -> Optional[ExecutableDecision]:
-    aggregation_payload = aggregated.get("aggregation_result") if isinstance(aggregated, dict) else None
+    aggregation_payload = (
+        aggregated.get("aggregation_result") if isinstance(aggregated, dict) else None
+    )
     if not aggregation_payload:
         return None
     aggregation_result = AggregationResult.model_validate(aggregation_payload)
     return enforce_human_review(aggregation_result=aggregation_result, human_action=human_action)
 
 
-def apply_execution_gate(final_decision: str, execution_decision: Optional[ExecutableDecision]) -> str:
+def apply_execution_gate(
+    final_decision: str, execution_decision: Optional[ExecutableDecision]
+) -> str:
     if execution_decision and not execution_decision.executable and final_decision != "deny":
         return "escalate"
     return final_decision
@@ -146,7 +148,9 @@ async def ws_deliberate(ws: WebSocket):
         trace_id = incoming_json.get("trace_id") or str(uuid.uuid4())
         human_action = incoming_json.get("human_action")
         try:
-            human_action_payload = HumanAction.model_validate(human_action) if human_action else None
+            human_action_payload = (
+                HumanAction.model_validate(human_action) if human_action else None
+            )
         except Exception as exc:
             await ws_send(ws, "error", {"message": str(exc)})
             await ws.close()
@@ -164,7 +168,9 @@ async def ws_deliberate(ws: WebSocket):
         model_info: Dict[str, Any] = {}
         model_output: Any = None
 
-        async for event in engine.run_stream(user_text, context=context, trace_id=trace_id, detail_level=3):
+        async for event in engine.run_stream(
+            user_text, context=context, trace_id=trace_id, detail_level=3
+        ):
             event_type = event.get("event")
             payload = {k: v for k, v in event.items() if k != "event"}
             await ws_send(ws, event_type, payload)
@@ -224,7 +230,9 @@ async def ws_deliberate(ws: WebSocket):
             "precedent": precedent_data,
             "governance": governance_result,
             "final_decision": final_assessment,
-            "execution_decision": execution_decision.model_dump(mode="json") if execution_decision else None,
+            "execution_decision": execution_decision.model_dump(mode="json")
+            if execution_decision
+            else None,
         }
 
         await ws_send(ws, "governance", governance_result)

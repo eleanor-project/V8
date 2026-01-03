@@ -3,11 +3,12 @@ Quick validation test for ConsistencyEngine, RedundancyEngine, and RULES.
 """
 
 import sys
-sys.path.insert(0, '/Users/billp/documents/github/v8')
 
-from engine.critics.consistency import ConsistencyEngine
-from engine.critics.redundancy import RedundancyEngine
-from engine.critics.rules import RULES, get_rule_statistics, find_redundant_rules
+sys.path.insert(0, "/Users/billp/documents/github/v8")
+
+from engine.critics.consistency import ConsistencyEngine  # noqa: E402
+from engine.critics.redundancy import RedundancyEngine  # noqa: E402
+from engine.critics.rules import RULES, get_rule_statistics, find_redundant_rules  # noqa: E402
 
 
 def test_consistency_engine():
@@ -24,20 +25,20 @@ def test_consistency_engine():
             "severity": 2.5,
             "violations": ["discrimination", "bias", "disparate_impact"],
             "justification": "Detected discrimination patterns in the output",
-            "evidence": {"patterns": ["protected class"]}
+            "evidence": {"patterns": ["protected class"]},
         },
         "rights": {
             "severity": 2.3,
             "violations": ["discrimination"],
             "justification": "Rights violation detected",
-            "evidence": {"patterns": ["discrimination"]}
+            "evidence": {"patterns": ["discrimination"]},
         },
         "truth": {
             "severity": 0.5,
             "violations": [],
             "justification": "No significant truth concerns",
-            "evidence": {}
-        }
+            "evidence": {},
+        },
     }
 
     result = engine.validate(critics)
@@ -50,9 +51,9 @@ def test_consistency_engine():
     print(f"✓ Audit Flags: {result['audit_flags']}")
     print(f"✓ Recommendations: {len(result['recommendations'])} recommendations")
 
-    if result['recommendations']:
+    if result["recommendations"]:
         print("\nRecommendations:")
-        for rec in result['recommendations']:
+        for rec in result["recommendations"]:
             print(f"  - {rec}")
 
     print("\n✅ ConsistencyEngine test passed!\n")
@@ -71,18 +72,18 @@ def test_redundancy_engine():
         "fairness": {
             "severity": 2.0,
             "violations": ["discrimination against protected class"],
-            "justification": "Discrimination detected based on protected characteristics"
+            "justification": "Discrimination detected based on protected characteristics",
         },
         "rights": {
             "severity": 2.5,
             "violations": ["discrimination"],
-            "justification": "Protected class discrimination violates fundamental rights"
+            "justification": "Protected class discrimination violates fundamental rights",
         },
         "truth": {
             "severity": 1.0,
             "violations": ["minor accuracy concern"],
-            "justification": "Some factual uncertainty detected"
-        }
+            "justification": "Some factual uncertainty detected",
+        },
     }
 
     result = engine.filter(critics)
@@ -90,15 +91,15 @@ def test_redundancy_engine():
     print(f"✓ Total Redundancies Detected: {result['total_redundancies']}")
     print(f"✓ Redundancy Flags: {result['redundancy_flags']}")
 
-    audit = result['audit_report']
+    audit = result["audit_report"]
     print(f"✓ Original Total Severity: {audit['total_original_severity']}")
     print(f"✓ Adjusted Total Severity: {audit['total_adjusted_severity']}")
     print(f"✓ Severity Reduction: {audit['severity_reduction']}")
     print(f"✓ Reduction Percentage: {audit['reduction_percentage']}%")
 
-    if result['redundancy_groups']:
-        print(f"\n✓ Redundancy Patterns Found:")
-        for redundancy in result['redundancy_groups']:
+    if result["redundancy_groups"]:
+        print("\n✓ Redundancy Patterns Found:")
+        for redundancy in result["redundancy_groups"]:
             print(f"  - Pattern: {redundancy['pattern']}")
             print(f"    Critics: {redundancy['critics_involved']}")
             print(f"    Description: {redundancy['description']}")
@@ -125,7 +126,7 @@ def test_rules_registry():
 
     # Test statistics
     stats = get_rule_statistics()
-    print(f"\n✓ Rule Statistics:")
+    print("\n✓ Rule Statistics:")
     print(f"  - Total Rules: {stats['total_rules']}")
     print(f"  - Enabled Rules: {stats['enabled_rules']}")
     print(f"  - Total Patterns: {stats['total_patterns']}")
@@ -168,6 +169,7 @@ def main():
     except Exception as e:
         print(f"\n❌ TEST FAILED: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

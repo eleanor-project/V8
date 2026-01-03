@@ -38,14 +38,15 @@ def audit_review(review: HumanReviewRecord) -> Dict[str, Any]:
 
     # Check severity adjustment has justification
     if review.severity_assessment.adjusted is not None:
-        if not review.severity_assessment.justification or \
-           len(review.severity_assessment.justification.strip()) < 10:
+        if (
+            not review.severity_assessment.justification
+            or len(review.severity_assessment.justification.strip()) < 10
+        ):
             issues.append("Severity was adjusted but justification is insufficient")
 
     # Check rejected outcomes have supporting evidence
     if review.outcome == ReviewOutcome.REJECTED:
-        if not review.coverage_issues and \
-           review.severity_assessment.adjusted is None:
+        if not review.coverage_issues and review.severity_assessment.adjusted is None:
             warnings.append("Rejected outcome has no coverage issues or severity adjustments")
 
     # Check affirmed outcomes don't have major issues

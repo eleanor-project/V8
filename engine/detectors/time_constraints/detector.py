@@ -23,6 +23,7 @@ from ..signals import DetectorSignal
 @dataclass
 class DetectionPattern:
     """Configuration for detection pattern."""
+
     category: str
     patterns: List[str]
     keywords: List[str]
@@ -37,22 +38,18 @@ DETECTION_PATTERNS = [
             r"\\b(decide|choose|commit)\\s+(now|immediately|right now|today)\\b",
             r"\\b(no time to|don't have time to)\\s+(think|consider|review)\\b",
         ],
-        keywords=[
-            "decide now", "no time to think", "commit immediately"
-        ],
+        keywords=["decide now", "no time to think", "commit immediately"],
         severity_weight=0.7,
-        description="Pressure for rushed decisions"
+        description="Pressure for rushed decisions",
     ),
     DetectionPattern(
         category="insufficient_review",
         patterns=[
             r"\\b(limited time|time limit|deadline)\\s+(to|for)\\s+(review|consider)\\b",
         ],
-        keywords=[
-            "limited time to review", "tight deadline"
-        ],
+        keywords=["limited time to review", "tight deadline"],
         severity_weight=0.6,
-        description="Insufficient time for review"
+        description="Insufficient time for review",
     ),
 ]
 
@@ -102,7 +99,7 @@ class TimeConstraintsDetector(Detector):
                 "violations": violations,
                 "text_excerpt": text[:500],
             },
-            flags=self._generate_flags(violations)
+            flags=self._generate_flags(violations),
         )
 
     def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
@@ -115,26 +112,30 @@ class TimeConstraintsDetector(Detector):
             for pattern in self._compiled_patterns[dp.category]:
                 matches = pattern.findall(text)
                 if matches:
-                    violations.append({
-                        "category": dp.category,
-                        "detection_method": "regex",
-                        "severity_score": dp.severity_weight,
-                        "description": dp.description,
-                        "matches": matches[:3],
-                    })
+                    violations.append(
+                        {
+                            "category": dp.category,
+                            "detection_method": "regex",
+                            "severity_score": dp.severity_weight,
+                            "description": dp.description,
+                            "matches": matches[:3],
+                        }
+                    )
                     break
 
             # Strategy 2: Keyword detection
             for keyword in dp.keywords:
                 if keyword.lower() in text_lower:
                     if not any(v["category"] == dp.category for v in violations):
-                        violations.append({
-                            "category": dp.category,
-                            "detection_method": "keyword",
-                            "severity_score": dp.severity_weight * 0.9,
-                            "description": dp.description,
-                            "keyword_matched": keyword,
-                        })
+                        violations.append(
+                            {
+                                "category": dp.category,
+                                "detection_method": "keyword",
+                                "severity_score": dp.severity_weight * 0.9,
+                                "description": dp.description,
+                                "keyword_matched": keyword,
+                            }
+                        )
                     break
 
         return violations

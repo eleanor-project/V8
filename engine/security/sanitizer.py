@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class SecretsSanitizer:
     """
     Sanitize logs and outputs to prevent credential leakage.
-    
+
     Features:
     - Pattern-based secret detection
     - Recursive dictionary sanitization
@@ -31,36 +31,34 @@ class SecretsSanitizer:
         # OpenAI API keys
         (r"sk-[a-zA-Z0-9]{48}", "[OPENAI_API_KEY]"),
         (r"sk-proj-[a-zA-Z0-9_-]{48,}", "[OPENAI_PROJECT_KEY]"),
-        
         # Anthropic API keys
         (r"sk-ant-[a-zA-Z0-9_-]{95,}", "[ANTHROPIC_API_KEY]"),
-        
         # Google API keys
         (r"AIza[0-9A-Za-z\-_]{35}", "[GOOGLE_API_KEY]"),
-        
         # AWS credentials
         (r"AKIA[0-9A-Z]{16}", "[AWS_ACCESS_KEY]"),
-        (r"(?i)aws[_-]?secret[_-]?access[_-]?key[\s:=]+['\"]?([a-zA-Z0-9/+=]{40})['\"]?", "[AWS_SECRET_KEY]"),
-        
+        (
+            r"(?i)aws[_-]?secret[_-]?access[_-]?key[\s:=]+['\"]?([a-zA-Z0-9/+=]{40})['\"]?",
+            "[AWS_SECRET_KEY]",
+        ),
         # Bearer tokens
         (r"Bearer [a-zA-Z0-9\-._~+/]+=*", "[BEARER_TOKEN]"),
-        
         # GitHub tokens
         (r"ghp_[a-zA-Z0-9]{36}", "[GITHUB_TOKEN]"),
         (r"gho_[a-zA-Z0-9]{36}", "[GITHUB_OAUTH_TOKEN]"),
         (r"github_pat_[a-zA-Z0-9_]{82}", "[GITHUB_PAT]"),
-        
         # Generic patterns
         (r"(?i)password[\s:=]+['\"]?([^'\"\s,]+)['\"]?", "password=[REDACTED]"),
         (r"(?i)api[_-]?key[\s:=]+['\"]?([^'\"\s,]+)['\"]?", "api_key=[REDACTED]"),
         (r"(?i)token[\s:=]+['\"]?([^'\"\s,]+)['\"]?", "token=[REDACTED]"),
         (r"(?i)secret[\s:=]+['\"]?([^'\"\s,]+)['\"]?", "secret=[REDACTED]"),
-        
         # JWT tokens
         (r"eyJ[a-zA-Z0-9_-]*\.eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*", "[JWT_TOKEN]"),
-        
         # Private keys
-        (r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+ PRIVATE KEY-----", "[PRIVATE_KEY]"),
+        (
+            r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+ PRIVATE KEY-----",
+            "[PRIVATE_KEY]",
+        ),
     ]
 
     # Keys that should always be redacted
@@ -95,59 +93,59 @@ class SecretsSanitizer:
         self.patterns = self.DEFAULT_PATTERNS.copy()
         if custom_patterns:
             self.patterns.extend(custom_patterns)
-        
+
         self.sensitive_keys = self.SENSITIVE_KEYS.copy()
         if additional_sensitive_keys:
             self.sensitive_keys.update(additional_sensitive_keys)
-        
+
         # Compile regex patterns for performance
         self.compiled_patterns = [
             (re.compile(pattern, re.IGNORECASE | re.MULTILINE), replacement)
             for pattern, replacement in self.patterns
         ]
-        
+
         logger.debug(
             "secrets_sanitizer_initialized",
             extra={
                 "pattern_count": len(self.compiled_patterns),
                 "sensitive_key_count": len(self.sensitive_keys),
-            }
+            },
         )
 
     def sanitize_string(self, text: str) -> str:
         """
         Remove secrets from string using pattern matching.
-        
+
         Args:
             text: String to sanitize
-        
+
         Returns:
             Sanitized string with secrets replaced
         """
         if not isinstance(text, str):
             return text
-        
+
         result = text
         for pattern, replacement in self.compiled_patterns:
             result = pattern.sub(replacement, result)
-        
+
         return result
 
     def sanitize_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Recursively sanitize dictionary, redacting sensitive keys.
-        
+
         Args:
             data: Dictionary to sanitize
-        
+
         Returns:
             Sanitized dictionary
         """
         if not isinstance(data, dict):
             return data
-        
+
         sanitized = {}
-        
+
         for key, value in data.items():
             # Check if key is sensitive
             if self._is_sensitive_key(key):
@@ -160,26 +158,29 @@ class SecretsSanitizer:
                 sanitized[key] = self.sanitize_string(value)
             else:
                 sanitized[key] = value
-        
+
         return sanitized
 
     def sanitize_list(self, data: List[Any]) -> List[Any]:
         """
         Recursively sanitize list items.
-        
+
         Args:
             data: List to sanitize
-        
+
         Returns:
             Sanitized list
         """
         if not isinstance(data, list):
             return data
-        
+
         return [
-            self.sanitize_dict(item) if isinstance(item, dict)
-            else self.sanitize_list(item) if isinstance(item, list)
-            else self.sanitize_string(item) if isinstance(item, str)
+            self.sanitize_dict(item)
+            if isinstance(item, dict)
+            else self.sanitize_list(item)
+            if isinstance(item, list)
+            else self.sanitize_string(item)
+            if isinstance(item, str)
             else item
             for item in data
         ]
@@ -187,10 +188,10 @@ class SecretsSanitizer:
     def sanitize(self, data: Union[str, Dict, List]) -> Union[str, Dict, List]:
         """
         Universal sanitization method.
-        
+
         Args:
             data: Data to sanitize (string, dict, or list)
-        
+
         Returns:
             Sanitized data of same type
         """
@@ -206,10 +207,10 @@ class SecretsSanitizer:
     def _is_sensitive_key(self, key: str) -> bool:
         """
         Check if key name indicates sensitive data.
-        
+
         Args:
             key: Key name to check
-        
+
         Returns:
             True if key should be redacted
         """
@@ -220,18 +221,12 @@ class SecretsSanitizer:
         """Add a custom pattern at runtime"""
         compiled = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
         self.compiled_patterns.append((compiled, replacement))
-        logger.debug(
-            "custom_pattern_added",
-            extra={"pattern": pattern, "replacement": replacement}
-        )
+        logger.debug("custom_pattern_added", extra={"pattern": pattern, "replacement": replacement})
 
     def add_sensitive_key(self, key: str):
         """Add a sensitive key name at runtime"""
         self.sensitive_keys.add(key.lower())
-        logger.debug(
-            "sensitive_key_added",
-            extra={"key": key}
-        )
+        logger.debug("sensitive_key_added", extra={"key": key})
 
 
 class CredentialSanitizer:
@@ -247,7 +242,10 @@ class CredentialSanitizer:
         (r"sk-ant-[a-zA-Z0-9_-]{95,}", "[ANTHROPIC_API_KEY_REDACTED]"),
         (r"AIza[0-9A-Za-z\\-_]{35}", "[GOOGLE_API_KEY_REDACTED]"),
         (r"AKIA[0-9A-Z]{16}", "[AWS_ACCESS_KEY_REDACTED]"),
-        (r"(?i)aws[_-]?secret[_-]?access[_-]?key[\\s:=]+['\"]?([a-zA-Z0-9/+=]{40})['\"]?", "[AWS_SECRET_KEY_REDACTED]"),
+        (
+            r"(?i)aws[_-]?secret[_-]?access[_-]?key[\\s:=]+['\"]?([a-zA-Z0-9/+=]{40})['\"]?",
+            "[AWS_SECRET_KEY_REDACTED]",
+        ),
         (r"Bearer [a-zA-Z0-9._~+/=-]*", "[BEARER_TOKEN_REDACTED]"),
         (r"ghp_[a-zA-Z0-9]{36}", "[GITHUB_TOKEN_REDACTED]"),
         (r"gho_[a-zA-Z0-9]{36}", "[GITHUB_OAUTH_TOKEN_REDACTED]"),
@@ -257,7 +255,10 @@ class CredentialSanitizer:
         (r"(?i)token[\\s:=]+['\"]?([^'\"\\s,]+)['\"]?", "token=[REDACTED]"),
         (r"(?i)secret[\\s:=]+['\"]?([^'\"\\s,]+)['\"]?", "secret=[REDACTED]"),
         (r"eyJ[a-zA-Z0-9_-]*\\.eyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*", "[JWT_TOKEN_REDACTED]"),
-        (r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\\s\\S]+?-----END [A-Z ]+ PRIVATE KEY-----", "[PRIVATE_KEY_REDACTED]"),
+        (
+            r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\\s\\S]+?-----END [A-Z ]+ PRIVATE KEY-----",
+            "[PRIVATE_KEY_REDACTED]",
+        ),
     ]
 
     SENSITIVE_KEYS = SecretsSanitizer.SENSITIVE_KEYS

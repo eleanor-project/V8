@@ -15,7 +15,9 @@ def ensure_executable(decision: ExecutableDecision) -> None:
     Hard guard: execution MUST only proceed with a valid, executable decision.
     """
     if not isinstance(decision, ExecutableDecision):
-        raise ExecutionBlocked("Execution requires an ExecutableDecision produced by enforce_human_review.")
+        raise ExecutionBlocked(
+            "Execution requires an ExecutableDecision produced by enforce_human_review."
+        )
 
     if not decision.executable:
         raise ExecutionBlocked(f"Execution blocked: {decision.execution_reason}")

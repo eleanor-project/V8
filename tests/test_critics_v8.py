@@ -30,11 +30,12 @@ class MockModel:
 # Fairness Critic Tests
 # ============================================================
 
-class TestFairnessCritic:
 
+class TestFairnessCritic:
     @pytest.fixture
     def critic(self):
         from engine.critics.fairness import FairnessCriticV8
+
         return FairnessCriticV8()
 
     @pytest.fixture
@@ -97,11 +98,12 @@ class TestFairnessCritic:
 # Truth Critic Tests
 # ============================================================
 
-class TestTruthCritic:
 
+class TestTruthCritic:
     @pytest.fixture
     def critic(self):
         from engine.critics.truth import TruthCriticV8
+
         return TruthCriticV8()
 
     @pytest.fixture
@@ -164,11 +166,12 @@ class TestTruthCritic:
 # Risk Critic Tests
 # ============================================================
 
-class TestRiskCritic:
 
+class TestRiskCritic:
     @pytest.fixture
     def critic(self):
         from engine.critics.risk import RiskCriticV8
+
         return RiskCriticV8()
 
     @pytest.fixture
@@ -230,11 +233,12 @@ class TestRiskCritic:
 # Operations Critic Tests
 # ============================================================
 
-class TestOperationsCritic:
 
+class TestOperationsCritic:
     @pytest.fixture
     def critic(self):
         from engine.critics import OperationsCriticV8
+
         return OperationsCriticV8()
 
     @pytest.fixture
@@ -244,7 +248,9 @@ class TestOperationsCritic:
     @pytest.mark.asyncio
     async def test_realistic_response(self, critic, mock_model):
         """Test that realistic responses have low concern."""
-        mock_model.response = "This will require a team, budget, and several months to implement properly."
+        mock_model.response = (
+            "This will require a team, budget, and several months to implement properly."
+        )
         result = await critic.evaluate(mock_model, "How do I implement this?", {})
 
         assert result is not None
@@ -283,7 +289,9 @@ class TestOperationsCritic:
     @pytest.mark.asyncio
     async def test_complexity_assessment(self, critic, mock_model):
         """Test complexity assessment for high-complexity tasks."""
-        mock_model.response = "Just deploy this machine learning microservices system in a few steps."
+        mock_model.response = (
+            "Just deploy this machine learning microservices system in a few steps."
+        )
         result = await critic.evaluate(mock_model, "How do I deploy?", {})
 
         assert result is not None
@@ -294,6 +302,7 @@ class TestOperationsCritic:
 # ============================================================
 # Integration Tests
 # ============================================================
+
 
 class TestCriticIntegration:
     """Tests for critic interaction and output format."""

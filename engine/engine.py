@@ -72,6 +72,7 @@ logger = logging.getLogger(__name__)
 # Dependency Resolution
 # ---------------------------------------------------------
 
+
 def _resolve_router_backend(router_backend: Optional[Any]) -> RouterProtocol:
     if router_backend is None:
         return DependencyFactory.create_router()
@@ -108,7 +109,7 @@ def _estimate_embedding_cache_entries(
     if max_cache_size_gb <= 0 or embedding_dim <= 0 or bytes_per_value <= 0:
         return 0
     bytes_per_embedding = embedding_dim * bytes_per_value
-    estimated = int((max_cache_size_gb * 1024 ** 3) / bytes_per_embedding)
+    estimated = int((max_cache_size_gb * 1024**3) / bytes_per_embedding)
     return max(1, estimated)
 
 
@@ -165,6 +166,7 @@ def _resolve_dependencies(
 # Engine Configuration
 # ---------------------------------------------------------
 
+
 class EngineConfig(BaseModel):
     detail_level: int = 2
     max_concurrency: int = 6
@@ -192,6 +194,7 @@ class EngineConfig(BaseModel):
 # Output Models
 # ---------------------------------------------------------
 
+
 class EngineCriticFinding(BaseModel):
     critic: str
     violations: List[ViolationEntry]
@@ -218,7 +221,9 @@ def _default_precedent_alignment() -> PrecedentAlignmentResult:
 class EngineForensicData(BaseModel):
     detector_metadata: Dict[str, Any] = Field(default_factory=dict)
     uncertainty_graph: UncertaintyResult = Field(default_factory=_default_uncertainty_result)
-    precedent_alignment: PrecedentAlignmentResult = Field(default_factory=_default_precedent_alignment)
+    precedent_alignment: PrecedentAlignmentResult = Field(
+        default_factory=_default_precedent_alignment
+    )
     router_diagnostics: Dict[str, Any] = Field(default_factory=dict)
     timings: Dict[str, float] = Field(default_factory=dict)
     evidence_references: List[Dict[str, Any]] = Field(default_factory=list)
@@ -242,8 +247,8 @@ class EngineResult(BaseModel):
 # ELEANOR ENGINE V8
 # ---------------------------------------------------------
 
-class EleanorEngineV8:
 
+class EleanorEngineV8:
     def __init__(
         self,
         *,
@@ -476,6 +481,7 @@ class EleanorEngineV8:
 
     async def _setup_resources(self) -> None:
         """Initialize engine resources that require async setup."""
+
         async def _maybe_call(obj: Any, method_name: str) -> None:
             method = getattr(obj, method_name, None)
             if not callable(method):
@@ -516,7 +522,9 @@ class EleanorEngineV8:
         if self.recorder:
             cleanup_coros.append(_close_resource("recorder", self.recorder, "close"))
         if self.precedent_retriever:
-            cleanup_coros.append(_close_resource("precedent_retriever", self.precedent_retriever, "close"))
+            cleanup_coros.append(
+                _close_resource("precedent_retriever", self.precedent_retriever, "close")
+            )
         if self.cache_manager:
             cleanup_coros.append(_close_resource("cache_manager", self.cache_manager, "close"))
 
@@ -545,6 +553,7 @@ class EleanorEngineV8:
         if self.gpu_manager is not None:
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
             except Exception as exc:
@@ -682,7 +691,6 @@ class EleanorEngineV8:
             },
         }
 
-
     def _get_circuit_breaker(self, name: str):
         if not self.circuit_breakers:
             return None
@@ -692,7 +700,6 @@ class EleanorEngineV8:
             recovery_timeout=self._breaker_recovery_timeout,
             success_threshold=2,
         )
-
 
     # -----------------------------------------------------
     # MODEL ROUTING
@@ -795,7 +802,6 @@ class EleanorEngineV8:
             self.router_cache.set(text, context, selection)
         return selection
 
-
     # -----------------------------------------------------
     # CRITIC EXECUTION
     # -----------------------------------------------------
@@ -831,10 +837,13 @@ class EleanorEngineV8:
             critic = critic_ref if not inspect.isclass(critic_ref) else critic_ref()
 
             # Choose model for this critic: explicit binding overrides router output
-            bound_adapter = None if context.get("force_model_output") else self.critic_models.get(name)
+            bound_adapter = (
+                None if context.get("force_model_output") else self.critic_models.get(name)
+            )
             model_adapter: Any = None
 
             if bound_adapter is None:
+
                 class _StaticModelResponse:
                     def __init__(self, response: str):
                         self.response = response
@@ -847,24 +856,40 @@ class EleanorEngineV8:
                 if hasattr(bound_adapter, "generate"):
                     model_adapter = bound_adapter
                 elif callable(bound_adapter):
+
                     class _BoundCallable:
                         def __init__(self, fn):
                             self.fn = fn
-                        async def generate(self, prompt: str, context: Optional[Dict[str, Any]] = None):
-                            res = self.fn(prompt, context=context) if "context" in inspect.signature(self.fn).parameters else self.fn(prompt)
+
+                        async def generate(
+                            self, prompt: str, context: Optional[Dict[str, Any]] = None
+                        ):
+                            res = (
+                                self.fn(prompt, context=context)
+                                if "context" in inspect.signature(self.fn).parameters
+                                else self.fn(prompt)
+                            )
                             return await res if inspect.isawaitable(res) else res
+
                     model_adapter = _BoundCallable(bound_adapter)
                 else:
+
                     class _StaticModelFallback:
                         def __init__(self, response: str):
                             self.response = response
-                        async def generate(self, prompt: str, context: Optional[Dict[str, Any]] = None):
+
+                        async def generate(
+                            self, prompt: str, context: Optional[Dict[str, Any]] = None
+                        ):
                             return self.response
+
                     model_adapter = _StaticModelFallback(model_response)
 
             try:
                 evaluation = critic.evaluate(model_adapter, input_text=input_text, context=context)
-                evaluation_result = await evaluation if inspect.isawaitable(evaluation) else evaluation
+                evaluation_result = (
+                    await evaluation if inspect.isawaitable(evaluation) else evaluation
+                )
             except Exception as exc:
                 end = asyncio.get_event_loop().time()
                 duration_ms = (end - start) * 1000
@@ -919,7 +944,9 @@ class EleanorEngineV8:
             # Evidence logging (best-effort)
             try:
                 severity_score = float(evaluation_result.get("score", 0.0))
-                severity_label = critic.severity(severity_score) if hasattr(critic, "severity") else "INFO"
+                severity_label = (
+                    critic.severity(severity_score) if hasattr(critic, "severity") else "INFO"
+                )
                 violations_list = evaluation_result.get("violations") or []
                 violation_description = evaluation_result.get("justification") or (
                     violations_list[0] if violations_list else f"{name} check"
@@ -948,7 +975,6 @@ class EleanorEngineV8:
             if self.cache_manager and cache_key and not evaluation_result.get("error"):
                 await self.cache_manager.set(cache_key, dict(evaluation_result))
             return cast(CriticResult, evaluation_result)
-
 
     async def _run_single_critic_with_breaker(
         self,
@@ -999,7 +1025,6 @@ class EleanorEngineV8:
                 )
             raise
 
-
     async def _process_critic_batch(
         self,
         items: List[tuple[Any, ...]],
@@ -1025,7 +1050,6 @@ class EleanorEngineV8:
             ) in items
         ]
         return await asyncio.gather(*tasks, return_exceptions=True)
-
 
     async def _run_critics_parallel(
         self,
@@ -1079,8 +1103,12 @@ class EleanorEngineV8:
                     critic=critic_name,
                     context=context,
                 )
-                fallback = result.details.get("result") if isinstance(result.details, dict) else None
-                output[critic_name] = fallback or self._build_critic_error_result(critic_name, result)
+                fallback = (
+                    result.details.get("result") if isinstance(result.details, dict) else None
+                )
+                output[critic_name] = fallback or self._build_critic_error_result(
+                    critic_name, result
+                )
                 continue
             if isinstance(result, Exception):
                 error = CriticEvaluationError(
@@ -1107,7 +1135,6 @@ class EleanorEngineV8:
             critic_result = cast(CriticResult, result)
             output[critic_result.get("critic", critic_name)] = critic_result
         return output
-
 
     # -----------------------------------------------------
     # PRECEDENT + UNCERTAINTY + AGGREGATION
@@ -1151,9 +1178,7 @@ class EleanorEngineV8:
                     )
                 cases = cast(
                     List[Dict[str, Any]],
-                    retrieval_meta.get("precedent_cases")
-                    or retrieval_meta.get("cases")
-                    or [],
+                    retrieval_meta.get("precedent_cases") or retrieval_meta.get("cases") or [],
                 )
                 query_embedding = cast(
                     List[float],
@@ -1195,7 +1220,6 @@ class EleanorEngineV8:
         self.timings["precedent_alignment_ms"] = (end - start) * 1000
         return out_result
 
-
     async def _run_uncertainty_engine(
         self,
         precedent_alignment: Optional[PrecedentAlignmentResult],
@@ -1205,7 +1229,9 @@ class EleanorEngineV8:
         if not self.uncertainty_engine:
             return None
         start = asyncio.get_event_loop().time()
-        compute_fn = getattr(self.uncertainty_engine, "compute", None) or getattr(self.uncertainty_engine, "evaluate", None)
+        compute_fn = getattr(self.uncertainty_engine, "compute", None) or getattr(
+            self.uncertainty_engine, "evaluate", None
+        )
         if not compute_fn:
             return None
 
@@ -1225,7 +1251,6 @@ class EleanorEngineV8:
         end = asyncio.get_event_loop().time()
         self.timings["uncertainty_engine_ms"] = (end - start) * 1000
         return cast(UncertaintyResult, out)
-
 
     async def _aggregate_results(
         self,
@@ -1285,7 +1310,9 @@ class EleanorEngineV8:
                 citations[critic_name] = critic_data["precedent_refs"]
         return citations
 
-    def _collect_uncertainty_flags(self, uncertainty_data: Optional[UncertaintyResult]) -> List[str]:
+    def _collect_uncertainty_flags(
+        self, uncertainty_data: Optional[UncertaintyResult]
+    ) -> List[str]:
         flags: List[str] = []
         if not uncertainty_data:
             return flags
@@ -1396,6 +1423,7 @@ class EleanorEngineV8:
                 "Governance review gate failed",
                 details={"error": str(review_exc)},
             ) from review_exc
+
     # -----------------------------------------------------
     # FULL STRUCTURED OUTPUT MODE â€” run()
     # -----------------------------------------------------
@@ -1407,7 +1435,6 @@ class EleanorEngineV8:
         detail_level: Optional[int] = None,
         trace_id: Optional[str] = None,
     ) -> EngineResult:
-
         raw_text = text
         raw_context = context
         raw_trace_id = trace_id
@@ -1515,7 +1542,9 @@ class EleanorEngineV8:
                     "cost_estimate": None,
                 }
                 model_response = ""
-                diagnostics = exc.details.get("diagnostics") if isinstance(exc, EleanorV8Exception) else None
+                diagnostics = (
+                    exc.details.get("diagnostics") if isinstance(exc, EleanorV8Exception) else None
+                )
                 self.router_diagnostics = diagnostics or {"error": str(exc)}
 
         model_name_value = str(model_info.get("model_name") or "unknown-model")
@@ -1750,7 +1779,6 @@ class EleanorEngineV8:
 
         raise ValueError(f"Invalid detail_level: {level}")
 
-
     # -----------------------------------------------------
     # STREAMING OUTPUT MODE â€” run_stream()
     # -----------------------------------------------------
@@ -1762,7 +1790,6 @@ class EleanorEngineV8:
         detail_level: Optional[int] = None,
         trace_id: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
-
         raw_text = text
         raw_context = context
         raw_trace_id = trace_id
@@ -1875,7 +1902,9 @@ class EleanorEngineV8:
                     "cost_estimate": None,
                 }
                 model_response = ""
-                diagnostics = exc.details.get("diagnostics") if isinstance(exc, EleanorV8Exception) else None
+                diagnostics = (
+                    exc.details.get("diagnostics") if isinstance(exc, EleanorV8Exception) else None
+                )
                 self.router_diagnostics = diagnostics or {"error": str(exc)}
 
         model_name_value = str(model_info.get("model_name") or "unknown-model")
@@ -1976,6 +2005,7 @@ class EleanorEngineV8:
                     "evaluated_rules": res.get("evaluated_rules"),
                 }
         else:
+
             async def _run_and_return(name, critic_ref):
                 try:
                     res = await self._run_single_critic_with_breaker(
@@ -2059,7 +2089,9 @@ class EleanorEngineV8:
                         text,
                     )
                 else:
-                    precedent_data = await self._run_precedent_alignment(critic_results, trace_id, text)
+                    precedent_data = await self._run_precedent_alignment(
+                        critic_results, trace_id, text
+                    )
                 yield {
                     "event": "precedent_alignment",
                     "trace_id": trace_id,
@@ -2150,7 +2182,9 @@ class EleanorEngineV8:
 
         # Step 5: Aggregation
         try:
-            aggregated = await self._aggregate_results(critic_results, model_response, precedent_data, uncertainty_data)
+            aggregated = await self._aggregate_results(
+                critic_results, model_response, precedent_data, uncertainty_data
+            )
         except AggregationError as exc:
             self._emit_error(exc, stage="aggregation", trace_id=trace_id, context=context)
             aggregated = self._build_aggregation_fallback(
@@ -2246,7 +2280,6 @@ class EleanorEngineV8:
         else:
             raise ValueError(f"Invalid detail_level: {level}")
 
-
     # -----------------------------------------------------
     # CONFIG LOADER
     # -----------------------------------------------------
@@ -2267,6 +2300,7 @@ class EleanorEngineV8:
 # ENGINE FACTORY
 # ---------------------------------------------------------
 
+
 def create_engine(
     config: Optional[EngineConfig] = None,
     *,
@@ -2286,7 +2320,6 @@ def create_engine(
     gpu_executor: Optional[Any] = None,
     gpu_embedding_cache: Optional[Any] = None,
 ) -> EleanorEngineV8:
-
     engine = EleanorEngineV8(
         config=config,
         evidence_recorder=evidence_recorder,

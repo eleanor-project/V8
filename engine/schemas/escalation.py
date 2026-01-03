@@ -22,15 +22,9 @@ class Concern(BaseModel):
     summary: str = Field(..., description="Short description of the concern")
     rationale: str = Field(..., description="Reasoned explanation of the concern")
     impacted_rights: List[str] = Field(
-        default_factory=list,
-        description="UDHR / constitutional references"
+        default_factory=list, description="UDHR / constitutional references"
     )
-    confidence: float = Field(
-        ...,
-        ge=0.0,
-        le=1.0,
-        description="Critic confidence in this concern"
-    )
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Critic confidence in this concern")
 
 
 class EscalationSignal(BaseModel):
@@ -74,10 +68,7 @@ class CriticEvaluation(BaseModel):
     concerns: List[Concern] = Field(default_factory=list)
     escalation: Optional[EscalationSignal] = None
     severity_score: float = Field(
-        ...,
-        ge=0.0,
-        le=1.0,
-        description="Impact magnitude, not probability"
+        ..., ge=0.0, le=1.0, description="Impact magnitude, not probability"
     )
     citations: List[str] = Field(default_factory=list)
     uncertainty: Optional[str] = None

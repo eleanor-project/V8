@@ -34,16 +34,12 @@ class OPAEnforcerConfig:
     execution_allow_path: str = os.getenv(
         "ELEANOR_OPA_EXEC_ALLOW", "v1/data/eleanor/execution/allow"
     )
-    execution_deny_path: str = os.getenv(
-        "ELEANOR_OPA_EXEC_DENY", "v1/data/eleanor/execution/deny"
-    )
+    execution_deny_path: str = os.getenv("ELEANOR_OPA_EXEC_DENY", "v1/data/eleanor/execution/deny")
     route_deny_path: str = os.getenv("ELEANOR_OPA_ROUTE_DENY", "v1/data/eleanor/api/deny")
     critics_allow_path: str = os.getenv(
         "ELEANOR_OPA_CRITICS_ALLOW", "v1/data/eleanor/critics/allow"
     )
-    critics_deny_path: str = os.getenv(
-        "ELEANOR_OPA_CRITICS_DENY", "v1/data/eleanor/critics/deny"
-    )
+    critics_deny_path: str = os.getenv("ELEANOR_OPA_CRITICS_DENY", "v1/data/eleanor/critics/deny")
     timeout_seconds: float = float(os.getenv("ELEANOR_OPA_TIMEOUT_SECONDS", "3.0"))
 
 
@@ -98,7 +94,9 @@ class OPAEnforcer:
             "source": "opa",
         }
 
-    def check_route(self, path: str, method: str, body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def check_route(
+        self, path: str, method: str, body: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Validate routing rules via eleanor.api.deny (defense-in-depth).
         """
@@ -141,12 +139,19 @@ class OPAEnforcer:
                 }
             return {"allowed": False, "deny_reasons": [], "error": error, "source": "opa"}
 
-        return {"allowed": bool(allow) and not deny, "deny_reasons": deny or [], "error": None, "source": "opa"}
+        return {
+            "allowed": bool(allow) and not deny,
+            "deny_reasons": deny or [],
+            "error": None,
+            "source": "opa",
+        }
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-    def _query_bool(self, policy_path: str, payload: Dict[str, Any]) -> Tuple[Optional[bool], Optional[str]]:
+    def _query_bool(
+        self, policy_path: str, payload: Dict[str, Any]
+    ) -> Tuple[Optional[bool], Optional[str]]:
         """
         Evaluate a boolean result policy (e.g., .../allow).
         """
@@ -155,7 +160,9 @@ class OPAEnforcer:
             return None, err
         return bool(result), None
 
-    def _query_list(self, policy_path: str, payload: Dict[str, Any]) -> Tuple[Optional[List[str]], Optional[str]]:
+    def _query_list(
+        self, policy_path: str, payload: Dict[str, Any]
+    ) -> Tuple[Optional[List[str]], Optional[str]]:
         """
         Evaluate a deny-set policy (returns a list of strings).
         """

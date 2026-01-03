@@ -201,7 +201,7 @@ jobs:
 
       - name: Check Dependency Vulnerabilities
         run: |
-          python -m safety check --json --output safety-report.json
+          python -m safety check --output json --save-json safety-report.json
           python -m safety check
 
       - name: Upload Security Reports

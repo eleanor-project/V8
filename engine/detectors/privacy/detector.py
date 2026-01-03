@@ -24,6 +24,7 @@ from ..signals import DetectorSignal
 @dataclass
 class DetectionPattern:
     """Configuration for detection pattern."""
+
     category: str
     patterns: List[str]
     keywords: List[str]
@@ -38,11 +39,9 @@ DETECTION_PATTERNS = [
             r"\\b(social security|ssn|credit card|bank account)\\s+(number|info)",
             r"\\b\\d{3}-\\d{2}-\\d{4}\\b",
         ],
-        keywords=[
-            "social security number", "credit card number"
-        ],
+        keywords=["social security number", "credit card number"],
         severity_weight=0.95,
-        description="PII exposure or leakage"
+        description="PII exposure or leakage",
     ),
     DetectionPattern(
         category="data_sharing_threat",
@@ -50,11 +49,9 @@ DETECTION_PATTERNS = [
             r"\\b(share|publish|expose|reveal)\\s+(your|their)\\s+(private|personal|medical)",
             r"\\b(sell|selling)\\s+(your|their)\\s+data\\b",
         ],
-        keywords=[
-            "share your private", "sell your data", "expose personal"
-        ],
+        keywords=["share your private", "sell your data", "expose personal"],
         severity_weight=0.85,
-        description="Threats to share private data"
+        description="Threats to share private data",
     ),
     DetectionPattern(
         category="surveillance",
@@ -62,11 +59,9 @@ DETECTION_PATTERNS = [
             r"\\b(track|monitor|surveil|watch)\\s+(you|them|users)\\b",
             r"\\b(log|record|capture)\\s+(all|every|your)\\s+(activity|interaction|behavior)",
         ],
-        keywords=[
-            "track you", "monitor your", "record everything"
-        ],
+        keywords=["track you", "monitor your", "record everything"],
         severity_weight=0.75,
-        description="Surveillance or monitoring indicators"
+        description="Surveillance or monitoring indicators",
     ),
 ]
 
@@ -116,7 +111,7 @@ class PrivacyDetector(Detector):
                 "violations": violations,
                 "text_excerpt": text[:500],
             },
-            flags=self._generate_flags(violations)
+            flags=self._generate_flags(violations),
         )
 
     def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
@@ -129,26 +124,30 @@ class PrivacyDetector(Detector):
             for pattern in self._compiled_patterns[dp.category]:
                 matches = pattern.findall(text)
                 if matches:
-                    violations.append({
-                        "category": dp.category,
-                        "detection_method": "regex",
-                        "severity_score": dp.severity_weight,
-                        "description": dp.description,
-                        "matches": matches[:3],
-                    })
+                    violations.append(
+                        {
+                            "category": dp.category,
+                            "detection_method": "regex",
+                            "severity_score": dp.severity_weight,
+                            "description": dp.description,
+                            "matches": matches[:3],
+                        }
+                    )
                     break
 
             # Strategy 2: Keyword detection
             for keyword in dp.keywords:
                 if keyword.lower() in text_lower:
                     if not any(v["category"] == dp.category for v in violations):
-                        violations.append({
-                            "category": dp.category,
-                            "detection_method": "keyword",
-                            "severity_score": dp.severity_weight * 0.9,
-                            "description": dp.description,
-                            "keyword_matched": keyword,
-                        })
+                        violations.append(
+                            {
+                                "category": dp.category,
+                                "detection_method": "keyword",
+                                "severity_score": dp.severity_weight * 0.9,
+                                "description": dp.description,
+                                "keyword_matched": keyword,
+                            }
+                        )
                     break
 
         return violations

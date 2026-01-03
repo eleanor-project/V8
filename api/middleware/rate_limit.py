@@ -40,7 +40,9 @@ def _get_client_id(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _build_headers(tokens: float, capacity: float, refill_rate: float, now: float) -> Dict[str, str]:
+def _build_headers(
+    tokens: float, capacity: float, refill_rate: float, now: float
+) -> Dict[str, str]:
     remaining = max(0, int(math.floor(tokens)))
     if refill_rate > 0:
         reset_in = max(0.0, (capacity - tokens) / refill_rate)
@@ -70,11 +72,7 @@ class RateLimitConfig:
     @classmethod
     def from_env(cls) -> "RateLimitConfig":
         """Load configuration from environment variables."""
-        env = (
-            os.getenv("ELEANOR_ENVIRONMENT")
-            or os.getenv("ELEANOR_ENV")
-            or "development"
-        )
+        env = os.getenv("ELEANOR_ENVIRONMENT") or os.getenv("ELEANOR_ENV") or "development"
         enabled = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
         if env != "development" and not enabled:
             raise ValueError("RATE_LIMIT_ENABLED cannot be false in production environments")
@@ -277,6 +275,7 @@ def rate_limit(
         async def deliberate(request: Request):
             ...
     """
+
     def decorator(func: Callable):
         config = RateLimitConfig(
             enabled=True,
@@ -304,6 +303,7 @@ def rate_limit(
             return await func(request, *args, **kwargs)
 
         return wrapper
+
     return decorator
 
 
@@ -324,25 +324,28 @@ class RateLimitMiddleware:
             return
 
         from starlette.requests import Request
+
         request = Request(scope)
 
         allowed, headers = await self.limiter.check(request)
 
         if not allowed:
-            response_headers = [
-                (k.encode(), v.encode()) for k, v in headers.items()
-            ]
+            response_headers = [(k.encode(), v.encode()) for k, v in headers.items()]
             response_headers.append((b"content-type", b"application/json"))
 
-            await send({
-                "type": "http.response.start",
-                "status": 429,
-                "headers": response_headers,
-            })
-            await send({
-                "type": "http.response.body",
-                "body": b'{"error": "Rate limit exceeded", "detail": "Please try again later."}',
-            })
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 429,
+                    "headers": response_headers,
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": b'{"error": "Rate limit exceeded", "detail": "Please try again later."}',
+                }
+            )
             return
 
         async def send_with_headers(message):

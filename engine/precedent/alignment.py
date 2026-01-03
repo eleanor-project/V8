@@ -50,12 +50,13 @@ from engine.schemas.pipeline_types import PrecedentAlignmentResult, CriticResult
 # Utility: cosine similarity
 # ============================================================
 
+
 def cosine(a: List[float], b: List[float]) -> float:
     if not a or not b:
         return 0.0
-    dot = sum(x*y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x*x for x in a))
-    norm_b = math.sqrt(sum(x*x for x in b))
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
     if norm_a == 0 or norm_b == 0:
         return 0.0
     return dot / (norm_a * norm_b)
@@ -65,8 +66,8 @@ def cosine(a: List[float], b: List[float]) -> float:
 # Precedent Alignment Engine
 # ============================================================
 
-class PrecedentAlignmentEngineV8:
 
+class PrecedentAlignmentEngineV8:
     def __init__(self):
         pass
 
@@ -89,11 +90,13 @@ class PrecedentAlignmentEngineV8:
         # Normalize missing fields to avoid crashes on partial precedent entries
         normalized_cases = []
         for case in precedent_cases:
-            normalized_cases.append({
-                **case,
-                "embedding": case.get("embedding", []),
-                "metadata": case.get("metadata", {}),
-            })
+            normalized_cases.append(
+                {
+                    **case,
+                    "embedding": case.get("embedding", []),
+                    "metadata": case.get("metadata", {}),
+                }
+            )
         precedent_cases = normalized_cases
 
         # Step 1: similarity scores
@@ -122,7 +125,9 @@ class PrecedentAlignmentEngineV8:
             "drift_score": drift_score,
             "clusters": clusters,
             "is_novel": False,
-            "analysis": self._summary(alignment_score, support_strength, conflict_level, drift_score)
+            "analysis": self._summary(
+                alignment_score, support_strength, conflict_level, drift_score
+            ),
         }
 
     # ----------------------------------------------------------
@@ -140,7 +145,7 @@ class PrecedentAlignmentEngineV8:
                 "contradictory": [],
             },
             "is_novel": True,
-            "analysis": "No relevant precedent found; treat as novel case."
+            "analysis": "No relevant precedent found; treat as novel case.",
         }
 
     # ----------------------------------------------------------
@@ -193,12 +198,7 @@ class PrecedentAlignmentEngineV8:
         conflict_level = variance of decision values weighted by similarity
         """
 
-        decision_map = {
-            "allow": 1.0,
-            "constrained_allow": 0.5,
-            "escalate": 0.0,
-            "deny": -1.0
-        }
+        decision_map = {"allow": 1.0, "constrained_allow": 0.5, "escalate": 0.0, "deny": -1.0}
 
         weighted_scores = []
         for sim, case in zip(similarities, cases):
@@ -246,9 +246,7 @@ class PrecedentAlignmentEngineV8:
 
         for case in cases:
             sev_map = case["metadata"].get("critic_severity", {})
-            precedent_severities.append(
-                statistics.mean(sev_map.values()) if sev_map else 0.0
-            )
+            precedent_severities.append(statistics.mean(sev_map.values()) if sev_map else 0.0)
 
         avg_precedent = statistics.mean(precedent_severities)
         avg_current = statistics.mean(c["severity"] for c in critics.values())
@@ -272,7 +270,7 @@ class PrecedentAlignmentEngineV8:
         clusters: Dict[str, List[Dict[str, Any]]] = {
             "supportive": [],
             "neutral": [],
-            "contradictory": []
+            "contradictory": [],
         }
 
         for sim, case in zip(similarities, cases):

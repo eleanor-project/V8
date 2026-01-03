@@ -15,16 +15,18 @@ import time
 # Precedent Store Tests
 # ============================================================
 
-class TestInMemoryStore:
 
+class TestInMemoryStore:
     @pytest.fixture
     def store(self):
         from engine.precedent.store import InMemoryStore
+
         return InMemoryStore()
 
     @pytest.fixture
     def sample_case(self):
         from engine.precedent.store import PrecedentCase
+
         return PrecedentCase(
             case_id="test-001",
             query_text="Should we allow this action?",
@@ -98,16 +100,17 @@ class TestInMemoryStore:
 
 
 class TestJSONFileStore:
-
     @pytest.fixture
     def store(self, tmp_path):
         from engine.precedent.store import JSONFileStore
+
         file_path = tmp_path / "test_precedents.json"
         return JSONFileStore(file_path=str(file_path))
 
     @pytest.fixture
     def sample_case(self):
         from engine.precedent.store import PrecedentCase
+
         return PrecedentCase(
             case_id="json-test-001",
             query_text="Test query for JSON store",
@@ -138,7 +141,6 @@ class TestJSONFileStore:
 
 
 class TestPrecedentCaseDataclass:
-
     def test_to_dict(self):
         """Test case serialization."""
         from engine.precedent.store import PrecedentCase
@@ -174,16 +176,17 @@ class TestPrecedentCaseDataclass:
 # Circuit Breaker Tests
 # ============================================================
 
-class TestCircuitBreaker:
 
+class TestCircuitBreaker:
     @pytest.fixture
     def breaker(self):
         from engine.utils.circuit_breaker import CircuitBreaker
+
         return CircuitBreaker(
             name="test_breaker",
             failure_threshold=3,
             success_threshold=2,
-            recovery_timeout=1.0  # Short timeout for testing
+            recovery_timeout=1.0,  # Short timeout for testing
         )
 
     def test_initial_state_closed(self, breaker):
@@ -192,6 +195,7 @@ class TestCircuitBreaker:
 
     def test_success_keeps_closed(self, breaker):
         """Test that successful calls keep circuit closed."""
+
         def success_fn():
             return "success"
 
@@ -201,6 +205,7 @@ class TestCircuitBreaker:
 
     def test_failures_open_circuit(self, breaker):
         """Test that repeated failures open the circuit."""
+
         def failure_fn():
             raise Exception("Simulated failure")
 
@@ -228,6 +233,7 @@ class TestCircuitBreaker:
 
     def test_half_open_after_timeout(self, breaker):
         """Test that circuit transitions to half-open after timeout."""
+
         def failure_fn():
             raise Exception("Simulated failure")
 
@@ -247,6 +253,7 @@ class TestCircuitBreaker:
 
     def test_success_in_half_open_closes(self, breaker):
         """Test that successes in half-open state close the circuit."""
+
         def failure_fn():
             raise Exception("Simulated failure")
 
@@ -267,6 +274,7 @@ class TestCircuitBreaker:
 
     def test_reset(self, breaker):
         """Test manual reset."""
+
         def failure_fn():
             raise Exception("Simulated failure")
 
@@ -292,7 +300,6 @@ class TestCircuitBreaker:
 
 
 class TestCircuitBreakerRegistry:
-
     def test_get_or_create(self):
         """Test registry get_or_create functionality."""
         from engine.utils.circuit_breaker import CircuitBreakerRegistry
@@ -321,8 +328,8 @@ class TestCircuitBreakerRegistry:
 # Router with Circuit Breaker Tests
 # ============================================================
 
-class TestRouterWithCircuitBreaker:
 
+class TestRouterWithCircuitBreaker:
     @pytest.fixture
     def adapters(self):
         def success_adapter(text):
@@ -345,11 +352,7 @@ class TestRouterWithCircuitBreaker:
             "primary": "primary",
             "fallback_order": ["backup"],
             "max_retries": 2,
-            "circuit_breaker": {
-                "enabled": True,
-                "failure_threshold": 3,
-                "recovery_timeout": 30.0
-            }
+            "circuit_breaker": {"enabled": True, "failure_threshold": 3, "recovery_timeout": 30.0},
         }
 
         return RouterV8(adapters=adapters, routing_policy=policy)
@@ -390,7 +393,7 @@ class TestRouterWithCircuitBreaker:
             "primary": "primary",
             "fallback_order": ["backup"],
             "max_retries": 1,
-            "circuit_breaker": {"enabled": False}  # Disable for simpler test
+            "circuit_breaker": {"enabled": False},  # Disable for simpler test
         }
 
         router = RouterV8(adapters=adapters, routing_policy=policy)
@@ -403,8 +406,8 @@ class TestRouterWithCircuitBreaker:
 # Precedent Store Factory Tests
 # ============================================================
 
-class TestPrecedentStoreFactory:
 
+class TestPrecedentStoreFactory:
     def test_create_memory_store(self):
         """Test creating in-memory store."""
         from engine.precedent.store import create_store

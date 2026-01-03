@@ -11,7 +11,7 @@ from typing import List, Dict, Any
 
 class EscalationTier(str, Enum):
     ACKNOWLEDGMENT = "human_acknowledgment"  # Tier 2
-    DETERMINATION = "human_determination"    # Tier 3
+    DETERMINATION = "human_determination"  # Tier 3
 
 
 # Canonical clauses (aligned to escalation doctrine; critics may be added as they exist)

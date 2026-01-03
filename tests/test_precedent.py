@@ -17,6 +17,7 @@ import json
 # Tests for embeddings.py
 # ============================================================
 
+
 class TestBaseEmbeddingAdapter:
     """Test BaseEmbeddingAdapter interface."""
 
@@ -32,7 +33,7 @@ class TestBaseEmbeddingAdapter:
 class TestGPTEmbeddingAdapter:
     """Test GPTEmbeddingAdapter."""
 
-    @patch('engine.precedent.embeddings.OpenAIClient')
+    @patch("engine.precedent.embeddings.OpenAIClient")
     def test_gpt_adapter_initialization(self, mock_client_class):
         """Test GPT adapter initialization."""
         from engine.precedent.embeddings import GPTEmbeddingAdapter
@@ -46,7 +47,7 @@ class TestGPTEmbeddingAdapter:
         assert adapter.client == mock_client
         mock_client_class.assert_called_once_with(api_key="test-key")
 
-    @patch('engine.precedent.embeddings.OpenAIClient')
+    @patch("engine.precedent.embeddings.OpenAIClient")
     def test_gpt_adapter_embed(self, mock_client_class):
         """Test GPT adapter embed method."""
         from engine.precedent.embeddings import GPTEmbeddingAdapter
@@ -65,26 +66,25 @@ class TestGPTEmbeddingAdapter:
 
         assert result == [0.1, 0.2, 0.3, 0.4]
         mock_client.embeddings.create.assert_called_once_with(
-            model="text-embedding-3-large",
-            input="test text"
+            model="text-embedding-3-large", input="test text"
         )
 
 
 class TestClaudeEmbeddingAdapter:
     """Test ClaudeEmbeddingAdapter with Voyage AI."""
 
-    @patch.dict('os.environ', {'VOYAGE_API_KEY': 'test-voyage-key'})
-    @patch('engine.precedent.embeddings.requests.post')
+    @patch.dict("os.environ", {"VOYAGE_API_KEY": "test-voyage-key"})
+    @patch("engine.precedent.embeddings.requests.post")
     def test_claude_adapter_initialization_with_env_key(self, mock_post):
         """Test Claude adapter uses environment variable for API key."""
         pytest.skip("ClaudeEmbeddingAdapter requires optional dependencies")
 
-    @patch('engine.precedent.embeddings.requests.post')
+    @patch("engine.precedent.embeddings.requests.post")
     def test_claude_adapter_embed_voyage_success(self, mock_post):
         """Test Claude adapter embed with Voyage AI success."""
         pytest.skip("ClaudeEmbeddingAdapter requires optional dependencies")
 
-    @patch('engine.precedent.embeddings.requests.post')
+    @patch("engine.precedent.embeddings.requests.post")
     def test_claude_adapter_fallback_to_local(self, mock_post):
         """Test Claude adapter falls back to local model on error."""
         pytest.skip("ClaudeEmbeddingAdapter requires optional dependencies")
@@ -93,6 +93,7 @@ class TestClaudeEmbeddingAdapter:
 # ============================================================
 # Tests for retrieval.py
 # ============================================================
+
 
 class TestPrecedentRetrievalV8:
     """Test PrecedentRetrievalV8."""
@@ -113,15 +114,9 @@ class TestPrecedentRetrievalV8:
         mock_store = Mock()
         retrieval = PrecedentRetrievalV8(mock_store)
 
-        case = {
-            "values": ["privacy", "fairness"],
-            "aggregate_score": 0.6
-        }
+        case = {"values": ["privacy", "fairness"], "aggregate_score": 0.6}
 
-        critic_outputs = [
-            {"value": "privacy", "score": 0.5},
-            {"value": "fairness", "score": 0.7}
-        ]
+        critic_outputs = [{"value": "privacy", "score": 0.5}, {"value": "fairness", "score": 0.7}]
 
         score = retrieval._score_alignment(case, critic_outputs)
 
@@ -137,15 +132,9 @@ class TestPrecedentRetrievalV8:
         mock_store = Mock()
         retrieval = PrecedentRetrievalV8(mock_store)
 
-        case = {
-            "values": ["privacy"],
-            "aggregate_score": 0.5
-        }
+        case = {"values": ["privacy"], "aggregate_score": 0.5}
 
-        critic_outputs = [
-            {"value": "privacy", "score": 0.4},
-            {"value": "fairness", "score": 0.6}
-        ]
+        critic_outputs = [{"value": "privacy", "score": 0.4}, {"value": "fairness", "score": 0.6}]
 
         score = retrieval._score_alignment(case, critic_outputs)
 
@@ -161,14 +150,9 @@ class TestPrecedentRetrievalV8:
         mock_store = Mock()
         retrieval = PrecedentRetrievalV8(mock_store)
 
-        case = {
-            "values": ["privacy"],
-            "aggregate_score": 0.5
-        }
+        case = {"values": ["privacy"], "aggregate_score": 0.5}
 
-        critic_outputs = [
-            {"value": None, "score": 0.5}
-        ]
+        critic_outputs = [{"value": None, "score": 0.5}]
 
         score = retrieval._score_alignment(case, critic_outputs)
 
@@ -199,14 +183,12 @@ class TestPrecedentRetrievalV8:
         mock_store = Mock()
         mock_store.search.return_value = [
             {"values": ["privacy"], "aggregate_score": 0.5, "text": "Case 1"},
-            {"values": ["fairness"], "aggregate_score": 0.7, "text": "Case 2"}
+            {"values": ["fairness"], "aggregate_score": 0.7, "text": "Case 2"},
         ]
 
         retrieval = PrecedentRetrievalV8(mock_store)
 
-        critic_outputs = [
-            {"value": "privacy", "score": 0.5}
-        ]
+        critic_outputs = [{"value": "privacy", "score": 0.5}]
 
         result = retrieval.retrieve("test query", critic_outputs, top_k=2)
 
@@ -223,15 +205,12 @@ class TestPrecedentRetrievalV8:
         mock_store = Mock()
         mock_store.search.return_value = [
             {"values": ["other"], "aggregate_score": 0.5, "id": "low"},
-            {"values": ["privacy", "fairness"], "aggregate_score": 0.6, "id": "high"}
+            {"values": ["privacy", "fairness"], "aggregate_score": 0.6, "id": "high"},
         ]
 
         retrieval = PrecedentRetrievalV8(mock_store)
 
-        critic_outputs = [
-            {"value": "privacy", "score": 0.6},
-            {"value": "fairness", "score": 0.6}
-        ]
+        critic_outputs = [{"value": "privacy", "score": 0.6}, {"value": "fairness", "score": 0.6}]
 
         result = retrieval.retrieve("test query", critic_outputs, top_k=2)
 
@@ -243,6 +222,7 @@ class TestPrecedentRetrievalV8:
 # Tests for stores.py
 # ============================================================
 
+
 class TestEmbedder:
     """Test Embedder utility class."""
 
@@ -252,6 +232,7 @@ class TestEmbedder:
 
         def embed_fn(text):
             return [0.1, 0.2, 0.3]
+
         embedder = Embedder(embed_fn)
 
         assert embedder.embed_fn == embed_fn
@@ -262,6 +243,7 @@ class TestEmbedder:
 
         def embed_fn(text):
             return [0.1, 0.2, 0.3, len(text)]
+
         embedder = Embedder(embed_fn)
 
         result = embedder.embed("test")
@@ -276,6 +258,7 @@ class TestWeaviatePrecedentStore:
         from engine.precedent.stores import WeaviatePrecedentStore
 
         mock_client = Mock()
+
         def embed_fn(text):
             return [0.1, 0.2]
 
@@ -290,6 +273,7 @@ class TestWeaviatePrecedentStore:
         from engine.precedent.stores import WeaviatePrecedentStore
 
         mock_client = Mock()
+
         def embed_fn(text):
             return [0.1, 0.2, 0.3]
 
@@ -308,7 +292,7 @@ class TestWeaviatePrecedentStore:
                 "Get": {
                     "Precedent": [
                         {"text": "Case 1", "metadata": {"decision": "allow"}},
-                        {"text": "Case 2", "metadata": {"decision": "deny"}}
+                        {"text": "Case 2", "metadata": {"decision": "deny"}},
                     ]
                 }
             }
@@ -327,6 +311,7 @@ class TestWeaviatePrecedentStore:
         from engine.precedent.stores import WeaviatePrecedentStore
 
         mock_client = Mock()
+
         def embed_fn(text):
             return [0.1, 0.2]
 
@@ -355,9 +340,10 @@ class TestPGVectorPrecedentStore:
         """Test PGVector store initialization with valid table name."""
         from engine.precedent.stores import PGVectorPrecedentStore
 
-        with patch('engine.precedent.stores.psycopg2.connect') as mock_connect:
+        with patch("engine.precedent.stores.psycopg2.connect") as mock_connect:
             mock_conn = Mock()
             mock_connect.return_value = mock_conn
+
             def embed_fn(text):
                 return [0.1, 0.2]
 
@@ -371,13 +357,16 @@ class TestPGVectorPrecedentStore:
         """Test PGVector store rejects invalid table names."""
         from engine.precedent.stores import PGVectorPrecedentStore
 
-        with patch('engine.precedent.stores.psycopg2.connect'):
+        with patch("engine.precedent.stores.psycopg2.connect"):
+
             def embed_fn(text):
                 return [0.1, 0.2]
 
             # SQL injection attempts
             with pytest.raises(ValueError, match="Invalid table name"):
-                PGVectorPrecedentStore("dbname=test", table_name="precedent; DROP TABLE users;", embed_fn=embed_fn)
+                PGVectorPrecedentStore(
+                    "dbname=test", table_name="precedent; DROP TABLE users;", embed_fn=embed_fn
+                )
 
             with pytest.raises(ValueError, match="Invalid table name"):
                 PGVectorPrecedentStore("dbname=test", table_name="123invalid", embed_fn=embed_fn)
@@ -390,7 +379,7 @@ class TestPGVectorPrecedentStore:
         """Test PGVector search with results."""
         from engine.precedent.stores import PGVectorPrecedentStore
 
-        with patch('engine.precedent.stores.psycopg2.connect') as mock_connect:
+        with patch("engine.precedent.stores.psycopg2.connect") as mock_connect:
             mock_conn = Mock()
             mock_cursor = MagicMock()  # Use MagicMock for context manager support
             mock_conn.cursor.return_value = mock_cursor
@@ -399,11 +388,12 @@ class TestPGVectorPrecedentStore:
             mock_cursor.__enter__.return_value = mock_cursor
             mock_cursor.fetchall.return_value = [
                 ("Case 1 text", json.dumps({"decision": "allow"})),
-                ("Case 2 text", json.dumps({"decision": "deny"}))
+                ("Case 2 text", json.dumps({"decision": "deny"})),
             ]
 
             def embed_fn(text):
                 return [0.1, 0.2, 0.3]
+
             store = PGVectorPrecedentStore("dbname=test", embed_fn=embed_fn)
 
             results = store.search("test query", top_k=2)
@@ -418,7 +408,7 @@ class TestPGVectorPrecedentStore:
         """Test PGVector search with no results."""
         from engine.precedent.stores import PGVectorPrecedentStore
 
-        with patch('engine.precedent.stores.psycopg2.connect') as mock_connect:
+        with patch("engine.precedent.stores.psycopg2.connect") as mock_connect:
             mock_conn = Mock()
             mock_cursor = MagicMock()  # Use MagicMock for context manager support
             mock_conn.cursor.return_value = mock_cursor
@@ -429,6 +419,7 @@ class TestPGVectorPrecedentStore:
 
             def embed_fn(text):
                 return [0.1, 0.2]
+
             store = PGVectorPrecedentStore("dbname=test", embed_fn=embed_fn)
 
             results = store.search("test query", top_k=5)
@@ -439,7 +430,7 @@ class TestPGVectorPrecedentStore:
         """Test PGVector store as context manager."""
         from engine.precedent.stores import PGVectorPrecedentStore
 
-        with patch('engine.precedent.stores.psycopg2.connect') as mock_connect:
+        with patch("engine.precedent.stores.psycopg2.connect") as mock_connect:
             mock_conn = Mock()
             mock_connect.return_value = mock_conn
 
@@ -456,12 +447,13 @@ class TestPGVectorPrecedentStore:
         """Test PGVector store close method."""
         from engine.precedent.stores import PGVectorPrecedentStore
 
-        with patch('engine.precedent.stores.psycopg2.connect') as mock_connect:
+        with patch("engine.precedent.stores.psycopg2.connect") as mock_connect:
             mock_conn = Mock()
             mock_connect.return_value = mock_conn
 
             def embed_fn(text):
                 return [0.1]
+
             store = PGVectorPrecedentStore("dbname=test", embed_fn=embed_fn)
             store.close()
 
@@ -471,6 +463,7 @@ class TestPGVectorPrecedentStore:
 # ============================================================
 # Tests for alignment.py
 # ============================================================
+
 
 class TestCosineSimilarity:
     """Test cosine similarity utility function."""
@@ -536,9 +529,7 @@ class TestPrecedentAlignmentEngineV8:
 
         engine = PrecedentAlignmentEngineV8()
 
-        critics = {
-            "fairness": {"severity": 0.5, "violations": []}
-        }
+        critics = {"fairness": {"severity": 0.5, "violations": []}}
 
         result = engine.analyze(critics, [], [0.1, 0.2, 0.3])
 
@@ -561,27 +552,19 @@ class TestPrecedentAlignmentEngineV8:
 
         engine = PrecedentAlignmentEngineV8()
 
-        critics = {
-            "fairness": {"severity": 0.6, "violations": ["discrimination"]}
-        }
+        critics = {"fairness": {"severity": 0.6, "violations": ["discrimination"]}}
 
         precedent_cases = [
             {
                 "text": "Historical case 1",
                 "embedding": [0.5, 0.5, 0.5],
-                "metadata": {
-                    "decision": "deny",
-                    "critic_severity": {"fairness": 0.7}
-                }
+                "metadata": {"decision": "deny", "critic_severity": {"fairness": 0.7}},
             },
             {
                 "text": "Historical case 2",
                 "embedding": [0.3, 0.3, 0.3],
-                "metadata": {
-                    "decision": "allow",
-                    "critic_severity": {"fairness": 0.2}
-                }
-            }
+                "metadata": {"decision": "allow", "critic_severity": {"fairness": 0.2}},
+            },
         ]
 
         query_embedding = [0.5, 0.5, 0.5]

@@ -191,10 +191,10 @@ class GPUManager:
             )
             return GPUMemoryStats(available=False, device_id=device_id).to_dict()
 
-        allocated_mb = allocated / (1024 ** 2)
-        reserved_mb = reserved / (1024 ** 2)
-        max_allocated_mb = max_allocated / (1024 ** 2)
-        total_mb = total / (1024 ** 2)
+        allocated_mb = allocated / (1024**2)
+        reserved_mb = reserved / (1024**2)
+        max_allocated_mb = max_allocated / (1024**2)
+        total_mb = total / (1024**2)
         utilization_pct = (allocated / total * 100.0) if total else 0.0
 
         return GPUMemoryStats(

@@ -22,12 +22,7 @@ import asyncio
 import websockets
 import requests
 
-from engine.version import (
-    ELEANOR_VERSION,
-    BUILD_NAME,
-    CRITIC_SUITE,
-    CORE_HASH
-)
+from engine.version import ELEANOR_VERSION, BUILD_NAME, CRITIC_SUITE, CORE_HASH
 from api.cli.review import list_reviews, replay_case
 
 API_BASE = "http://localhost:8000"
@@ -38,6 +33,7 @@ TIMEOUT_SECONDS = 30  # Timeout for HTTP requests to prevent DoS vulnerabilities
 # --------------------------------------------------------------
 # Formatting Helpers
 # --------------------------------------------------------------
+
 
 def pretty(obj):
     return json.dumps(obj, indent=2, ensure_ascii=False)
@@ -58,19 +54,26 @@ def print_section(title, data):
 # Version Command
 # --------------------------------------------------------------
 
+
 def cmd_version():
     header("ELEANOR V8 — Version Info")
-    print(json.dumps({
-        "version": ELEANOR_VERSION,
-        "build": BUILD_NAME,
-        "critic_suite": CRITIC_SUITE,
-        "engine_core_hash": CORE_HASH
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "version": ELEANOR_VERSION,
+                "build": BUILD_NAME,
+                "critic_suite": CRITIC_SUITE,
+                "engine_core_hash": CORE_HASH,
+            },
+            indent=2,
+        )
+    )
 
 
 # --------------------------------------------------------------
 # Deliberation Command
 # --------------------------------------------------------------
+
 
 def cmd_deliberate(text):
     payload = {"input": text}
@@ -97,6 +100,7 @@ def cmd_deliberate(text):
 # Streaming Deliberation Command
 # --------------------------------------------------------------
 
+
 async def cmd_stream(text):
     async with websockets.connect(WS_URL) as ws:
         await ws.send(json.dumps({"input": text}))
@@ -118,6 +122,7 @@ async def cmd_stream(text):
 # Trace Lookup Command
 # --------------------------------------------------------------
 
+
 def cmd_trace(trace_id):
     r = requests.get(f"{API_BASE}/trace/{trace_id}", timeout=TIMEOUT_SECONDS)
 
@@ -131,6 +136,7 @@ def cmd_trace(trace_id):
 # --------------------------------------------------------------
 # Governance Preview Command
 # --------------------------------------------------------------
+
 
 def cmd_governance_preview(file_path):
     try:
@@ -153,11 +159,12 @@ def cmd_governance_preview(file_path):
 # CLI Entrypoint
 # --------------------------------------------------------------
 
+
 def main():
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  eleanor deliberate \"text\"")
-        print("  eleanor stream \"text\"")
+        print('  eleanor deliberate "text"')
+        print('  eleanor stream "text"')
         print("  eleanor trace <id>")
         print("  eleanor governance preview <file>")
         print("  eleanor review list")

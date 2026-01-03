@@ -30,6 +30,7 @@ from engine.schemas.pipeline_types import CriticResult
 @dataclass
 class PragmaticsPattern:
     """Configuration for pragmatics detection patterns."""
+
     category: str
     patterns: List[str]  # Regex patterns
     keywords: List[str]  # Keyword indicators
@@ -48,12 +49,16 @@ PRAGMATICS_PATTERNS = [
             r"\b(quickly|rapidly|easily)\s+(become|get|achieve|accomplish)\s+\w+",
         ],
         keywords=[
-            "overnight success", "instant results", "quick fix",
-            "immediately achieve", "in no time", "effortlessly"
+            "overnight success",
+            "instant results",
+            "quick fix",
+            "immediately achieve",
+            "in no time",
+            "effortlessly",
         ],
         severity_weight=0.5,
         description="Unrealistic timeline expectations",
-        pragmatics_dimension="time"
+        pragmatics_dimension="time",
     ),
     PragmaticsPattern(
         category="resource_underestimation",
@@ -63,12 +68,16 @@ PRAGMATICS_PATTERNS = [
             r"\b(don't need|no need for|without)\s+(experience|training|expertise|skills?)",
         ],
         keywords=[
-            "costs nothing", "no investment needed", "without resources",
-            "free solution", "zero effort", "no skills required"
+            "costs nothing",
+            "no investment needed",
+            "without resources",
+            "free solution",
+            "zero effort",
+            "no skills required",
         ],
         severity_weight=0.55,
         description="Underestimating required resources",
-        pragmatics_dimension="cost"
+        pragmatics_dimension="cost",
     ),
     PragmaticsPattern(
         category="technical_impossibility",
@@ -78,12 +87,16 @@ PRAGMATICS_PATTERNS = [
             r"\b(impossible|cannot|won't ever)\s+(fail|break|crash|error)",
         ],
         keywords=[
-            "always works", "never fails", "100% guarantee",
-            "completely foolproof", "impossible to break", "perfect solution"
+            "always works",
+            "never fails",
+            "100% guarantee",
+            "completely foolproof",
+            "impossible to break",
+            "perfect solution",
         ],
         severity_weight=0.6,
         description="Claims of technical impossibility or perfection",
-        pragmatics_dimension="technical"
+        pragmatics_dimension="technical",
     ),
     PragmaticsPattern(
         category="missing_dependencies",
@@ -92,12 +105,16 @@ PRAGMATICS_PATTERNS = [
             r"\b(all\s+you\s+need|only\s+requires?|just\s+needs?)\s+(is|are)?\s*(one|a single|this)",
         ],
         keywords=[
-            "just do this", "simply run", "all you need is",
-            "single step", "one-click solution", "that's all"
+            "just do this",
+            "simply run",
+            "all you need is",
+            "single step",
+            "one-click solution",
+            "that's all",
         ],
         severity_weight=0.45,
         description="Oversimplifying dependencies and prerequisites",
-        pragmatics_dimension="operational"
+        pragmatics_dimension="operational",
     ),
     PragmaticsPattern(
         category="scalability_issues",
@@ -107,12 +124,16 @@ PRAGMATICS_PATTERNS = [
             r"\b(infinitely|endlessly|limitlessly)\s+(scalable|expandable|flexible)",
         ],
         keywords=[
-            "unlimited scale", "infinite capacity", "no limits",
-            "handles anything", "grows infinitely", "boundless"
+            "unlimited scale",
+            "infinite capacity",
+            "no limits",
+            "handles anything",
+            "grows infinitely",
+            "boundless",
         ],
         severity_weight=0.5,
         description="Unrealistic scalability claims",
-        pragmatics_dimension="scalability"
+        pragmatics_dimension="scalability",
     ),
     PragmaticsPattern(
         category="expertise_dismissal",
@@ -122,12 +143,16 @@ PRAGMATICS_PATTERNS = [
             r"\b(self[- ]?taught|teach\s+yourself|learn\s+on\s+your\s+own)\s+in\s+(days?|weeks?)",
         ],
         keywords=[
-            "no expertise needed", "anyone can do it", "no training required",
-            "learn in days", "no experience necessary", "child could do it"
+            "no expertise needed",
+            "anyone can do it",
+            "no training required",
+            "learn in days",
+            "no experience necessary",
+            "child could do it",
         ],
         severity_weight=0.5,
         description="Dismissing necessary expertise or training",
-        pragmatics_dimension="operational"
+        pragmatics_dimension="operational",
     ),
     PragmaticsPattern(
         category="maintenance_neglect",
@@ -137,12 +162,16 @@ PRAGMATICS_PATTERNS = [
             r"\b(runs?\s+)?(forever|indefinitely|automatically)\s+(without|no)\s+(intervention|maintenance)",
         ],
         keywords=[
-            "set and forget", "maintenance-free", "never needs updates",
-            "runs forever", "no ongoing costs", "zero maintenance"
+            "set and forget",
+            "maintenance-free",
+            "never needs updates",
+            "runs forever",
+            "no ongoing costs",
+            "zero maintenance",
         ],
         severity_weight=0.45,
         description="Neglecting ongoing maintenance requirements",
-        pragmatics_dimension="operational"
+        pragmatics_dimension="operational",
     ),
     PragmaticsPattern(
         category="unrealistic_complexity",
@@ -152,12 +181,16 @@ PRAGMATICS_PATTERNS = [
             r"\b(no\s+)?(complexity|complications?|difficulties?|challenges?)",
         ],
         keywords=[
-            "dead simple", "trivially easy", "no complexity",
-            "few lines of code", "just a few steps", "piece of cake"
+            "dead simple",
+            "trivially easy",
+            "no complexity",
+            "few lines of code",
+            "just a few steps",
+            "piece of cake",
         ],
         severity_weight=0.4,
         description="Underestimating implementation complexity",
-        pragmatics_dimension="technical"
+        pragmatics_dimension="technical",
     ),
     PragmaticsPattern(
         category="cost_concealment",
@@ -167,12 +200,16 @@ PRAGMATICS_PATTERNS = [
             r"\b(recurring|ongoing|monthly|annual)\s+(costs?|fees?|payments?|expenses?)",
         ],
         keywords=[
-            "hidden costs", "surprise fees", "additional charges",
-            "recurring payments", "subscription required", "premium features"
+            "hidden costs",
+            "surprise fees",
+            "additional charges",
+            "recurring payments",
+            "subscription required",
+            "premium features",
         ],
         severity_weight=0.55,
         description="Potential hidden or undisclosed costs",
-        pragmatics_dimension="cost"
+        pragmatics_dimension="cost",
     ),
     PragmaticsPattern(
         category="regulatory_oversight",
@@ -182,29 +219,57 @@ PRAGMATICS_PATTERNS = [
             r"\b(don't\s+)?(worry\s+about|need\s+to\s+consider)\s+(regulations?|compliance|legal)",
         ],
         keywords=[
-            "bypass regulations", "avoid compliance", "ignore legal",
-            "no regulatory concerns", "skip the paperwork", "regulatory gray area"
+            "bypass regulations",
+            "avoid compliance",
+            "ignore legal",
+            "no regulatory concerns",
+            "skip the paperwork",
+            "regulatory gray area",
         ],
         severity_weight=0.7,
         description="Overlooking regulatory or compliance requirements",
-        pragmatics_dimension="operational"
+        pragmatics_dimension="operational",
     ),
 ]
 
 # Complexity indicators for assessment
 COMPLEXITY_INDICATORS = {
     "high_complexity": [
-        "machine learning", "distributed system", "microservices", "kubernetes",
-        "real-time", "high availability", "fault tolerance", "encryption",
-        "authentication", "authorization", "compliance", "audit"
+        "machine learning",
+        "distributed system",
+        "microservices",
+        "kubernetes",
+        "real-time",
+        "high availability",
+        "fault tolerance",
+        "encryption",
+        "authentication",
+        "authorization",
+        "compliance",
+        "audit",
     ],
     "medium_complexity": [
-        "database", "api", "integration", "deployment", "testing",
-        "monitoring", "logging", "backup", "configuration", "security"
+        "database",
+        "api",
+        "integration",
+        "deployment",
+        "testing",
+        "monitoring",
+        "logging",
+        "backup",
+        "configuration",
+        "security",
     ],
     "low_complexity": [
-        "script", "simple", "basic", "single", "local", "static",
-        "manual", "one-time", "standalone"
+        "script",
+        "simple",
+        "basic",
+        "single",
+        "local",
+        "static",
+        "manual",
+        "one-time",
+        "standalone",
     ],
 }
 
@@ -212,9 +277,25 @@ COMPLEXITY_INDICATORS = {
 RESOURCE_CATEGORIES = {
     "financial": ["cost", "budget", "price", "expense", "investment", "fee", "payment", "funding"],
     "computational": ["server", "compute", "memory", "storage", "bandwidth", "cpu", "gpu", "cloud"],
-    "human": ["team", "developer", "engineer", "expert", "specialist", "staff", "workforce", "hire"],
+    "human": [
+        "team",
+        "developer",
+        "engineer",
+        "expert",
+        "specialist",
+        "staff",
+        "workforce",
+        "hire",
+    ],
     "time": ["deadline", "timeline", "schedule", "duration", "sprint", "milestone", "delivery"],
-    "infrastructure": ["hardware", "network", "data center", "infrastructure", "environment", "platform"],
+    "infrastructure": [
+        "hardware",
+        "network",
+        "data center",
+        "infrastructure",
+        "environment",
+        "platform",
+    ],
 }
 
 
@@ -243,12 +324,7 @@ class PragmaticsCriticV8(BaseCriticV8):
                 re.compile(p, re.IGNORECASE) for p in pp.patterns
             ]
 
-    async def evaluate(
-        self,
-        model,
-        input_text: str,
-        context: Dict[str, Any]
-    ) -> CriticResult:
+    async def evaluate(self, model, input_text: str, context: Dict[str, Any]) -> CriticResult:
         """
         Evaluate model output for practical feasibility.
 
@@ -285,7 +361,10 @@ class PragmaticsCriticV8(BaseCriticV8):
         total_score *= complexity_multiplier
 
         # Adjust for missing resource acknowledgment
-        if complexity_assessment["level"] == "high" and not resource_analysis["resources_acknowledged"]:
+        if (
+            complexity_assessment["level"] == "high"
+            and not resource_analysis["resources_acknowledged"]
+        ):
             total_score *= 1.3
 
         # Normalize score
@@ -300,11 +379,7 @@ class PragmaticsCriticV8(BaseCriticV8):
         # Determine primary concern
         primary_concern = None
         if all_concerns:
-            sorted_concerns = sorted(
-                all_concerns,
-                key=lambda x: x["severity_score"],
-                reverse=True
-            )
+            sorted_concerns = sorted(all_concerns, key=lambda x: x["severity_score"], reverse=True)
             primary_concern = sorted_concerns[0]["category"]
 
         # Build rationale
@@ -314,7 +389,7 @@ class PragmaticsCriticV8(BaseCriticV8):
             resource_analysis,
             normalized_score,
             dimension_scores,
-            feasibility_score
+            feasibility_score,
         )
 
         # Compute severity level for aggregator
@@ -333,9 +408,7 @@ class PragmaticsCriticV8(BaseCriticV8):
                 "feasibility_score": feasibility_score,
                 "primary_concern_type": primary_concern,
                 "context_constraints": context_constraints,
-                "detection_strategies_used": [
-                    "pattern", "complexity", "resource_analysis"
-                ],
+                "detection_strategies_used": ["pattern", "complexity", "resource_analysis"],
             },
             flags=self._generate_flags(all_concerns, complexity_assessment, feasibility_score),
             severity=severity,
@@ -373,28 +446,34 @@ class PragmaticsCriticV8(BaseCriticV8):
             for pattern in self._compiled_patterns[pp.category]:
                 matches = pattern.findall(text)
                 if matches:
-                    concerns.append({
-                        "category": pp.category,
-                        "detection_method": "regex",
-                        "severity_score": pp.severity_weight,
-                        "description": pp.description,
-                        "pragmatics_dimension": pp.pragmatics_dimension,
-                        "matches": matches[:3] if isinstance(matches[0], str) else [str(m) for m in matches[:3]],
-                    })
+                    concerns.append(
+                        {
+                            "category": pp.category,
+                            "detection_method": "regex",
+                            "severity_score": pp.severity_weight,
+                            "description": pp.description,
+                            "pragmatics_dimension": pp.pragmatics_dimension,
+                            "matches": matches[:3]
+                            if isinstance(matches[0], str)
+                            else [str(m) for m in matches[:3]],
+                        }
+                    )
                     break
 
             # Strategy 2: Keyword detection
             for keyword in pp.keywords:
                 if keyword.lower() in text_lower:
                     if not any(c["category"] == pp.category for c in concerns):
-                        concerns.append({
-                            "category": pp.category,
-                            "detection_method": "keyword",
-                            "severity_score": pp.severity_weight * 0.8,
-                            "description": pp.description,
-                            "pragmatics_dimension": pp.pragmatics_dimension,
-                            "keyword_matched": keyword,
-                        })
+                        concerns.append(
+                            {
+                                "category": pp.category,
+                                "detection_method": "keyword",
+                                "severity_score": pp.severity_weight * 0.8,
+                                "description": pp.description,
+                                "pragmatics_dimension": pp.pragmatics_dimension,
+                                "keyword_matched": keyword,
+                            }
+                        )
                     break
 
         return {
@@ -406,12 +485,15 @@ class PragmaticsCriticV8(BaseCriticV8):
         """Assess the complexity level of the task/solution described."""
         text_lower = text.lower()
 
-        high_count = sum(1 for ind in COMPLEXITY_INDICATORS["high_complexity"]
-                         if ind.lower() in text_lower)
-        medium_count = sum(1 for ind in COMPLEXITY_INDICATORS["medium_complexity"]
-                           if ind.lower() in text_lower)
-        low_count = sum(1 for ind in COMPLEXITY_INDICATORS["low_complexity"]
-                        if ind.lower() in text_lower)
+        high_count = sum(
+            1 for ind in COMPLEXITY_INDICATORS["high_complexity"] if ind.lower() in text_lower
+        )
+        medium_count = sum(
+            1 for ind in COMPLEXITY_INDICATORS["medium_complexity"] if ind.lower() in text_lower
+        )
+        low_count = sum(
+            1 for ind in COMPLEXITY_INDICATORS["low_complexity"] if ind.lower() in text_lower
+        )
 
         # Determine overall complexity level
         if high_count >= 2 or (high_count >= 1 and medium_count >= 2):
@@ -449,7 +531,7 @@ class PragmaticsCriticV8(BaseCriticV8):
             "resources_acknowledged": len(found_categories) > 0,
             "categories": found_categories,
             "category_count": len(found_categories),
-            "coverage": self._assess_resource_coverage(found_categories)
+            "coverage": self._assess_resource_coverage(found_categories),
         }
 
     def _assess_resource_coverage(self, categories: Dict[str, List[str]]) -> str:
@@ -469,8 +551,15 @@ class PragmaticsCriticV8(BaseCriticV8):
         constraints = {}
 
         # Look for common constraint keys
-        constraint_keys = ["budget", "timeline", "deadline", "team_size",
-                          "resources", "constraints", "limitations"]
+        constraint_keys = [
+            "budget",
+            "timeline",
+            "deadline",
+            "team_size",
+            "resources",
+            "constraints",
+            "limitations",
+        ]
 
         for key in constraint_keys:
             if key in context:
@@ -500,16 +589,10 @@ class PragmaticsCriticV8(BaseCriticV8):
 
         # Normalize each dimension
         max_possible = 2.0
-        return {
-            dim: min(1.0, score / max_possible)
-            for dim, score in dimensions.items()
-        }
+        return {dim: min(1.0, score / max_possible) for dim, score in dimensions.items()}
 
     def _compute_severity(
-        self,
-        score: float,
-        concerns: List[Dict[str, Any]],
-        complexity: Dict[str, Any]
+        self, score: float, concerns: List[Dict[str, Any]], complexity: Dict[str, Any]
     ) -> float:
         """
         Compute severity for aggregator (0-3 scale).
@@ -529,9 +612,7 @@ class PragmaticsCriticV8(BaseCriticV8):
         base_severity = score * 2.5  # Max of 2.5 instead of 3.0
 
         # Critical pragmatics categories
-        critical_categories = {
-            "technical_impossibility", "regulatory_oversight"
-        }
+        critical_categories = {"technical_impossibility", "regulatory_oversight"}
         has_critical = any(c["category"] in critical_categories for c in concerns)
 
         # High complexity context
@@ -553,7 +634,7 @@ class PragmaticsCriticV8(BaseCriticV8):
         resources: Dict[str, Any],
         score: float,
         dimension_scores: Dict[str, float],
-        feasibility_score: float
+        feasibility_score: float,
     ) -> str:
         """Build a human-readable rationale for the evaluation."""
         if not concerns and score < 0.1:
@@ -571,15 +652,16 @@ class PragmaticsCriticV8(BaseCriticV8):
 
         if categories:
             concern_summary = "; ".join(
-                f"{cat.replace('_', ' ')}: {count}"
-                for cat, count in categories.items()
+                f"{cat.replace('_', ' ')}: {count}" for cat, count in categories.items()
             )
             parts.append(f"Detected feasibility concerns: {concern_summary}")
 
         # Complexity assessment
         level = complexity.get("level", "unknown")
         if level == "high":
-            parts.append(f"Task complexity: HIGH ({complexity['high_complexity_indicators']} indicators)")
+            parts.append(
+                f"Task complexity: HIGH ({complexity['high_complexity_indicators']} indicators)"
+            )
 
         # Resource acknowledgment
         coverage = resources.get("coverage", "none")
@@ -596,7 +678,9 @@ class PragmaticsCriticV8(BaseCriticV8):
 
         # Feasibility assessment
         if feasibility_score < 0.3:
-            parts.append("CONCERN: Low feasibility score - significant implementation challenges likely.")
+            parts.append(
+                "CONCERN: Low feasibility score - significant implementation challenges likely."
+            )
         elif feasibility_score < 0.6:
             parts.append("CAUTION: Moderate feasibility - some implementation challenges expected.")
         elif feasibility_score < 0.8:
@@ -605,18 +689,13 @@ class PragmaticsCriticV8(BaseCriticV8):
         return " ".join(parts) if parts else "Evaluation complete."
 
     def _generate_flags(
-        self,
-        concerns: List[Dict[str, Any]],
-        complexity: Dict[str, Any],
-        feasibility_score: float
+        self, concerns: List[Dict[str, Any]], complexity: Dict[str, Any], feasibility_score: float
     ) -> List[str]:
         """Generate flags for downstream processing."""
         flags = []
 
         # Flag critical concern categories
-        critical_categories = {
-            "technical_impossibility", "regulatory_oversight"
-        }
+        critical_categories = {"technical_impossibility", "regulatory_oversight"}
         for c in concerns:
             if c["category"] in critical_categories:
                 flags.append(f"PRAGMATICS_{c['category'].upper()}")

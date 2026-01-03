@@ -15,14 +15,9 @@ from engine.critics.severity import (
     GLOBAL_SEVERITY_SCALE,
     MANDATORY_ESCALATION_THRESHOLD,
     normalize_severity,
-    severity_label
+    severity_label,
 )
-from engine.version import (
-    ELEANOR_VERSION,
-    BUILD_NAME,
-    CRITIC_SUITE,
-    CORE_HASH
-)
+from engine.version import ELEANOR_VERSION, BUILD_NAME, CRITIC_SUITE, CORE_HASH
 from engine.orchestrator.orchestrator import OrchestratorV8
 from engine.recorder.package import EvidencePackageV8
 
@@ -30,6 +25,7 @@ from engine.recorder.package import EvidencePackageV8
 # ============================================================
 # Severity Tests
 # ============================================================
+
 
 def test_severity_scale_constants():
     """Test that severity scale constants are defined correctly."""
@@ -105,6 +101,7 @@ def test_severity_label_approximations():
 # Version Tests
 # ============================================================
 
+
 def test_version_constants_exist():
     """Test that all version constants are defined."""
     assert ELEANOR_VERSION is not None
@@ -125,19 +122,18 @@ def test_version_format():
 # Orchestrator Tests
 # ============================================================
 
+
 @pytest.mark.asyncio
 async def test_orchestrator_runs_all_critics():
     """Test that orchestrator runs all provided critics."""
+
     async def mock_critic_a(input_data):
         return {"value": "A", "score": 1}
 
     async def mock_critic_b(input_data):
         return {"value": "B", "score": 2}
 
-    critics = {
-        "critic_a": mock_critic_a,
-        "critic_b": mock_critic_b
-    }
+    critics = {"critic_a": mock_critic_a, "critic_b": mock_critic_b}
 
     orchestrator = OrchestratorV8(critics)
     results = await orchestrator.run_all("test_input")
@@ -151,16 +147,14 @@ async def test_orchestrator_runs_all_critics():
 @pytest.mark.asyncio
 async def test_orchestrator_handles_critic_failure():
     """Test that orchestrator handles critic failures gracefully."""
+
     async def failing_critic(input_data):
         raise ValueError("Test failure")
 
     async def working_critic(input_data):
         return {"value": "success", "score": 1}
 
-    critics = {
-        "failing": failing_critic,
-        "working": working_critic
-    }
+    critics = {"failing": failing_critic, "working": working_critic}
 
     orchestrator = OrchestratorV8(critics)
     results = await orchestrator.run_all("test_input")
@@ -177,6 +171,7 @@ async def test_orchestrator_handles_critic_failure():
 @pytest.mark.asyncio
 async def test_orchestrator_timeout():
     """Test that orchestrator enforces timeouts."""
+
     async def slow_critic(input_data):
         await asyncio.sleep(5.0)  # Longer than timeout
         return {"value": "should_not_reach"}
@@ -193,6 +188,7 @@ async def test_orchestrator_timeout():
 
 def test_orchestrator_sync_wrapper():
     """Test that sync wrapper works correctly."""
+
     async def mock_critic(input_data):
         return {"value": "test", "score": 1}
 
@@ -229,6 +225,7 @@ async def test_orchestrator_passes_input_to_critics():
 # Evidence Package Tests
 # ============================================================
 
+
 def test_evidence_package_build_structure():
     """Test that evidence package builds complete structure."""
     package = EvidencePackageV8()
@@ -239,7 +236,7 @@ def test_evidence_package_build_structure():
     deliberation_state = {
         "priority_violations": [],
         "values_respected": ["privacy"],
-        "values_violated": []
+        "values_violated": [],
     }
     uncertainty_state = {
         "uncertainty_score": 0.1,
@@ -247,13 +244,9 @@ def test_evidence_package_build_structure():
         "entropy_estimate": 0.05,
         "stability": "stable",
         "requires_escalation": False,
-        "escalation_reasons": []
+        "escalation_reasons": [],
     }
-    precedent_result = {
-        "alignment_score": 0.95,
-        "top_case": None,
-        "precedent_cases": []
-    }
+    precedent_result = {"alignment_score": 0.95, "top_case": None, "precedent_cases": []}
 
     evidence = package.build(
         input_snapshot,
@@ -261,7 +254,7 @@ def test_evidence_package_build_structure():
         critic_outputs,
         deliberation_state,
         uncertainty_state,
-        precedent_result
+        precedent_result,
     )
 
     # Check structure
@@ -296,14 +289,7 @@ def test_evidence_package_includes_all_inputs():
     input_snapshot = {"prompt": "test_prompt"}
     critic_outputs = {"rights": {"score": 1}, "fairness": {"score": 2}}
 
-    evidence = package.build(
-        input_snapshot,
-        {"used_adapter": "gpt-4"},
-        critic_outputs,
-        {},
-        {},
-        {}
-    )
+    evidence = package.build(input_snapshot, {"used_adapter": "gpt-4"}, critic_outputs, {}, {}, {})
 
     assert evidence["input_snapshot"] == input_snapshot
     assert evidence["model_used"] == "gpt-4"
@@ -320,7 +306,7 @@ def test_evidence_package_uncertainty_structure():
         "entropy_estimate": 0.2,
         "stability": "unstable",
         "requires_escalation": True,
-        "escalation_reasons": ["high_dissent"]
+        "escalation_reasons": ["high_dissent"],
     }
 
     evidence = package.build({}, {}, {}, {}, uncertainty_state, {})
@@ -340,7 +326,7 @@ def test_evidence_package_precedent_structure():
     precedent_result = {
         "alignment_score": 0.85,
         "top_case": {"case_id": "123"},
-        "precedent_cases": [{"case_id": "123"}, {"case_id": "456"}]
+        "precedent_cases": [{"case_id": "123"}, {"case_id": "456"}],
     }
 
     evidence = package.build({}, {}, {}, {}, {}, precedent_result)

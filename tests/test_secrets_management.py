@@ -138,9 +138,7 @@ class TestSecretsSanitizer:
         """Test sanitization with custom sensitive keys"""
         data = {"custom_secret": "value", "normal_field": "data"}
 
-        sanitized = SecretsSanitizer.sanitize_dict(
-            data, sensitive_keys={"custom_secret"}
-        )
+        sanitized = SecretsSanitizer.sanitize_dict(data, sensitive_keys={"custom_secret"})
 
         assert sanitized["custom_secret"] == "[REDACTED]"
         assert sanitized["normal_field"] == "data"

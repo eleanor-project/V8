@@ -24,6 +24,7 @@ from ..signals import DetectorSignal
 @dataclass
 class DetectionPattern:
     """Configuration for detection pattern."""
+
     category: str
     patterns: List[str]
     keywords: List[str]
@@ -38,33 +39,27 @@ DETECTION_PATTERNS = [
             r"\\b(mix|combine)\\s+(chemicals?|substances?)\\b",
             r"\\b(without|skip|bypass)\\s+(safety|protection|precaution)",
         ],
-        keywords=[
-            "mix chemicals", "bypass safety", "without protection"
-        ],
+        keywords=["mix chemicals", "bypass safety", "without protection"],
         severity_weight=0.9,
-        description="Dangerous or unsafe instructions"
+        description="Dangerous or unsafe instructions",
     ),
     DetectionPattern(
         category="hazard_creation",
         patterns=[
             r"\\b(create|make|build)\\s+(weapon|explosive|bomb|poison)\\b",
         ],
-        keywords=[
-            "make a weapon", "build explosive", "create poison"
-        ],
+        keywords=["make a weapon", "build explosive", "create poison"],
         severity_weight=0.98,
-        description="Instructions for creating hazards"
+        description="Instructions for creating hazards",
     ),
     DetectionPattern(
         category="vulnerable_populations",
         patterns=[
             r"\\b(children|elderly|pregnant)\\s+(should|can)\\s+(use|take|consume)\\b",
         ],
-        keywords=[
-            
-        ],
+        keywords=[],
         severity_weight=0.85,
-        description="Risks to vulnerable populations"
+        description="Risks to vulnerable populations",
     ),
 ]
 
@@ -114,7 +109,7 @@ class PhysicalSafetyDetector(Detector):
                 "violations": violations,
                 "text_excerpt": text[:500],
             },
-            flags=self._generate_flags(violations)
+            flags=self._generate_flags(violations),
         )
 
     def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
@@ -127,26 +122,30 @@ class PhysicalSafetyDetector(Detector):
             for pattern in self._compiled_patterns[dp.category]:
                 matches = pattern.findall(text)
                 if matches:
-                    violations.append({
-                        "category": dp.category,
-                        "detection_method": "regex",
-                        "severity_score": dp.severity_weight,
-                        "description": dp.description,
-                        "matches": matches[:3],
-                    })
+                    violations.append(
+                        {
+                            "category": dp.category,
+                            "detection_method": "regex",
+                            "severity_score": dp.severity_weight,
+                            "description": dp.description,
+                            "matches": matches[:3],
+                        }
+                    )
                     break
 
             # Strategy 2: Keyword detection
             for keyword in dp.keywords:
                 if keyword.lower() in text_lower:
                     if not any(v["category"] == dp.category for v in violations):
-                        violations.append({
-                            "category": dp.category,
-                            "detection_method": "keyword",
-                            "severity_score": dp.severity_weight * 0.9,
-                            "description": dp.description,
-                            "keyword_matched": keyword,
-                        })
+                        violations.append(
+                            {
+                                "category": dp.category,
+                                "detection_method": "keyword",
+                                "severity_score": dp.severity_weight * 0.9,
+                                "description": dp.description,
+                                "keyword_matched": keyword,
+                            }
+                        )
                     break
 
         return violations

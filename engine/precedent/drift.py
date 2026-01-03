@@ -17,7 +17,6 @@ import statistics
 
 
 class PrecedentDriftV8:
-
     def compute_drift(self, past_alignment_scores: List[float]) -> Dict[str, Any]:
         """
         past_alignment_scores: list of (0–1) alignment scores from prior decisions.
@@ -35,12 +34,7 @@ class PrecedentDriftV8:
         drift_score = min(1.0, (abs(1 - mean) + stdev) / 2)
 
         signal = (
-            "stable" if drift_score < 0.2 else
-            "monitor" if drift_score < 0.5 else
-            "drift_warning"
+            "stable" if drift_score < 0.2 else "monitor" if drift_score < 0.5 else "drift_warning"
         )
 
-        return {
-            "drift_score": float(drift_score),
-            "signal": signal
-        }
+        return {"drift_score": float(drift_score), "signal": signal}

@@ -24,7 +24,9 @@ class DetectorEngineV8:
     Orchestrates detector execution and signal aggregation.
     """
 
-    def __init__(self, detectors: Optional[Dict[str, Detector]] = None, timeout_seconds: float = 2.0):
+    def __init__(
+        self, detectors: Optional[Dict[str, Detector]] = None, timeout_seconds: float = 2.0
+    ):
         self.detectors: Dict[str, Detector] = detectors or {}
         self.timeout = timeout_seconds
         if not self.detectors:
@@ -70,9 +72,11 @@ class DetectorEngineV8:
                 # Find detector class (should be [Name]Detector)
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
-                    if (isinstance(attr, type) and
-                        issubclass(attr, Detector) and
-                        attr is not Detector):
+                    if (
+                        isinstance(attr, type)
+                        and issubclass(attr, Detector)
+                        and attr is not Detector
+                    ):
                         detector = attr()
                         self.detectors[detector.name] = detector
                         break
@@ -80,11 +84,7 @@ class DetectorEngineV8:
                 # Log but don't crash if a detector fails to load
                 print(f"Warning: Failed to load detector {module_name}: {e}")
 
-    async def detect_all(
-        self,
-        text: str,
-        context: Dict[str, Any]
-    ) -> Dict[str, DetectorSignal]:
+    async def detect_all(self, text: str, context: Dict[str, Any]) -> Dict[str, DetectorSignal]:
         """
         Run all detectors in parallel.
 
@@ -93,9 +93,7 @@ class DetectorEngineV8:
         """
         tasks = []
         for name, detector in self.detectors.items():
-            task = asyncio.create_task(
-                self._run_detector_safe(name, detector, text, context)
-            )
+            task = asyncio.create_task(self._run_detector_safe(name, detector, text, context))
             tasks.append((name, task))
 
         results = {}
@@ -116,18 +114,11 @@ class DetectorEngineV8:
         return results
 
     async def _run_detector_safe(
-        self,
-        name: str,
-        detector: Detector,
-        text: str,
-        context: Dict[str, Any]
+        self, name: str, detector: Detector, text: str, context: Dict[str, Any]
     ) -> DetectorSignal:
         """Run a single detector with timeout and error handling."""
         try:
-            signal = await asyncio.wait_for(
-                detector.detect(text, context),
-                timeout=self.timeout
-            )
+            signal = await asyncio.wait_for(detector.detect(text, context), timeout=self.timeout)
             return signal
         except asyncio.TimeoutError:
             return DetectorSignal(
@@ -146,10 +137,7 @@ class DetectorEngineV8:
                 flags=["ERROR"],
             )
 
-    def aggregate_signals(
-        self,
-        signals: Dict[str, DetectorSignal]
-    ) -> Dict[str, Any]:
+    def aggregate_signals(self, signals: Dict[str, DetectorSignal]) -> Dict[str, Any]:
         """
         Aggregate detector signals for critic consumption.
 
@@ -161,9 +149,9 @@ class DetectorEngineV8:
 
         by_severity: Dict[str, List[str]] = {
             "critical": [],  # severity >= 0.8
-            "high": [],      # severity >= 0.6
-            "medium": [],    # severity >= 0.3
-            "low": []        # severity < 0.3
+            "high": [],  # severity >= 0.6
+            "medium": [],  # severity >= 0.3
+            "low": [],  # severity < 0.3
         }
 
         for name, signal in signals.items():

@@ -9,7 +9,7 @@ def _compose_aggregation_prompt(critic_outputs: List[CriticOutput]) -> str:
     """
     lines = []
     for c in critic_outputs:
-        precedent_str = ', '.join(c.precedent_refs or []) if c.precedent_refs else "none"
+        precedent_str = ", ".join(c.precedent_refs or []) if c.precedent_refs else "none"
         lines.append(
             f"Critic: {c.critic}\n"
             f"Concern: {c.concern}\n"

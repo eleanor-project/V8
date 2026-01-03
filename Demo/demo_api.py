@@ -1,6 +1,4 @@
-import os
 import json
-from typing import List
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -10,15 +8,15 @@ from critics.llm_impl import get_llm
 
 app = FastAPI(title="ELEANOR Demo")
 
+
 class Prompt(BaseModel):
     prompt: str
 
+
 @app.get("/")
 def home():
-    return {
-        "status": "ELEANOR online",
-        "go_to": "/ui"
-    }
+    return {"status": "ELEANOR online", "go_to": "/ui"}
+
 
 @app.post("/run")
 def run_eleanor(p: Prompt):
@@ -45,10 +43,7 @@ async def stream_eleanor(websocket: WebSocket):
         prompt = prompt_data.get("prompt", "")
 
         # Send acknowledgment
-        await websocket.send_json({
-            "type": "start",
-            "message": "Eleanor is deliberating..."
-        })
+        await websocket.send_json({"type": "start", "message": "Eleanor is deliberating..."})
 
         # Run critics one by one, streaming results
         from critics.truth import truth_critic
@@ -75,32 +70,34 @@ async def stream_eleanor(websocket: WebSocket):
             critic_outputs.append(output)
 
             # Stream this critic's result
-            await websocket.send_json({
-                "type": "critic",
-                "critic": output.critic,
-                "concern": output.concern,
-                "severity": output.severity,
-                "principle": output.principle,
-                "uncertainty": output.uncertainty,
-                "rationale": output.rationale,
-            })
+            await websocket.send_json(
+                {
+                    "type": "critic",
+                    "critic": output.critic,
+                    "concern": output.concern,
+                    "severity": output.severity,
+                    "principle": output.principle,
+                    "uncertainty": output.uncertainty,
+                    "rationale": output.rationale,
+                }
+            )
 
         # Aggregate and send final result
         result = aggregate(critic_outputs)
 
-        await websocket.send_json({
-            "type": "final",
-            "deliberation": result["deliberation"],
-            "final_answer": result["final_answer"]
-        })
+        await websocket.send_json(
+            {
+                "type": "final",
+                "deliberation": result["deliberation"],
+                "final_answer": result["final_answer"],
+            }
+        )
 
     except Exception as e:
-        await websocket.send_json({
-            "type": "error",
-            "message": str(e)
-        })
+        await websocket.send_json({"type": "error", "message": str(e)})
     finally:
         await websocket.close()
+
 
 @app.get("/ui", response_class=HTMLResponse)
 def ui():

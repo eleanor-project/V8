@@ -26,7 +26,6 @@ from engine.uncertainty.uncertainty import UncertaintyEngineV8
 
 
 class EleanorEngineV8:
-
     def __init__(
         self,
         constitutional_config: Dict[str, Any],
@@ -34,7 +33,7 @@ class EleanorEngineV8:
         orchestrator,
         precedent_retriever,
         evidence_recorder,
-        opa_governance_callback
+        opa_governance_callback,
     ):
         self.constitution = constitutional_config
         self.router = router
@@ -80,40 +79,36 @@ class EleanorEngineV8:
         # Step 4: Precedent Alignment + Drift Detection
         # ----------------------------------------------------------
         alignment = self.alignment_engine.analyze(
-            critics=critics_output,
-            precedent_cases=precedent_cases,
-            query_embedding=query_embedding
+            critics=critics_output, precedent_cases=precedent_cases, query_embedding=query_embedding
         )
 
         # ----------------------------------------------------------
         # Step 5: Uncertainty Engine
         # ----------------------------------------------------------
         uncertainty = self.uncertainty_engine.compute(
-            critics=critics_output,
-            model_used=model_used,
-            precedent_alignment=alignment
+            critics=critics_output, model_used=model_used, precedent_alignment=alignment
         )
 
         # ----------------------------------------------------------
         # Step 6: Aggregation (constitutional reasoning)
         # ----------------------------------------------------------
         agg_result = self.aggregator.aggregate(
-            critics=critics_output,
-            precedent=alignment,
-            uncertainty=uncertainty
+            critics=critics_output, precedent=alignment, uncertainty=uncertainty
         )
 
         # ----------------------------------------------------------
         # Step 7: Governance (OPA)
         # ----------------------------------------------------------
-        opa_result = self.opa_callback({
-            "critics": critics_output,
-            "aggregator": agg_result,
-            "precedent": alignment,
-            "uncertainty": uncertainty,
-            "model_used": model_used,
-            "user_input": user_text,
-        })
+        opa_result = self.opa_callback(
+            {
+                "critics": critics_output,
+                "aggregator": agg_result,
+                "precedent": alignment,
+                "uncertainty": uncertainty,
+                "model_used": model_used,
+                "user_input": user_text,
+            }
+        )
 
         # ----------------------------------------------------------
         # Step 8: Final Decision Assembly
@@ -128,7 +123,7 @@ class EleanorEngineV8:
             "uncertainty": uncertainty,
             "aggregator_output": agg_result,
             "opa_governance": opa_result,
-            "final_decision": self._resolve_output(agg_result, opa_result)
+            "final_decision": self._resolve_output(agg_result, opa_result),
         }
 
         # ----------------------------------------------------------
@@ -144,7 +139,7 @@ class EleanorEngineV8:
             aggregator_output=agg_result,
             opa_result=opa_result,
             final_decision=final_decision,
-            duration=time.time() - start_time
+            duration=time.time() - start_time,
         )
 
         # ----------------------------------------------------------

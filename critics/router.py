@@ -25,8 +25,5 @@ CRITICS: List[CriticFn] = [
 
 def run_critics(prompt: str, llm: LLMClient) -> List[CriticOutput]:
     with ThreadPoolExecutor(max_workers=len(CRITICS)) as pool:
-        futures = [
-            pool.submit(fn, prompt, llm)
-            for fn in CRITICS
-        ]
+        futures = [pool.submit(fn, prompt, llm) for fn in CRITICS]
         return [f.result() for f in futures]

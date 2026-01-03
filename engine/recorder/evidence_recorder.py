@@ -15,8 +15,11 @@ from engine.security.sanitizer import CredentialSanitizer
 # Evidence Record Model
 # ---------------------------------------------------------
 
+
 class EvidenceRecord(BaseModel):
-    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    )
     trace_id: str
     request_id: Optional[str] = None
 
@@ -46,6 +49,7 @@ class EvidenceRecord(BaseModel):
 # ---------------------------------------------------------
 # Evidence Recorder V8 — Tri-sink implementation
 # ---------------------------------------------------------
+
 
 class EvidenceRecorder:
     """
@@ -97,7 +101,9 @@ class EvidenceRecorder:
             except asyncio.CancelledError:
                 break
             except Exception as exc:
-                logging.getLogger(__name__).error("evidence_flush_failed", extra={"error": str(exc)})
+                logging.getLogger(__name__).error(
+                    "evidence_flush_failed", extra={"error": str(exc)}
+                )
 
     # -----------------------------------------------------
     # Internal helper: Add to in-memory buffer
@@ -154,26 +160,20 @@ class EvidenceRecorder:
         precedent_sources: Optional[List[str]] = None,
         precedent_candidates: Optional[List[str]] = None,
     ) -> EvidenceRecord:
-
         trace_id = trace_id or str(uuid.uuid4())
 
         sanitized_violation_description = CredentialSanitizer.sanitize_text(violation_description)
         sanitized_mitigation = (
-            CredentialSanitizer.sanitize_text(mitigation)
-            if mitigation is not None
-            else None
+            CredentialSanitizer.sanitize_text(mitigation) if mitigation is not None else None
         )
         sanitized_detector_metadata = CredentialSanitizer.sanitize_dict(detector_metadata or {})
         sanitized_context = CredentialSanitizer.sanitize_dict(context or {})
         sanitized_raw_text = (
-            CredentialSanitizer.sanitize_text(raw_text)
-            if raw_text is not None
-            else None
+            CredentialSanitizer.sanitize_text(raw_text) if raw_text is not None else None
         )
         sanitized_uncertainty_flags = CredentialSanitizer.sanitize_dict(uncertainty_flags or {})
         sanitized_precedent_sources = [
-            CredentialSanitizer.sanitize_text(source)
-            for source in (precedent_sources or [])
+            CredentialSanitizer.sanitize_text(source) for source in (precedent_sources or [])
         ]
         sanitized_precedent_candidates = [
             CredentialSanitizer.sanitize_text(candidate)

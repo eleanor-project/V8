@@ -24,6 +24,7 @@ from ..signals import DetectorSignal, SeverityLevel
 @dataclass
 class DetectionPattern:
     """Configuration for detection pattern."""
+
     category: str
     patterns: List[str]
     keywords: List[str]
@@ -41,10 +42,14 @@ DETECTION_PATTERNS = [
             r"\b(all|every)\s+(elderly|seniors?|older adults?)\s+[\w\s]{0,20}\b(are|is|should)\b",
         ],
         keywords=[
-            "all blacks are", "all muslims are", "women can't", "men shouldn't", "all elderly"
+            "all blacks are",
+            "all muslims are",
+            "women can't",
+            "men shouldn't",
+            "all elderly",
         ],
         severity_weight=0.95,
-        description="Explicit discriminatory statements based on protected characteristics"
+        description="Explicit discriminatory statements based on protected characteristics",
     ),
     DetectionPattern(
         category="protected_attribute_bias",
@@ -53,11 +58,14 @@ DETECTION_PATTERNS = [
             r"(reject|deny|refuse).*\b(because|due to)\b.*(race|gender|religion|age|disability)",
         ],
         keywords=[
-            "because of their race", "due to their gender", "because of their religion",
-            "based on ethnicity", "because of sexual orientation"
+            "because of their race",
+            "due to their gender",
+            "because of their religion",
+            "based on ethnicity",
+            "because of sexual orientation",
         ],
         severity_weight=0.9,
-        description="Decision-making based on protected attributes"
+        description="Decision-making based on protected attributes",
     ),
     DetectionPattern(
         category="stereotyping",
@@ -66,11 +74,18 @@ DETECTION_PATTERNS = [
             r"\b(typical|stereotypical)\s+(black|white|asian|hispanic|woman|man)\b",
         ],
         keywords=[
-            "you people", "your kind", "those types", "typical of",
-            "what do you expect from", "they're all the same", "most women", "most men", "like most women"
+            "you people",
+            "your kind",
+            "those types",
+            "typical of",
+            "what do you expect from",
+            "they're all the same",
+            "most women",
+            "most men",
+            "like most women",
         ],
         severity_weight=0.65,
-        description="Harmful stereotyping and generalizations"
+        description="Harmful stereotyping and generalizations",
     ),
     DetectionPattern(
         category="differential_treatment",
@@ -79,22 +94,23 @@ DETECTION_PATTERNS = [
             r"\b(only|just)\s+\w+\s+(can|should|are allowed)",
         ],
         keywords=[
-            "different rules for", "separate treatment", "special standards",
-            "only for them", "not for those people"
+            "different rules for",
+            "separate treatment",
+            "special standards",
+            "only for them",
+            "not for those people",
         ],
         severity_weight=0.8,
-        description="Differential treatment based on group membership"
+        description="Differential treatment based on group membership",
     ),
     DetectionPattern(
         category="dehumanization",
         patterns=[
             r"\b(vermin|animals?|subhuman|infestation|plague)\b",
         ],
-        keywords=[
-            "not human", "less than human"
-        ],
+        keywords=["not human", "less than human"],
         severity_weight=1.0,
-        description="Dehumanizing language about a group"
+        description="Dehumanizing language about a group",
     ),
 ]
 
@@ -145,7 +161,7 @@ class DiscriminationDetector(Detector):
             description="Discrimination risk assessment",
             violations=[v["category"] for v in violations],
             evidence=metadata,
-            flags=self._generate_flags(violations)
+            flags=self._generate_flags(violations),
         )
 
     def _analyze_text(self, text: str) -> List[Dict[str, Any]]:
@@ -158,35 +174,50 @@ class DiscriminationDetector(Detector):
             for pattern in self._compiled_patterns[dp.category]:
                 matches = pattern.findall(text)
                 if matches:
-                    violations.append({
-                        "category": dp.category,
-                        "detection_method": "regex",
-                        "severity_score": dp.severity_weight,
-                        "description": dp.description,
-                        "matches": matches[:3],
-                    })
+                    violations.append(
+                        {
+                            "category": dp.category,
+                            "detection_method": "regex",
+                            "severity_score": dp.severity_weight,
+                            "description": dp.description,
+                            "matches": matches[:3],
+                        }
+                    )
                     break
 
             # Strategy 2: Keyword detection
             for keyword in dp.keywords:
                 if keyword.lower() in text_lower:
                     if not any(v["category"] == dp.category for v in violations):
-                        violations.append({
-                            "category": dp.category,
-                            "detection_method": "keyword",
-                            "severity_score": dp.severity_weight * 0.9,
-                            "description": dp.description,
-                            "keyword_matched": keyword,
-                        })
+                        violations.append(
+                            {
+                                "category": dp.category,
+                                "detection_method": "keyword",
+                                "severity_score": dp.severity_weight * 0.9,
+                                "description": dp.description,
+                                "keyword_matched": keyword,
+                            }
+                        )
                     break
 
         return violations
 
-    def _build_metadata(self, text: str, violations: List[Dict[str, Any]], severity: float) -> Dict[str, Any]:
+    def _build_metadata(
+        self, text: str, violations: List[Dict[str, Any]], severity: float
+    ) -> Dict[str, Any]:
         protected_groups = []
         protected_keywords = [
-            "elderly", "disabled", "immigrants", "women", "men", "minorities", "religion", "race",
-            "gender", "age", "disability"
+            "elderly",
+            "disabled",
+            "immigrants",
+            "women",
+            "men",
+            "minorities",
+            "religion",
+            "race",
+            "gender",
+            "age",
+            "disability",
         ]
         for kw in protected_keywords:
             if kw in text.lower():

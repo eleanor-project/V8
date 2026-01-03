@@ -53,8 +53,7 @@ def emit_review(packet: ReviewPacket) -> Dict[str, Any]:
 
 
 def should_review(
-    case_data: Dict[str, Any],
-    evaluator: Optional[ReviewTriggerEvaluator] = None
+    case_data: Dict[str, Any], evaluator: Optional[ReviewTriggerEvaluator] = None
 ) -> Dict[str, Any]:
     """
     Determine if a case requires human review.
@@ -72,9 +71,7 @@ def should_review(
     # Build Case object from data
     case = Case(
         severity=case_data.get("severity", 0.0),
-        critic_disagreement=_calculate_critic_disagreement(
-            case_data.get("critic_outputs", {})
-        ),
+        critic_disagreement=_calculate_critic_disagreement(case_data.get("critic_outputs", {})),
         novel_precedent=case_data.get("novel_precedent", False),
         rights_impacted=case_data.get("rights_impacted", []),
         uncertainty_flags=case_data.get("uncertainty_flags", []),
