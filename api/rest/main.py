@@ -96,6 +96,7 @@ from engine.exceptions import InputValidationError
 from engine.version import ELEANOR_VERSION
 from engine.utils.critic_names import canonical_critic_name, canonicalize_critic_map
 from engine.utils.validation import sanitize_for_logging
+from engine.utils.dependency_tracking import get_dependency_metrics
 
 # Initialize logging
 configure_logging()
@@ -1752,6 +1753,17 @@ async def resilience_health():
         "enabled": True,
         "overall_health": overall,
         "components": components,
+    }
+
+
+@app.get("/admin/dependencies", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def dependency_health():
+    """Expose counts of dependencies that failed to load."""
+    failures = get_dependency_metrics()
+    return {
+        "failures": failures,
+        "has_failures": bool(failures),
     }
 
 

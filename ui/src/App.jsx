@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 const apiBase = "";
 const wsUrl = () => {
@@ -510,11 +510,53 @@ const MetricsPanel = () => {
     const port = 3000;
     return `http://${host}:${port}/d/eleanor-obsv/eleanor-v8-observability?orgId=1&refresh=10s`;
   }, []);
+
+  const [dependencyMetrics, setDependencyMetrics] = useState(null);
+  const loadDependencyMetrics = useCallback(async () => {
+    try {
+      const data = await fetchJson("/admin/dependencies");
+      setDependencyMetrics(data);
+    } catch (err) {
+      setDependencyMetrics({ error: err.message || "Unable to load metrics" });
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDependencyMetrics();
+  }, [loadDependencyMetrics]);
+
+  const dependencyContent = dependencyMetrics ? (
+    dependencyMetrics.error ? (
+      <div className="small">Error: {dependencyMetrics.error}</div>
+    ) : dependencyMetrics.has_failures ? (
+      <div className="dependency-grid">
+        {Object.entries(dependencyMetrics.failures || {}).map(([name, count]) => (
+          <div key={name} className="dependency-card">
+            <div className="dependency-name">{name}</div>
+            <div className="dependency-count">{count ?? 0}</div>
+            <div className="small">{count === 1 ? "failure" : "failures"}</div>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="small">All tracked dependencies are healthy.</div>
+    )
+  ) : (
+    <div className="small">Loading dependency metrics…</div>
+  );
+
   return (
     <div className="panel">
       <h3>Grafana</h3>
       <p className="small">Requires docker compose stack (Grafana at :3000) or adjust URL.</p>
       <iframe src={grafanaUrl} title="Grafana Dashboard"></iframe>
+      <div className="dependency-section">
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 4 }}>
+          <h4 style={{ margin: 0 }}>Dependency Dashboard</h4>
+          <button onClick={loadDependencyMetrics}>Refresh</button>
+        </div>
+        {dependencyContent}
+      </div>
     </div>
   );
 };

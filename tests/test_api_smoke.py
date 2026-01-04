@@ -58,6 +58,17 @@ def test_admin_bindings_requires_engine():
         assert res.status_code == 503
 
 
+def test_dependency_endpoint_available_without_engine():
+    app = get_app_without_startup()
+    with TestClient(app) as client:
+        res = client.get("/admin/dependencies")
+        assert res.status_code == 200
+        data = res.json()
+        assert "failures" in data
+        assert isinstance(data["failures"], dict)
+        assert isinstance(data.get("has_failures"), bool)
+
+
 def test_evaluate_requires_engine():
     app = get_app_without_startup()
     payload = {
