@@ -20,6 +20,7 @@ Output:
 }
 """
 
+import asyncio
 from typing import Dict, Any, List, Optional, Callable, Mapping, cast
 import inspect
 
@@ -196,15 +197,27 @@ class PrecedentRetrievalV8:
         cache_fn = getattr(self.embedding_cache, "cache_embedding", None)
         if not callable(cache_fn):
             return
+
+        def _execute_cache() -> None:
+            try:
+                import torch
+            except Exception:
+                return
+            try:
+                tensor = torch.tensor(embedding, dtype=torch.float32)
+                cache_fn(text, tensor)
+            except Exception:
+                return
+
         try:
-            import torch
-        except Exception:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            _execute_cache()
             return
-        try:
-            tensor = torch.tensor(embedding, dtype=torch.float32)
-            cache_fn(text, tensor)
-        except Exception:
-            return
+        if loop.is_running():
+            loop.run_in_executor(None, _execute_cache)
+        else:
+            _execute_cache()
 
     async def close(self) -> None:
         """Close underlying store connection if supported."""
