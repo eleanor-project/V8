@@ -114,6 +114,7 @@ def test_rewrite_log_trims_records_and_stat_error(tmp_path, monkeypatch):
 
     monkeypatch.setattr(replay_store.Path, "stat", _raise)
     store._rewrite_log_locked()
+    assert store.trimmed_records >= 1
 
 
 def test_get_missing_path_and_bad_json(tmp_path, monkeypatch):
