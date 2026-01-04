@@ -99,18 +99,7 @@ class AggregatorV8:
         # 7. Escalation resolution (doctrine-compliant)
         critic_evals: List[CriticEvaluation] = []
         for name, data in adjusted.items():
-            severity_score = 0.0
-            if data.get("severity") is not None:
-                try:
-                    severity_score = float(data.get("severity", 0.0)) / 3.0
-                except (TypeError, ValueError):
-                    severity_score = 0.0
-            elif data.get("score") is not None:
-                try:
-                    severity_score = float(data.get("score", 0.0))
-                except (TypeError, ValueError):
-                    severity_score = 0.0
-            severity_score = max(0.0, min(1.0, severity_score))
+            severity_score = self._build_severity_score(data)
 
             critic_evals.append(
                 CriticEvaluation(
@@ -162,10 +151,7 @@ class AggregatorV8:
         normalized = {}
         critics = canonicalize_critic_map(critics)
         for name, data in critics.items():
-            try:
-                severity = float(data.get("severity", 0.0))
-            except (TypeError, ValueError):
-                severity = 0.0
+            severity = self._coerce_numeric(data.get("severity", 0.0))
             violations = data.get("violations", [])
             justification = data.get("justification", "")
 
@@ -173,10 +159,24 @@ class AggregatorV8:
                 "severity": severity,
                 "violations": violations,
                 "justification": justification,
-                "raw": data,
-            }
+            "raw": data,
+        }
 
         return normalized
+
+    def _coerce_numeric(self, value: Any, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _build_severity_score(self, data: Dict[str, Any]) -> float:
+        severity = data.get("severity")
+        if severity is not None:
+            raw = self._coerce_numeric(severity) / 3.0
+        else:
+            raw = self._coerce_numeric(data.get("score", 0.0))
+        return max(0.0, min(1.0, raw))
 
     # ----------------------------------------------------------
     # STEP 2: Lexicographic analysis
