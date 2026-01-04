@@ -23,6 +23,9 @@ def test_in_memory_store_search_and_delete():
     assert store.delete("c1") is True
     assert store.delete("missing") is False
 
+    empty = InMemoryStore()
+    assert empty.search("q") == []
+
 
 def test_in_memory_store_cosine_similarity_mismatch():
     store = InMemoryStore()
@@ -44,6 +47,14 @@ def test_json_file_store_load_and_save(tmp_path, monkeypatch):
         data = json.load(f)
     assert "cases" in data
 
+    valid_path = tmp_path / "valid.json"
+    valid_path.write_text(
+        json.dumps({"cases": {"c2": {"case_id": "c2"}}, "embeddings": {"c2": [0.1]}}),
+        encoding="utf-8",
+    )
+    store_loaded = JSONFileStore(file_path=str(valid_path))
+    assert store_loaded.get("c2") == {"case_id": "c2"}
+
     def _raise(*_args, **_kwargs):
         raise OSError("boom")
 
@@ -57,3 +68,12 @@ def test_create_store_invalid_backend():
 
     assert isinstance(create_store("memory"), InMemoryStore)
     assert isinstance(create_store("json"), JSONFileStore)
+
+
+def test_json_file_store_delete(tmp_path):
+    file_path = tmp_path / "precedents.json"
+    store = JSONFileStore(file_path=str(file_path))
+    case = PrecedentCase(case_id="c1", query_text="q", decision="allow")
+    store.add(case, embedding=[0.1])
+    assert store.delete("c1") is True
+    assert store.delete("missing") is False

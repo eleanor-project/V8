@@ -78,3 +78,29 @@ def test_detector_signal_properties():
     )
     assert signal.violation is True
     assert signal.mitigation == "mask"
+
+
+@pytest.mark.asyncio
+async def test_detector_engine_handles_task_failure(monkeypatch):
+    engine = DetectorEngineV8(detectors={"dummy": DummyDetector()}, timeout_seconds=1.0)
+
+    async def _raise(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(engine, "_run_detector_safe", _raise)
+    signals = await engine.detect_all("text", {})
+    assert signals["dummy"].flags == ["DETECTOR_FAILURE"]
+
+
+def test_detector_engine_aggregate_severity_buckets():
+    signals = {
+        "crit": DetectorSignal(detector_name="crit", severity=0.9, violations=[], flags=["CRITICAL_X"]),
+        "high": DetectorSignal(detector_name="high", severity=0.6, violations=["v"], flags=[]),
+        "med": DetectorSignal(detector_name="med", severity=0.3, violations=[], flags=[]),
+    }
+    engine = DetectorEngineV8(detectors={})
+    summary = engine.aggregate_signals(signals)
+    assert "crit" in summary["by_severity"]["critical"]
+    assert "high" in summary["by_severity"]["high"]
+    assert "med" in summary["by_severity"]["medium"]
+    assert "CRITICAL_X" in summary["critical_flags"]

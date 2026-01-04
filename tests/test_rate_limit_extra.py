@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import sys
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -27,6 +28,9 @@ def test_build_headers_retry_after():
     assert "Retry-After" in headers
     assert headers["X-RateLimit-Limit"] == "10"
 
+    headers = rate_limit_module._build_headers(tokens=0.2, capacity=10, refill_rate=0.0, now=100)
+    assert headers["X-RateLimit-Reset"] == "100"
+
 
 def test_env_positive_int(monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_MAX_CLIENTS", "-1")
@@ -47,6 +51,10 @@ def test_rate_limit_config_env(monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_CLIENT_TTL", "0")
     config = rate_limit_module.RateLimitConfig.from_env()
     assert config.client_ttl_seconds is None
+
+    monkeypatch.setenv("RATE_LIMIT_CLIENT_TTL", "bad")
+    config = rate_limit_module.RateLimitConfig.from_env()
+    assert config.client_ttl_seconds == config.window_seconds * 10
 
 
 def test_token_bucket_limiter_check_and_reset(monkeypatch):
@@ -80,12 +88,32 @@ def test_token_bucket_cleanup(monkeypatch):
     asyncio.run(limiter.check(req2))
     assert len(limiter._timestamps) <= 1
 
+    now = rate_limit_module.time.time()
+    limiter._timestamps = {"stale": now - 10}
+    limiter._tokens = {"stale": 0.0}
+    limiter.client_ttl_seconds = 1
+    limiter._cleanup_locked(now)
+    assert "stale" not in limiter._timestamps
+
 
 def test_redis_rate_limiter_init_error(monkeypatch):
     monkeypatch.setitem(sys.modules, "redis", None)
     config = rate_limit_module.RateLimitConfig(redis_url="redis://localhost")
     with pytest.raises(RuntimeError):
         rate_limit_module.RedisTokenBucketRateLimiter(config)
+
+    with pytest.raises(ValueError):
+        rate_limit_module.RedisTokenBucketRateLimiter(rate_limit_module.RateLimitConfig())
+
+
+def test_redis_rate_limiter_init_success(monkeypatch):
+    class DummyRedis:
+        @classmethod
+        def from_url(cls, _url, decode_responses=True):
+            return "client"
+
+    monkeypatch.setitem(sys.modules, "redis", SimpleNamespace(Redis=DummyRedis))
+    assert rate_limit_module.RedisTokenBucketRateLimiter._init_client("redis://local") == "client"
 
 
 def test_redis_rate_limiter_check(monkeypatch):
@@ -114,6 +142,28 @@ def test_redis_rate_limiter_check(monkeypatch):
     allowed, headers = asyncio.run(limiter.check(request))
     assert allowed is True
     assert headers == {}
+
+    limiter.config = rate_limit_module.RateLimitConfig(enabled=False, redis_url="redis://localhost")
+    allowed, headers = asyncio.run(limiter.check(request))
+    assert allowed is True
+    assert headers == {}
+
+
+def test_redis_rate_limiter_reset():   
+    class DummyRedis:
+        def __init__(self):
+            self.deleted = []
+
+        def delete(self, key):
+            self.deleted.append(key)
+
+    limiter = rate_limit_module.RedisTokenBucketRateLimiter.__new__(
+        rate_limit_module.RedisTokenBucketRateLimiter
+    )
+    limiter.config = rate_limit_module.RateLimitConfig(redis_url="redis://localhost")
+    limiter._redis = DummyRedis()
+    asyncio.run(limiter.reset(client_id="client-1"))
+    assert limiter._redis.deleted
 
 
 def test_get_rate_limiter(monkeypatch):
@@ -175,6 +225,20 @@ def test_rate_limit_decorator(monkeypatch):
 
     with pytest.raises(HTTPException):
         asyncio.run(handler_blocked(_make_request()))
+
+    monkeypatch.setenv("RATE_LIMIT_REDIS_URL", "redis://local")
+    monkeypatch.setattr(
+        rate_limit_module,
+        "RedisTokenBucketRateLimiter",
+        lambda _cfg: DummyLimiter(),
+    )
+
+    @rate_limit_module.rate_limit(requests_per_window=1, window_seconds=1)
+    async def handler_redis(request):
+        return "ok"
+
+    result = asyncio.run(handler_redis(_make_request()))
+    assert result == "ok"
 
 
 def test_rate_limit_middleware():
