@@ -1,4 +1,6 @@
 import asyncio
+import importlib
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -92,3 +94,65 @@ def test_close_flush_error(tmp_path, monkeypatch):
         await recorder.close()
 
     asyncio.run(_run())
+
+
+def test_close_without_initialize(tmp_path, monkeypatch):
+    monkeypatch.setattr(async_module, "AIOFILES_AVAILABLE", False)
+    recorder = async_module.AsyncEvidenceRecorder(str(tmp_path / "evidence.jsonl"))
+    asyncio.run(recorder.close())
+
+
+@pytest.mark.asyncio
+async def test_initialize_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setattr(async_module, "AIOFILES_AVAILABLE", False)
+    recorder = async_module.AsyncEvidenceRecorder(str(tmp_path / "evidence.jsonl"))
+    await recorder.initialize()
+    await recorder.initialize()
+    await recorder.close()
+
+
+@pytest.mark.asyncio
+async def test_periodic_flush_cancel(tmp_path, monkeypatch):
+    monkeypatch.setattr(async_module, "AIOFILES_AVAILABLE", False)
+    recorder = async_module.AsyncEvidenceRecorder(
+        str(tmp_path / "evidence.jsonl"), flush_interval=1.0
+    )
+    await recorder.initialize()
+    await asyncio.sleep(0)
+    task = recorder._flush_task
+    assert task is not None
+    task.cancel()
+    await task
+    await recorder.close()
+
+
+def test_flush_error_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(async_module, "AIOFILES_AVAILABLE", False)
+    recorder = async_module.AsyncEvidenceRecorder(str(tmp_path / "evidence.jsonl"), buffer_size=1)
+
+    class DummyFile:
+        def write(self, _data):
+            raise RuntimeError("boom")
+
+        def flush(self):
+            return None
+
+    recorder._file_handle = DummyFile()
+    recorder.buffer = [{"k": "v"}]
+
+    async def _run():
+        with pytest.raises(RuntimeError):
+            await recorder.flush()
+
+    asyncio.run(_run())
+
+
+def test_reload_with_aiofiles_available(monkeypatch):
+    async def _open(*_args, **_kwargs):
+        return DummyAsyncFile()
+
+    monkeypatch.setitem(sys.modules, "aiofiles", SimpleNamespace(open=_open))
+    reloaded = importlib.reload(sys.modules["engine.evidence_recorder_async"])
+    assert reloaded.AIOFILES_AVAILABLE is True
+    sys.modules.pop("aiofiles", None)
+    importlib.reload(reloaded)

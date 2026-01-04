@@ -164,3 +164,44 @@ def test_env_int(monkeypatch):
     assert stores_module._env_int("PG_POOL_MIN", 2) == 1
     monkeypatch.setenv("PG_POOL_MIN", "bad")
     assert stores_module._env_int("PG_POOL_MIN", 2) == 2
+
+
+def test_pgvector_missing_dependency(monkeypatch):
+    monkeypatch.setattr(stores_module, "ThreadedConnectionPool", None)
+    monkeypatch.setattr(stores_module, "psycopg2", SimpleNamespace(connect=None))
+    with pytest.raises(ImportError):
+        stores_module.PGVectorPrecedentStore(conn_string="pg", table_name="precedent")
+
+
+def test_pgvector_pool_size_adjustment(monkeypatch):
+    monkeypatch.setenv("PG_POOL_MIN", "5")
+    monkeypatch.setenv("PG_POOL_MAX", "1")
+
+    class DummyPool:
+        def __init__(self, min_size, max_size, _conn):
+            self.min_size = min_size
+            self.max_size = max_size
+
+    monkeypatch.setattr(stores_module, "ThreadedConnectionPool", DummyPool)
+    monkeypatch.setattr(stores_module, "psycopg2", SimpleNamespace(connect=lambda _c: None))
+
+    store = stores_module.PGVectorPrecedentStore(conn_string="pg", table_name="precedent")
+    assert store.pool.min_size == store.pool.max_size
+
+
+def test_pgvector_search_missing_embedding(monkeypatch):
+    monkeypatch.setattr(stores_module, "ThreadedConnectionPool", None)
+    monkeypatch.setattr(stores_module, "psycopg2", SimpleNamespace(connect=lambda _c: None))
+    store = stores_module.PGVectorPrecedentStore(conn_string="pg", table_name="precedent")
+    store.embedder = stores_module.Embedder(lambda _t: [])
+    assert store.search("query") == []
+
+
+def test_pgvector_search_no_connection():
+    store = stores_module.PGVectorPrecedentStore.__new__(stores_module.PGVectorPrecedentStore)
+    store.pool = None
+    store.conn = None
+    store.table = "precedent"
+    store.embedder = stores_module.Embedder(lambda _t: [0.1])
+    with pytest.raises(RuntimeError):
+        store.search("query", embedding=[0.1])

@@ -53,7 +53,10 @@ def test_estimate_embedding_cache_entries_and_parse_memory():
     assert engine_module._estimate_embedding_cache_entries(0, 10) == 0
     assert engine_module._estimate_embedding_cache_entries(1, 2, bytes_per_value=4) > 0
 
+    assert engine_module._parse_memory_gb(None) is None
+    assert engine_module._parse_memory_gb("  ") is None
     assert engine_module._parse_memory_gb("24GB") == 24.0
     assert engine_module._parse_memory_gb("512mb") == pytest.approx(0.5, rel=1e-3)
     assert engine_module._parse_memory_gb("bad") is None
+    assert engine_module._parse_memory_gb("badmb") is None
     assert engine_module._parse_memory_gb(8) == 8.0
