@@ -24,11 +24,11 @@ You may add new adapters without modifying the engine.
 import os
 import logging
 from typing import Any, Optional, Awaitable, TYPE_CHECKING
+from urllib.parse import urlparse
 
 import httpx  # noqa: F401
 
-
-from engine.utils.http_client import get_async_client
+from engine.utils.http_client import get_async_client_for
 
 if TYPE_CHECKING:
     from openai import OpenAI as OpenAIClient
@@ -61,9 +61,16 @@ def _get_timeout() -> float:
 DEFAULT_HTTP_TIMEOUT = _get_timeout()
 
 
+def _extract_base_url(url: str) -> Optional[str]:
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 async def _post_json(url: str, payload: dict, headers: Optional[dict] = None) -> Any:
     timeout = DEFAULT_HTTP_TIMEOUT
-    client = await get_async_client()
+    client = await get_async_client_for(_extract_base_url(url))
     resp = await client.post(url, headers=headers, json=payload, timeout=timeout)
     resp.raise_for_status()
     return resp.json()
