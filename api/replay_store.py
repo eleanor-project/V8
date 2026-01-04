@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import threading
 from collections import OrderedDict
@@ -27,6 +28,8 @@ except Exception:  # pragma: no cover - platform specific
     _fcntl = None
 
 fcntl: Optional[ModuleType] = _fcntl
+
+logger = logging.getLogger(__name__)
 
 
 REVIEW_PACKET_DIR = "logs/review_packets"
@@ -88,6 +91,7 @@ class ReplayStore:
         self._cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
         self._offsets: "OrderedDict[str, int]" = OrderedDict()
         self._file_size = 0
+        self._trimmed_records = 0
         self._load_existing()
 
     def _load_existing(self) -> None:
@@ -136,6 +140,10 @@ class ReplayStore:
         while len(self._offsets) > self.max_index_entries:
             self._offsets.popitem(last=False)
 
+    @property
+    def trimmed_records(self) -> int:
+        return self._trimmed_records
+
     def _maybe_trim_log_locked(self) -> None:
         if not self.max_log_bytes:
             return
@@ -157,10 +165,12 @@ class ReplayStore:
         max_bytes = self.max_log_bytes
         kept: List[tuple[Dict[str, Any], str]] = []
         total = 0
+        oversized_skipped = 0
         for record in reversed(records):
             line = json.dumps(record, ensure_ascii=False)
             size = len((line + "\n").encode("utf-8"))
             if max_bytes is not None and size > max_bytes:
+                oversized_skipped += 1
                 continue
             if max_bytes is not None and total + size > max_bytes and kept:
                 break
@@ -187,6 +197,17 @@ class ReplayStore:
             self._file_size = self.path.stat().st_size
         except OSError:
             self._file_size = 0
+        trimmed = len(records) - len(kept)
+        if max_bytes is not None and trimmed > 0:
+            self._trimmed_records += trimmed
+            logger.info(
+                "replay_store_trimmed_log",
+                extra={
+                    "trimmed_records": trimmed,
+                    "oversized_skipped": oversized_skipped,
+                    "max_log_bytes": max_bytes,
+                },
+            )
 
     def save(self, record: Dict[str, Any]) -> None:
         trace_id = record.get("trace_id")
