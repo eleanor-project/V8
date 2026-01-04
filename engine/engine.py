@@ -13,7 +13,7 @@ import json
 import logging
 import uuid
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, AsyncGenerator, Callable, cast, TYPE_CHECKING
+from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, List, Optional, Type, cast, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
@@ -57,6 +57,7 @@ from engine.schemas.pipeline_types import (
     ViolationEntry,
 )
 from engine.utils.critic_names import canonicalize_critic_map
+from engine.utils.dependency_tracking import record_dependency_failure
 from engine.utils.validation import sanitize_for_logging
 from engine.validation import validate_input
 
@@ -92,11 +93,13 @@ def _init_cache_redis(redis_url: Optional[str]) -> Optional[Any]:
         import redis  # type: ignore[import-not-found]
     except ImportError:
         logger.warning("Redis cache requested but redis package is not installed")
+        record_dependency_failure("redis", ImportError("redis not installed"))
         return None
     try:
         return redis.Redis.from_url(redis_url, decode_responses=True)
     except Exception as exc:
         logger.warning("Redis cache initialization failed", extra={"error": str(exc)})
+        record_dependency_failure("redis", exc)
         return None
 
 
@@ -301,6 +304,7 @@ class EleanorEngineV8:
             settings = ConfigManager().settings
         except Exception as exc:
             settings_error = exc
+            record_dependency_failure("engine.config.ConfigManager", exc)
 
         if config is None:
             if settings is not None:
@@ -358,6 +362,7 @@ class EleanorEngineV8:
                 from engine.gpu.parallelization import MultiGPURouter
             except Exception as exc:
                 logger.warning("gpu_modules_unavailable", extra={"error": str(exc)})
+                record_dependency_failure("engine.gpu.modules", exc)
             else:
                 preferred_devices = settings.gpu.preferred_devices
                 if not preferred_devices:
@@ -480,6 +485,7 @@ class EleanorEngineV8:
                         from engine.gpu.batch_processor import BatchProcessor
                     except Exception as exc:
                         logger.warning("gpu_batch_processor_unavailable", extra={"error": str(exc)})
+                        record_dependency_failure("engine.gpu.batch_processor", exc)
                     else:
                         self.critic_batcher = BatchProcessor(
                             process_fn=self._process_critic_batch,
@@ -1217,6 +1223,41 @@ class EleanorEngineV8:
     # PRECEDENT + UNCERTAINTY + AGGREGATION
     # -----------------------------------------------------
 
+    async def _execute_with_degradation(
+        self,
+        *,
+        stage: str,
+        run_fn: Callable[[], Awaitable[Any]],
+        fallback_fn: Callable[[Exception], Awaitable[Any]],
+        error_type: Type[Exception],
+        degraded_components: List[str],
+        degrade_component: str,
+        context: Dict[str, Any],
+        trace_id: Optional[str],
+        fallback_on_error: Optional[Callable[[Exception], Any]] = None,
+    ) -> tuple[Any, bool, Optional[Exception]]:
+        try:
+            breaker = self._get_circuit_breaker(stage)
+            if breaker is not None:
+                result = await breaker.call(run_fn)
+            else:
+                result = await run_fn()
+            return result, False, None
+        except CircuitBreakerOpen as exc:
+            if self.degradation_enabled:
+                degraded_components.append(degrade_component)
+                fallback = await fallback_fn(exc)
+                return fallback, True, exc
+            raise
+        except error_type as exc:
+            self._emit_error(exc, stage=stage, trace_id=trace_id, context=context)
+            if self.degradation_enabled:
+                degraded_components.append(degrade_component)
+                fallback = await fallback_fn(exc)
+                return fallback, True, exc
+            fallback_result = fallback_on_error(exc) if fallback_on_error else None
+            return fallback_result, False, exc
+
     async def _run_precedent_alignment(
         self,
         critic_results: CriticResultsMap,
@@ -1687,100 +1728,66 @@ class EleanorEngineV8:
         # Step 3: Precedent Alignment
         precedent_data = None
         if self.config.enable_precedent_analysis:
-            try:
-                breaker = self._get_circuit_breaker("precedent")
-                if breaker is not None:
-                    precedent_data = cast(
-                        Optional[PrecedentAlignmentResult],
-                        await breaker.call(
-                            self._run_precedent_alignment,
-                            critic_results=critic_results,
-                            trace_id=trace_id,
-                            text=text,
-                            timings=timings,
-                        ),
-                    )
-                else:
-                    precedent_data = await self._run_precedent_alignment(
-                        critic_results=critic_results,
-                        trace_id=trace_id,
-                        text=text,
-                        timings=timings,
-                    )
-            except CircuitBreakerOpen as exc:
-                if self.degradation_enabled:
-                    degraded_components.append("precedent")
-                    precedent_data = cast(
-                        PrecedentAlignmentResult,
-                        await DegradationStrategy.precedent_fallback(
-                            error=exc,
-                            context={"trace_id": trace_id},
-                        ),
-                    )
-                else:
-                    raise
-            except PrecedentRetrievalError as exc:
-                self._emit_error(exc, stage="precedent", trace_id=trace_id, context=context)
-                if self.degradation_enabled:
-                    degraded_components.append("precedent")
-                    precedent_data = cast(
-                        PrecedentAlignmentResult,
-                        await DegradationStrategy.precedent_fallback(
-                            error=exc,
-                            context={"trace_id": trace_id},
-                        ),
-                    )
-                else:
-                    precedent_data = None
+            async def _run_prec():
+                return await self._run_precedent_alignment(
+                    critic_results=critic_results,
+                    trace_id=trace_id,
+                    text=text,
+                    timings=timings,
+                )
+
+            async def _fallback_prec(exc: Exception) -> PrecedentAlignmentResult:
+                return cast(
+                    PrecedentAlignmentResult,
+                    await DegradationStrategy.precedent_fallback(
+                        error=exc,
+                        context={"trace_id": trace_id},
+                    ),
+                )
+
+            precedent_data, _, _ = await self._execute_with_degradation(
+                stage="precedent",
+                run_fn=_run_prec,
+                fallback_fn=_fallback_prec,
+                error_type=PrecedentRetrievalError,
+                degraded_components=degraded_components,
+                degrade_component="precedent",
+                context=context,
+                trace_id=trace_id,
+                fallback_on_error=lambda exc: None,
+            )
 
         # Step 4: Uncertainty Modeling
         uncertainty_data = None
         if self.config.enable_reflection and self.uncertainty_engine:
-            try:
-                breaker = self._get_circuit_breaker("uncertainty")
-                if breaker is not None:
-                    uncertainty_data = cast(
-                        Optional[UncertaintyResult],
-                        await breaker.call(
-                            self._run_uncertainty_engine,
-                            precedent_alignment=precedent_data,
-                            critic_results=critic_results,
-                            model_name=engine_model_info.model_name,
-                            timings=timings,
-                        ),
-                    )
-                else:
-                    uncertainty_data = await self._run_uncertainty_engine(
-                        precedent_alignment=precedent_data,
-                        critic_results=critic_results,
-                        model_name=engine_model_info.model_name,
-                        timings=timings,
-                    )
-            except CircuitBreakerOpen as exc:
-                if self.degradation_enabled:
-                    degraded_components.append("uncertainty")
-                    uncertainty_data = cast(
-                        UncertaintyResult,
-                        await DegradationStrategy.uncertainty_fallback(
-                            error=exc,
-                            context={"trace_id": trace_id},
-                        ),
-                    )
-                else:
-                    raise
-            except UncertaintyComputationError as exc:
-                self._emit_error(exc, stage="uncertainty", trace_id=trace_id, context=context)
-                if self.degradation_enabled:
-                    degraded_components.append("uncertainty")
-                    uncertainty_data = cast(
-                        UncertaintyResult,
-                        await DegradationStrategy.uncertainty_fallback(
-                            error=exc,
-                            context={"trace_id": trace_id},
-                        ),
-                    )
-                else:
-                    uncertainty_data = None
+            async def _run_uncertainty():
+                return await self._run_uncertainty_engine(
+                    precedent_alignment=precedent_data,
+                    critic_results=critic_results,
+                    model_name=engine_model_info.model_name,
+                    timings=timings,
+                )
+
+            async def _fallback_uncertainty(exc: Exception) -> UncertaintyResult:
+                return cast(
+                    UncertaintyResult,
+                    await DegradationStrategy.uncertainty_fallback(
+                        error=exc,
+                        context={"trace_id": trace_id},
+                    ),
+                )
+
+            uncertainty_data, _, _ = await self._execute_with_degradation(
+                stage="uncertainty",
+                run_fn=_run_uncertainty,
+                fallback_fn=_fallback_uncertainty,
+                error_type=UncertaintyComputationError,
+                degraded_components=degraded_components,
+                degrade_component="uncertainty",
+                context=context,
+                trace_id=trace_id,
+                fallback_on_error=lambda exc: None,
+            )
 
         # Step 5: Aggregation / Constitutional Fusion
         try:
@@ -2232,127 +2239,82 @@ class EleanorEngineV8:
         # Step 3: Precedent
         precedent_data = None
         if self.config.enable_precedent_analysis and self.precedent_engine:
-            try:
-                breaker = self._get_circuit_breaker("precedent")
-                if breaker is not None:
-                    precedent_data = cast(
-                        Optional[PrecedentAlignmentResult],
-                        await breaker.call(
-                            self._run_precedent_alignment,
-                            critic_results,
-                            trace_id,
-                            text,
-                            timings=timings,
-                        ),
-                    )
-                else:
-                    precedent_data = await self._run_precedent_alignment(
-                        critic_results, trace_id, text, timings=timings
-                    )
-                yield {
-                    "event": "precedent_alignment",
-                    "trace_id": trace_id,
-                    "data": precedent_data,
-                }
-            except CircuitBreakerOpen as exc:
-                if self.degradation_enabled:
-                    degraded_components.append("precedent")
-                    precedent_data = cast(
-                        PrecedentAlignmentResult,
-                        await DegradationStrategy.precedent_fallback(
-                            error=exc,
-                            context={"trace_id": trace_id},
-                        ),
-                    )
-                    yield {
-                        "event": "precedent_alignment",
-                        "trace_id": trace_id,
-                        "data": precedent_data,
-                    }
-                else:
-                    raise
-            except PrecedentRetrievalError as exc:
-                self._emit_error(exc, stage="precedent", trace_id=trace_id, context=context)
-                if self.degradation_enabled:
-                    degraded_components.append("precedent")
-                    precedent_data = cast(
-                        PrecedentAlignmentResult,
-                        await DegradationStrategy.precedent_fallback(
-                            error=exc,
-                            context={"trace_id": trace_id},
-                        ),
-                    )
-                else:
-                    precedent_data = None
-                yield {
-                    "event": "precedent_alignment",
-                    "trace_id": trace_id,
-                    "data": precedent_data or {"error": str(exc)},
-                }
+            async def _run_prec():
+                return await self._run_precedent_alignment(
+                    critic_results,
+                    trace_id,
+                    text,
+                    timings=timings,
+                )
+
+            async def _fallback_prec(exc: Exception) -> PrecedentAlignmentResult:
+                return cast(
+                    PrecedentAlignmentResult,
+                    await DegradationStrategy.precedent_fallback(
+                        error=exc,
+                        context={"trace_id": trace_id},
+                    ),
+                )
+
+            precedent_data, _, prec_error = await self._execute_with_degradation(
+                stage="precedent",
+                run_fn=_run_prec,
+                fallback_fn=_fallback_prec,
+                error_type=PrecedentRetrievalError,
+                degraded_components=degraded_components,
+                degrade_component="precedent",
+                context=context,
+                trace_id=trace_id,
+                fallback_on_error=lambda exc: None,
+            )
+            event_payload = precedent_data
+            if prec_error and not self.degradation_enabled:
+                event_payload = {"error": str(prec_error)}
+            yield {
+                "event": "precedent_alignment",
+                "trace_id": trace_id,
+                "data": event_payload,
+            }
 
         # Step 4: Uncertainty
         uncertainty_data = None
         if self.config.enable_reflection and self.uncertainty_engine:
-            try:
-                breaker = self._get_circuit_breaker("uncertainty")
-                if breaker is not None:
-                    uncertainty_data = cast(
-                        Optional[UncertaintyResult],
-                        await breaker.call(
-                            self._run_uncertainty_engine,
-                            precedent_alignment=precedent_data,
-                            critic_results=critic_results,
-                            model_name=engine_model_info.model_name,
-                            timings=timings,
-                        ),
-                    )
-                else:
-                    uncertainty_data = await self._run_uncertainty_engine(
-                        precedent_alignment=precedent_data,
-                        critic_results=critic_results,
-                        model_name=engine_model_info.model_name,
-                        timings=timings,
-                    )
-                yield {
-                    "event": "uncertainty",
-                    "trace_id": trace_id,
-                    "data": uncertainty_data,
-                }
-            except CircuitBreakerOpen as exc:
-                if self.degradation_enabled:
-                    degraded_components.append("uncertainty")
-                    uncertainty_data = cast(
-                        UncertaintyResult,
-                        await DegradationStrategy.uncertainty_fallback(
-                            error=exc,
-                            context={"trace_id": trace_id},
-                        ),
-                    )
-                    yield {
-                        "event": "uncertainty",
-                        "trace_id": trace_id,
-                        "data": uncertainty_data,
-                    }
-                else:
-                    raise
-            except UncertaintyComputationError as exc:
-                self._emit_error(exc, stage="uncertainty", trace_id=trace_id, context=context)
-                if self.degradation_enabled:
-                    degraded_components.append("uncertainty")
-                    uncertainty_data = cast(
-                        UncertaintyResult,
-                        await DegradationStrategy.uncertainty_fallback(
-                            error=exc,
-                            context={"trace_id": trace_id},
-                        ),
-                    )
-                else:
-                    uncertainty_data = None
-                yield {
-                    "event": "uncertainty",
-                    "trace_id": trace_id,
-                    "data": uncertainty_data or {"error": str(exc)},
-                }
+            async def _run_uncertainty():
+                return await self._run_uncertainty_engine(
+                    precedent_alignment=precedent_data,
+                    critic_results=critic_results,
+                    model_name=engine_model_info.model_name,
+                    timings=timings,
+                )
+
+            async def _fallback_uncertainty(exc: Exception) -> UncertaintyResult:
+                return cast(
+                    UncertaintyResult,
+                    await DegradationStrategy.uncertainty_fallback(
+                        error=exc,
+                        context={"trace_id": trace_id},
+                    ),
+                )
+
+            uncertainty_data, _, uncertainty_error = await self._execute_with_degradation(
+                stage="uncertainty",
+                run_fn=_run_uncertainty,
+                fallback_fn=_fallback_uncertainty,
+                error_type=UncertaintyComputationError,
+                degraded_components=degraded_components,
+                degrade_component="uncertainty",
+                context=context,
+                trace_id=trace_id,
+                fallback_on_error=lambda exc: None,
+            )
+            event_payload = uncertainty_data
+            if uncertainty_error and not self.degradation_enabled:
+                event_payload = {"error": str(uncertainty_error)}
+            yield {
+                "event": "uncertainty",
+                "trace_id": trace_id,
+                "data": event_payload,
+            }
 
         # Step 5: Aggregation
         try:
