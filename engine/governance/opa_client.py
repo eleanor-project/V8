@@ -14,7 +14,7 @@ from typing import Any, Dict
 
 import httpx
 
-from engine.utils.http_client import get_async_client
+from engine.utils.http_client import get_async_client_for
 
 def _get_timeout() -> float:
     raw = os.getenv("OPA_TIMEOUT_SECONDS", "5")
@@ -77,7 +77,7 @@ class OPAClientV8:
 
         timeout = _get_timeout()
         try:
-            client = await get_async_client()
+            client = await get_async_client_for(self.base_url)
             resp = await client.post(url, json={"input": evidence_payload}, timeout=timeout)
         except httpx.RequestError as e:
             return {
