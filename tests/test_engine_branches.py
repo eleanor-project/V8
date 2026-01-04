@@ -1,6 +1,4 @@
 import asyncio
-import json
-from types import SimpleNamespace
 
 import pytest
 
@@ -286,7 +284,7 @@ async def test_select_model_cache_similar_and_errors():
     engine.router_cache = DummyRouterCache(selection)
     out = await engine._select_model("text", {})
     assert out["response_text"] == "cached"
-    assert engine.router_cache.set_called
+    assert engine.cache_manager.set_calls
 
     engine = build_engine(router=DummyRouter(result={"response_text": None}))
     with pytest.raises(RouterSelectionError):
