@@ -1,11 +1,12 @@
 import asyncio
+import importlib
 import sys
 
 import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from api.middleware import rate_limit as rate_limit_module
+rate_limit_module = importlib.import_module("api.middleware.rate_limit")
 
 
 def _make_request(client_host="1.2.3.4", headers=None):
