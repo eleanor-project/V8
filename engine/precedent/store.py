@@ -22,6 +22,8 @@ from typing import Dict, Any, List, Optional, cast
 from dataclasses import dataclass, field, asdict
 import logging
 
+from engine.utils.dependency_tracking import record_dependency_failure
+
 logger = logging.getLogger(__name__)
 
 
@@ -311,7 +313,8 @@ class PgVectorStore(BasePrecedentStore):
             from psycopg2.extras import RealDictCursor  # type: ignore[import-untyped]
 
             return psycopg2.connect(self.connection_string, cursor_factory=RealDictCursor)
-        except ImportError:
+        except ImportError as exc:
+            record_dependency_failure("psycopg2", exc)
             raise ImportError("psycopg2 not installed. Run: pip install psycopg2-binary")
 
     def _ensure_table(self, conn):
@@ -532,7 +535,8 @@ class ChromaStore(BasePrecedentStore):
         """
         try:
             import chromadb  # type: ignore[import-not-found]
-        except ImportError:
+        except ImportError as exc:
+            record_dependency_failure("chromadb", exc)
             raise ImportError("chromadb not installed. Run: pip install chromadb")
 
         if persist_directory:
