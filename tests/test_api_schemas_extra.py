@@ -16,3 +16,7 @@ def test_deliberation_request_context_depth_validation():
     shallow = {"a": {"b": {"c": 1}}}
     req = DeliberationRequest(input="hi", context=shallow)
     assert req.context["a"]["b"]["c"] == 1
+
+    with_list = {"items": [{"nested": "ok"}]}
+    req = DeliberationRequest(input="hi", context=with_list)
+    assert req.context["items"][0]["nested"] == "ok"
