@@ -1760,10 +1760,17 @@ async def resilience_health():
 @require_role(ADMIN_ROLE)
 async def dependency_health():
     """Expose counts of dependencies that failed to load."""
-    failures = get_dependency_metrics()
+    metrics = get_dependency_metrics()
+    failures = metrics.get("failures", {})
+    has_failures = bool(failures)
+    status = "degraded" if has_failures else "healthy"
     return {
         "failures": failures,
-        "has_failures": bool(failures),
+        "has_failures": has_failures,
+        "status": status,
+        "total_failures": metrics.get("total_failures", 0),
+        "tracked_dependencies": metrics.get("tracked_dependencies", 0),
+        "last_checked": metrics.get("last_checked"),
     }
 
 

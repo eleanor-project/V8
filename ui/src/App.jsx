@@ -525,21 +525,84 @@ const MetricsPanel = () => {
     loadDependencyMetrics();
   }, [loadDependencyMetrics]);
 
-  const dependencyContent = dependencyMetrics ? (
-    dependencyMetrics.error ? (
-      <div className="small">Error: {dependencyMetrics.error}</div>
-    ) : dependencyMetrics.has_failures ? (
+  const formattedLastChecked =
+    dependencyMetrics?.last_checked &&
+    (() => {
+      try {
+        return new Date(dependencyMetrics.last_checked).toLocaleString();
+      } catch {
+        return dependencyMetrics.last_checked;
+      }
+    })();
+
+  const failureEntries = dependencyMetrics?.failures || {};
+  const hasFailures = dependencyMetrics?.has_failures;
+  const failureGrid =
+    hasFailures && Object.keys(failureEntries).length > 0 ? (
       <div className="dependency-grid">
-        {Object.entries(dependencyMetrics.failures || {}).map(([name, count]) => (
+        {Object.entries(failureEntries).map(([name, info]) => (
           <div key={name} className="dependency-card">
             <div className="dependency-name">{name}</div>
-            <div className="dependency-count">{count ?? 0}</div>
-            <div className="small">{count === 1 ? "failure" : "failures"}</div>
+            <div className="dependency-count">{info.count}</div>
+            <div className="small">{info.count === 1 ? "failure" : "failures"}</div>
+            <div className="small">{info.last_failure ?? "—"}</div>
+            {info.last_error && (
+              <div className="small">Error: {truncate(info.last_error, 120)}</div>
+            )}
           </div>
         ))}
       </div>
+    ) : dependencyMetrics?.tracked_dependencies ? (
+      <div className="small">No active failures for tracked dependencies.</div>
     ) : (
-      <div className="small">All tracked dependencies are healthy.</div>
+      <div className="small">No dependencies have reported yet.</div>
+    );
+
+  const rawStatus = dependencyMetrics?.status ?? "unknown";
+  const statusLabel = rawStatus.replace("_", " ");
+  const friendlyStatus = statusLabel
+    ? statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1)
+    : "Unknown";
+  const alertMessage = dependencyMetrics?.total_failures
+    ? `Trigger a Grafana alert whenever /admin/dependencies returns more than 0 total failures (current ${dependencyMetrics.total_failures}).`
+    : "All dependency checks are healthy. Maintain this visibility by alerting on /admin/dependencies total_failures > 0.";
+
+  const dependencyContent = dependencyMetrics ? (
+    dependencyMetrics.error ? (
+      <div className="small">Error: {dependencyMetrics.error}</div>
+    ) : (
+      <>
+        <div className="dependency-summary">
+          <div className="summary-card">
+            <div className="label">Status</div>
+            <div className={`status-pill status-${rawStatus}`}>
+              {friendlyStatus}
+            </div>
+          </div>
+          <div className="summary-card">
+            <div className="label">Total Failures</div>
+            <div className="value">{dependencyMetrics.total_failures ?? 0}</div>
+          </div>
+          <div className="summary-card">
+            <div className="label">Tracked dependencies</div>
+            <div className="value">{dependencyMetrics.tracked_dependencies ?? 0}</div>
+          </div>
+          <div className="summary-card">
+            <div className="label">Last checked</div>
+            <div className="value">{formattedLastChecked || "—"}</div>
+          </div>
+        </div>
+        <div className="dependency-alerts">
+          <div
+            className={`dependency-alert-card ${hasFailures ? "warning" : "positive"}`}
+            role="status"
+          >
+            <div className="label">Alert suggestion</div>
+            <div className="value">{alertMessage}</div>
+          </div>
+        </div>
+        {failureGrid}
+      </>
     )
   ) : (
     <div className="small">Loading dependency metrics…</div>
