@@ -121,7 +121,7 @@ class EvidenceRecorder:
     async def _write_jsonl(self, record: EvidenceRecord):
         if not self.jsonl_path:
             return
-        line = record.json() + "\n"
+        line = record.model_dump_json() + "\n"
         async with self._lock:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, self._append_file, self.jsonl_path, line)

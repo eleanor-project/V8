@@ -67,6 +67,10 @@ def test_dependency_endpoint_available_without_engine():
         assert "failures" in data
         assert isinstance(data["failures"], dict)
         assert isinstance(data.get("has_failures"), bool)
+        assert data["status"] in {"healthy", "degraded"}
+        assert isinstance(data.get("total_failures"), int)
+        assert isinstance(data.get("tracked_dependencies"), int)
+        assert isinstance(data.get("last_checked"), str)
 
 
 def test_evaluate_requires_engine():
