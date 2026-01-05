@@ -198,6 +198,15 @@ event="circuit_breaker_opened"
 
 ### Correlate Logs and Traces
 
+## Dependency Failure Alerting
+
+1. `/admin/dependencies` now returns `total_failures`, `tracked_dependencies`, `status`, and `last_checked` alongside per-dependency failure metadata. If you surface this in Grafana it becomes a rich observability source instead of a simple table.
+2. Grafana can consume these values either through the SimpleJson/JSON API data source or by adding a lightweight Prometheus exporter that mirrors the same counts. For example, record `eleanor_dependency_failures_total{dependency="redis"}` counters and expose `eleanor_dependency_failures_recent_time` gauges from `engine/utils/dependency_tracking`.
+3. Build a Grafana panel that plots `eleanor_dependency_failures_total` and add an alert rule such as “Trigger when `sum(ele nor_dependency_failures_total) > 0` for 5 minutes.” Tie the alert to Slack/Teams so engineers know when a dependency starts failing repeatedly.
+4. Within the UI dashboard, the new summary cards and alert suggestion (`Dependency Panel → Alert recommendation`) make it easy to decide whether to raise infra tickets or adjust Grafana thresholds; keep `/admin/dependencies` behind `ADMIN_ROLE` so only authorized dashboards can poll it.
+
+Adding these pieces completes the observability loop: the backend emits the metrics, the dashboard shows the status, and Grafana escalates issues when failures appear.
+
 ```
 trace_id="abc123-def456"
 ```
