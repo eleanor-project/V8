@@ -206,6 +206,15 @@ event="circuit_breaker_opened"
 4. Within the UI dashboard, the new summary cards and alert suggestion (`Dependency Panel → Alert recommendation`) make it easy to decide whether to raise infra tickets or adjust Grafana thresholds; keep `/admin/dependencies` behind `ADMIN_ROLE` so only authorized dashboards can poll it.
 5. When a dependency failure alert fires, grab the matching `dependency_failed_to_load` log entry (it already includes structured `timestamp`, `dependency`, and `error` fields plus `trace_id`/`span_id` when tracing is enabled via `TraceContext`) and paste the `trace_id` into Jaeger or Grafana’s linked trace view for fast root-cause investigation.
 
+## Grafana Notification Channels
+
+1. Create Grafana notification channels for Teams and Slack by configuring webhooks in **Alerting → Notification channels**. Use the official Slack incoming webhook URL (e.g., `https://hooks.slack.com/services/…`) or the Teams connector URL from the channel’s “Incoming Webhook” action.
+2. Assign both channels to the dependency failure alert you created; in the alert rule’s “Send to” list include the Slack channel first and the Teams channel second so every failure posts to both gateways.
+3. Customize the alert message with placeholders like `{{ $labels.dependency }}` and `{{ $evalMatches | first | value }}` so the channel notifications convey which dependency failed and how many times.
+4. If desired, add Grafana media types (for example, the Notify Webhook type) so the alert JSON can be parsed by downstream automation or chatops bots that create tickets.
+
+With these channels in place, any `sum(eleanor_dependency_failures_total) > 0` alert automatically notifies your incident responders via Slack and Teams while the dashboard keeps showing the health snapshots.
+
 Adding these pieces completes the observability loop: the backend emits the metrics, the dashboard shows the status, and Grafana escalates issues when failures appear.
 
 ```
