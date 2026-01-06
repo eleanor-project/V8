@@ -1,0 +1,348 @@
+import asyncio
+import json
+from typing import Any, Dict, List, Optional, cast
+
+from engine.exceptions import (
+    AggregationError,
+    DetectorExecutionError,
+    EleanorV8Exception,
+    GovernanceEvaluationError,
+    InputValidationError,
+    PrecedentRetrievalError,
+    RouterSelectionError,
+    UncertaintyComputationError,
+)
+from engine.resilience.degradation import DegradationStrategy
+from engine.runtime.models import EngineCriticFinding, EngineForensicData, EngineModelInfo, EngineResult
+from engine.schemas.pipeline_types import (
+    PrecedentAlignmentResult,
+    UncertaintyResult,
+)
+from engine.utils.circuit_breaker import CircuitBreakerOpen
+
+
+async def run_engine(
+    engine: Any,
+    text: str,
+    context: Optional[dict] = None,
+    *,
+    detail_level: Optional[int] = None,
+    trace_id: Optional[str] = None,
+) -> EngineResult:
+    raw_text = text
+    raw_context = context
+    raw_trace_id = trace_id
+    try:
+        text, context, trace_id, level = engine._validate_inputs(
+            text,
+            context,
+            trace_id,
+            detail_level,
+        )
+    except InputValidationError as exc:
+        fallback_trace_id = str(raw_trace_id) if raw_trace_id else None
+        engine._emit_validation_error(
+            exc,
+            text=raw_text,
+            context=raw_context,
+            trace_id=fallback_trace_id,
+        )
+        raise
+
+    if engine.gpu_manager and engine.gpu_manager.device:
+        context = {
+            **context,
+            "gpu_enabled": engine.gpu_enabled,
+            "gpu_device": str(engine.gpu_manager.device),
+        }
+
+    pipeline_start = asyncio.get_event_loop().time()
+    timings: Dict[str, float] = {}
+    router_diagnostics: Dict[str, Any] = {}
+    evidence_records: List[Any] = []
+    degraded_components: List[str] = []
+
+    try:
+        detector_payload = await engine._run_detectors(text, context, timings)
+    except DetectorExecutionError as exc:
+        engine._emit_error(exc, stage="detectors", trace_id=trace_id, context=context)
+        detector_payload = None
+    except Exception as exc:
+        detector_error = DetectorExecutionError(
+            "Detector execution failed",
+            details={"error": str(exc)},
+        )
+        engine._emit_error(
+            detector_error,
+            stage="detectors",
+            trace_id=trace_id,
+            context=context,
+        )
+        detector_payload = None
+    if detector_payload:
+        context = {**context, "detectors": detector_payload}
+
+    if context.get("skip_router"):
+        raw_output = context.get("model_output")
+        if raw_output is None:
+            raise ValueError("model_output is required when skip_router is true")
+        if isinstance(raw_output, str):
+            model_response = raw_output
+        else:
+            model_response = json.dumps(raw_output, ensure_ascii=True, default=str)
+        meta = context.get("model_metadata") or {}
+        model_info = {
+            "model_name": meta.get("model_id") or meta.get("model_name") or "external",
+            "model_version": meta.get("model_version") or "",
+            "router_selection_reason": "model_output_override",
+            "health_score": None,
+            "cost_estimate": None,
+        }
+        router_diagnostics.update({"skipped": True, "reason": "model_output_override"})
+    else:
+        try:
+            breaker = engine._get_circuit_breaker("router")
+            if breaker is not None:
+                router_data = cast(
+                    Dict[str, Any],
+                    await breaker.call(
+                        engine._select_model, text, context, timings, router_diagnostics
+                    ),
+                )
+            else:
+                router_data = await engine._select_model(text, context, timings, router_diagnostics)
+            model_info = router_data["model_info"]
+            model_response = router_data["response_text"]
+        except CircuitBreakerOpen as exc:
+            if engine.degradation_enabled:
+                degraded_components.append("router")
+                fallback = await DegradationStrategy.router_fallback(
+                    error=exc,
+                    context={"trace_id": trace_id},
+                )
+                model_info = {
+                    "model_name": fallback.get("model_name") or "router_fallback",
+                    "model_version": fallback.get("model_version"),
+                    "router_selection_reason": fallback.get("router_selection_reason"),
+                    "health_score": None,
+                    "cost_estimate": None,
+                }
+                model_response = ""
+                router_diagnostics.update({"circuit_open": True, "error": str(exc)})
+            else:
+                raise
+        except RouterSelectionError as exc:
+            engine._emit_error(exc, stage="router", trace_id=trace_id, context=context)
+            if engine.degradation_enabled:
+                degraded_components.append("router")
+            model_info = {
+                "model_name": "router_error",
+                "model_version": None,
+                "router_selection_reason": "router_failure",
+                "health_score": 0.0,
+                "cost_estimate": None,
+            }
+            model_response = ""
+            diagnostics = exc.details.get("diagnostics") if isinstance(exc, EleanorV8Exception) else None
+            router_diagnostics.update(diagnostics or {"error": str(exc)})
+
+    model_name_value = str(model_info.get("model_name") or "unknown-model")
+    model_info["model_name"] = model_name_value
+    engine_model_info = EngineModelInfo(
+        model_name=model_name_value,
+        model_version=cast(Optional[str], model_info.get("model_version")),
+        router_selection_reason=cast(Optional[str], model_info.get("router_selection_reason")),
+        cost_estimate=cast(Optional[Dict[str, Any]], model_info.get("cost_estimate")),
+        health_score=cast(Optional[float], model_info.get("health_score")),
+    )
+
+    critic_results = await engine._run_critics_parallel(
+        model_response=model_response,
+        input_text=text,
+        context=context,
+        trace_id=trace_id,
+        degraded_components=degraded_components,
+        evidence_records=evidence_records,
+    )
+
+    precedent_data = None
+    if engine.config.enable_precedent_analysis:
+
+        async def _run_prec():
+            return await engine._run_precedent_alignment(
+                critic_results=critic_results,
+                trace_id=trace_id,
+                text=text,
+                timings=timings,
+            )
+
+        async def _fallback_prec(exc: Exception) -> PrecedentAlignmentResult:
+            return cast(
+                PrecedentAlignmentResult,
+                await DegradationStrategy.precedent_fallback(
+                    error=exc,
+                    context={"trace_id": trace_id},
+                ),
+            )
+
+        precedent_data, _, _ = await engine._execute_with_degradation(
+            stage="precedent",
+            run_fn=_run_prec,
+            fallback_fn=_fallback_prec,
+            error_type=PrecedentRetrievalError,
+            degraded_components=degraded_components,
+            degrade_component="precedent",
+            context=context,
+            trace_id=trace_id,
+            fallback_on_error=lambda exc: None,
+        )
+
+    uncertainty_data = None
+    if engine.config.enable_reflection and engine.uncertainty_engine:
+
+        async def _run_uncertainty():
+            return await engine._run_uncertainty_engine(
+                precedent_alignment=precedent_data,
+                critic_results=critic_results,
+                model_name=engine_model_info.model_name,
+                timings=timings,
+            )
+
+        async def _fallback_uncertainty(exc: Exception) -> UncertaintyResult:
+            return cast(
+                UncertaintyResult,
+                await DegradationStrategy.uncertainty_fallback(
+                    error=exc,
+                    context={"trace_id": trace_id},
+                ),
+            )
+
+        uncertainty_data, _, _ = await engine._execute_with_degradation(
+            stage="uncertainty",
+            run_fn=_run_uncertainty,
+            fallback_fn=_fallback_uncertainty,
+            error_type=UncertaintyComputationError,
+            degraded_components=degraded_components,
+            degrade_component="uncertainty",
+            context=context,
+            trace_id=trace_id,
+            fallback_on_error=lambda exc: None,
+        )
+
+    try:
+        aggregated = await engine._aggregate_results(
+            critic_results=critic_results,
+            model_response=model_response,
+            precedent_data=precedent_data,
+            uncertainty_data=uncertainty_data,
+            timings=timings,
+        )
+    except AggregationError as exc:
+        engine._emit_error(exc, stage="aggregation", trace_id=trace_id, context=context)
+        aggregated = engine._build_aggregation_fallback(
+            model_response,
+            precedent_data,
+            uncertainty_data,
+            exc,
+        )
+
+    try:
+        case = engine._build_case_for_review(
+            trace_id=trace_id,
+            context=context,
+            aggregated=aggregated,
+            critic_results=critic_results,
+            precedent_data=precedent_data,
+            uncertainty_data=uncertainty_data,
+        )
+        engine._run_governance_review_gate(case)
+    except GovernanceEvaluationError as review_exc:
+        engine._emit_error(review_exc, stage="governance", trace_id=trace_id, context=context)
+    except Exception as review_exc:
+        governance_error = GovernanceEvaluationError(
+            "Governance review gate failed",
+            details={"error": str(review_exc)},
+        )
+        engine._emit_error(
+            governance_error,
+            stage="governance",
+            trace_id=trace_id,
+            context=context,
+        )
+
+    pipeline_end = asyncio.get_event_loop().time()
+    timings["total_pipeline_ms"] = (pipeline_end - pipeline_start) * 1000
+
+    degraded_components = sorted(set(degraded_components))
+    is_degraded = bool(degraded_components)
+    if is_degraded:
+        aggregated = {
+            **(aggregated or {}),
+            "degraded_components": degraded_components,
+            "is_degraded": True,
+        }
+
+    evidence_count = len(evidence_records) if evidence_records else None
+
+    critic_findings = {
+        k: EngineCriticFinding(
+            critic=k,
+            violations=list(v.get("violations", [])),
+            duration_ms=v.get("duration_ms"),
+            evaluated_rules=cast(Optional[List[str]], v.get("evaluated_rules")),
+        )
+        for k, v in critic_results.items()
+    }
+    base_result = EngineResult(
+        trace_id=trace_id,
+        output_text=aggregated.get("final_output") or model_response,
+        model_info=engine_model_info,
+        critic_findings=critic_findings,
+        aggregated=aggregated,
+        uncertainty=uncertainty_data,
+        precedent_alignment=precedent_data,
+        evidence_count=evidence_count,
+        degraded_components=degraded_components,
+        is_degraded=is_degraded,
+    )
+
+    if level == 1:
+        return EngineResult(
+            trace_id=trace_id,
+            output_text=aggregated.get("final_output") or model_response,
+            model_info=engine_model_info,
+            degraded_components=degraded_components,
+            is_degraded=is_degraded,
+        )
+
+    if level == 2:
+        return base_result
+
+    forensic_data = None
+    if level == 3:
+        forensic_buffer = evidence_records[-200:] if evidence_records else []
+
+        forensic_data = EngineForensicData(
+            detector_metadata=detector_payload or {},
+            uncertainty_graph=cast(UncertaintyResult, uncertainty_data or {}),
+            precedent_alignment=cast(PrecedentAlignmentResult, precedent_data or {}),
+            router_diagnostics=router_diagnostics,
+            timings=timings,
+            evidence_references=[r.dict() if hasattr(r, "dict") else r for r in forensic_buffer],
+        )
+
+        return EngineResult(
+            trace_id=base_result.trace_id,
+            output_text=base_result.output_text,
+            model_info=base_result.model_info,
+            critic_findings=base_result.critic_findings,
+            aggregated=base_result.aggregated,
+            uncertainty=base_result.uncertainty,
+            precedent_alignment=base_result.precedent_alignment,
+            evidence_count=base_result.evidence_count,
+            degraded_components=base_result.degraded_components,
+            is_degraded=base_result.is_degraded,
+            forensic=forensic_data,
+        )
+
+    raise ValueError(f"Invalid detail_level: {level}")
