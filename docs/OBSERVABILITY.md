@@ -204,6 +204,7 @@ event="circuit_breaker_opened"
 2. Grafana can consume these values either through the existing `/metrics` endpoint (which already exposes Prometheus format when `prometheus_client` is installed) or via a lightweight exporter. The backend now exposes `eleanor_dependency_failures_total{dependency="redis"}` counters and `eleanor_dependency_failure_last_timestamp_seconds{dependency="redis"}` gauges directly through the Prometheus client in `engine/utils/dependency_tracking`.
 3. Build a Grafana panel that plots `eleanor_dependency_failures_total` and add an alert rule such as “Trigger when `sum(eleanor_dependency_failures_total) > 0` for 5 minutes.” Tie the alert to Slack/Teams so engineers know when a dependency starts failing repeatedly.
 4. Within the UI dashboard, the new summary cards and alert suggestion (`Dependency Panel → Alert recommendation`) make it easy to decide whether to raise infra tickets or adjust Grafana thresholds; keep `/admin/dependencies` behind `ADMIN_ROLE` so only authorized dashboards can poll it.
+5. When a dependency failure alert fires, grab the matching `dependency_failed_to_load` log entry (it already includes structured `timestamp`, `dependency`, and `error` fields plus `trace_id`/`span_id` when tracing is enabled via `TraceContext`) and paste the `trace_id` into Jaeger or Grafana’s linked trace view for fast root-cause investigation.
 
 Adding these pieces completes the observability loop: the backend emits the metrics, the dashboard shows the status, and Grafana escalates issues when failures appear.
 
