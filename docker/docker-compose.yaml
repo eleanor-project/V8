@@ -95,6 +95,22 @@ services:
       - opa
 
   # ==============================
+  # Dependency exporter
+  # ==============================
+  dependency-exporter:
+    image: eleanor/dependency-exporter:latest
+    container_name: dependency-exporter
+    environment:
+      DEP_EXPORT_ADMIN_ENDPOINT: "http://eleanor:8000/admin/dependencies"
+      DEP_EXPORT_LISTEN_ADDR: "0.0.0.0"
+      DEP_EXPORT_LISTEN_PORT: "9105"
+      DEP_EXPORT_INTERVAL: "15"
+    ports:
+      - "9105:9105"
+    depends_on:
+      - eleanor
+
+  # ==============================
   # Grafana
   # ==============================
   grafana:

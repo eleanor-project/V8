@@ -215,6 +215,36 @@ event="circuit_breaker_opened"
 
 With these channels in place, any `sum(eleanor_dependency_failures_total) > 0` alert automatically notifies your incident responders via Slack and Teams while the dashboard keeps showing the health snapshots.
 
+### Alert rule example
+
+Here’s a sample Grafana rule with unified alerting (Grafana 10+) that you can import via the UI or provisioning YAML:
+
+```
+{
+  "uid": "dependency-failure-alert",
+  "title": "Dependency failures",
+  "condition": "sum(eleanor_dependency_failures_total{job=\"dependency-exporter\"}) > 0",
+  "data": [
+    {
+      "refId": "A",
+      "query": "sum(eleanor_dependency_failures_total{job=\"dependency-exporter\"})"
+    }
+  ],
+  "notifications": [
+    {
+      "uid": "slack-dependency-alerts"
+    },
+    {
+      "uid": "teams-dependency-alerts"
+    }
+  ],
+  "noDataState": "NO_DATA",
+  "executionErrorState": "ERROR"
+}
+```
+
+Replace `slack-dependency-alerts` and `teams-dependency-alerts` with the actual UIDs of your notification channels and adjust the query if you scrape the exporter under a different job name.
+
 Adding these pieces completes the observability loop: the backend emits the metrics, the dashboard shows the status, and Grafana escalates issues when failures appear.
 
 ```
