@@ -16,6 +16,15 @@ from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
+# ML-based anomaly detection (optional)
+try:
+    from engine.security.anomaly_detection import get_anomaly_detector, AnomalyScore
+    ANOMALY_DETECTION_AVAILABLE = True
+except ImportError:
+    ANOMALY_DETECTION_AVAILABLE = False
+    get_anomaly_detector = None
+    AnomalyScore = None
+
 # Sanitization performance metrics
 _sanitization_metrics = {
     "total_operations": 0,
@@ -97,12 +106,14 @@ class SecretsSanitizer:
         custom_patterns: Optional[List[tuple[str, str]]] = None,
         additional_sensitive_keys: Optional[Set[str]] = None,
         track_metrics: bool = True,
+        enable_anomaly_detection: bool = True,
     ):
         """
         Args:
             custom_patterns: Additional (regex, replacement) patterns
             additional_sensitive_keys: Additional key names to redact
             track_metrics: Track performance metrics for sanitization operations
+            enable_anomaly_detection: Enable ML-based anomaly detection for unusual patterns
         """
         self.patterns = self.DEFAULT_PATTERNS.copy()
         if custom_patterns:
@@ -119,12 +130,26 @@ class SecretsSanitizer:
         ]
         
         self.track_metrics = track_metrics
+        self.enable_anomaly_detection = enable_anomaly_detection and ANOMALY_DETECTION_AVAILABLE
+        
+        # Initialize anomaly detector if available
+        self._anomaly_detector = None
+        if self.enable_anomaly_detection and get_anomaly_detector:
+            try:
+                self._anomaly_detector = get_anomaly_detector(enable_ml=True)
+            except Exception as e:
+                logger.warning(
+                    "anomaly_detector_init_failed",
+                    extra={"error": str(e)},
+                )
+                self._anomaly_detector = None
 
         logger.debug(
             "secrets_sanitizer_initialized",
             extra={
                 "pattern_count": len(self.compiled_patterns),
                 "sensitive_key_count": len(self.sensitive_keys),
+                "anomaly_detection_enabled": self.enable_anomaly_detection,
             },
         )
 
@@ -176,6 +201,25 @@ class SecretsSanitizer:
             return text
 
         start_time = time.time() if self.track_metrics else None
+        
+        # ML-based anomaly detection
+        anomaly_detected = False
+        if self._anomaly_detector:
+            try:
+                anomaly_score = self._anomaly_detector.analyze(text)
+                if anomaly_score.score >= 0.7:  # High anomaly threshold
+                    anomaly_detected = True
+                    logger.warning(
+                        "anomaly_detected_in_sanitization",
+                        extra={
+                            "anomaly_score": round(anomaly_score.score, 3),
+                            "confidence": round(anomaly_score.confidence, 3),
+                            "pattern_type": anomaly_score.pattern_type,
+                            "reasons": anomaly_score.reasons,
+                        },
+                    )
+            except Exception as e:
+                logger.debug(f"Anomaly detection failed: {e}")
         
         result = text
         for pattern, replacement in self.compiled_patterns:
