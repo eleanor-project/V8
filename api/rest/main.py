@@ -1120,12 +1120,12 @@ async def deliberate(
 
         if run_fn is not None:
             result_obj = await run_fn(
-                payload.input, context=payload.context, trace_id=trace_id, detail_level=3
+                validated_input, context=validated_context, trace_id=trace_id, detail_level=3
             )
         elif asyncio.iscoroutinefunction(deliberate_fn):
-            result_obj = await deliberate_fn(payload.input)
+            result_obj = await deliberate_fn(validated_input)
         elif deliberate_fn:
-            result_obj = deliberate_fn(payload.input)
+            result_obj = deliberate_fn(validated_input)
         else:
             raise RuntimeError("Engine does not expose run() or deliberate()")
 
@@ -1142,13 +1142,13 @@ async def deliberate(
             "precedent": precedent_alignment,
             "uncertainty": uncertainty,
             "model_used": model_used,
-            "input": payload.input,
+            "input": validated_input,
             "trace_id": normalized["trace_id"],
             "timestamp": time.time(),
             "schema_version": GOVERNANCE_SCHEMA_VERSION,
             "policy_profile": payload.policy_profile,
             "proposed_action": payload.proposed_action.model_dump(mode="json"),
-            "context": payload.context.model_dump(mode="json"),
+            "context": validated_context,
             "evidence_inputs": payload.evidence_inputs.model_dump(mode="json") if payload.evidence_inputs else {},
             "model_metadata": payload.model_metadata.model_dump(mode="json") if payload.model_metadata else {},
         }
@@ -1218,8 +1218,8 @@ async def deliberate(
         await replay_store.save_async(
             {
                 "trace_id": response_payload["trace_id"],
-                "input": payload.input,
-                "context": payload.context,
+                "input": validated_input,
+                "context": validated_context,
                 "response": response_payload,
                 "timestamp": response_payload["timestamp"],
             }
@@ -1305,17 +1305,45 @@ async def evaluate(
     Evaluate a provided model output against the Engine contract.
     """
     if engine is None:
+        logger.error(
+            "engine_not_initialized",
+            extra={"user_id": user, "endpoint": "/evaluate"},
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Engine not initialized",
         )
 
+    # Input validation with security hardening
+    from engine.security.input_validation import InputValidator
+    validator = InputValidator(strict_mode=True)
+    
+    # Validate context
+    try:
+        context = payload.context.model_dump(mode="json") if payload.context else {}
+        validated_context = validator.validate_dict(
+            context,
+            field_name="context",
+        )
+    except ValueError as validation_error:
+        logger.warning(
+            "context_validation_failed",
+            extra={
+                "user_id": user,
+                "endpoint": "/evaluate",
+                "error": str(validation_error),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Context validation failed: {str(validation_error)}",
+        )
+
     model_output_text = _serialize_model_output(payload.model_output)
-    context = payload.context.model_dump(mode="json")
-    user_intent = context.get("user_intent")
+    user_intent = validated_context.get("user_intent")
     input_override = user_intent if isinstance(user_intent, str) else ""
 
-    context.update(
+    validated_context.update(
         {
             "policy_profile": payload.policy_profile,
             "proposed_action": payload.proposed_action.model_dump(mode="json"),
@@ -1339,7 +1367,7 @@ async def evaluate(
 
         result_obj = await run_fn(
             model_output_text,
-            context=context,
+            context=validated_context,
             trace_id=payload.request_id,
             detail_level=3,
         )

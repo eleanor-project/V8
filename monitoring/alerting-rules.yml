@@ -1,0 +1,266 @@
+# ELEANOR V8 — Prometheus Alerting Rules
+# --------------------------------------
+#
+# These rules define alerts for production monitoring.
+# Import into Prometheus configuration.
+
+groups:
+  - name: eleanor_v8_critical
+    interval: 30s
+    rules:
+      # High Error Rate
+      - alert: HighErrorRate
+        expr: |
+          rate(eleanor_deliberate_requests_total{outcome="error"}[5m]) /
+          rate(eleanor_deliberate_requests_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 1%)"
+
+      # High Latency P95
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95, rate(eleanor_deliberate_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High latency detected (P95)"
+          description: "P95 latency is {{ $value }}s (threshold: 2s)"
+
+      # High Latency P99
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99, rate(eleanor_deliberate_duration_seconds_bucket[5m])) > 5
+        for: 5m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "Very high latency detected (P99)"
+          description: "P99 latency is {{ $value }}s (threshold: 5s)"
+
+      # Service Down
+      - alert: ServiceDown
+        expr: up{job="eleanor-v8"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "ELEANOR V8 service is down"
+          description: "Service has been down for more than 1 minute"
+
+      # Health Check Failing
+      - alert: HealthCheckFailing
+        expr: eleanor_health_check_status == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "Health check is failing"
+          description: "Health check has been failing for more than 2 minutes"
+
+  - name: eleanor_v8_resources
+    interval: 30s
+    rules:
+      # High CPU Usage
+      - alert: HighCPUUsage
+        expr: |
+          rate(container_cpu_usage_seconds_total{pod=~"eleanor-v8-.*"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: resources
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is {{ $value | humanizePercentage }} (threshold: 80%)"
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: |
+          container_memory_usage_bytes{pod=~"eleanor-v8-.*"} /
+          container_spec_memory_limit_bytes{pod=~"eleanor-v8-.*"} > 0.85
+        for: 10m
+        labels:
+          severity: warning
+          component: resources
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is {{ $value | humanizePercentage }} (threshold: 85%)"
+
+      # OOM Kill Risk
+      - alert: OOMKillRisk
+        expr: |
+          container_memory_usage_bytes{pod=~"eleanor-v8-.*"} /
+          container_spec_memory_limit_bytes{pod=~"eleanor-v8-.*"} > 0.95
+        for: 5m
+        labels:
+          severity: critical
+          component: resources
+        annotations:
+          summary: "Risk of OOM kill"
+          description: "Memory usage is {{ $value | humanizePercentage }} (threshold: 95%)"
+
+  - name: eleanor_v8_dependencies
+    interval: 30s
+    rules:
+      # Database Connection Issues
+      - alert: DatabaseConnectionIssues
+        expr: |
+          rate(eleanor_database_connection_errors_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Database connection issues"
+          description: "Database connection errors detected"
+
+      # Redis Connection Issues
+      - alert: RedisConnectionIssues
+        expr: |
+          rate(eleanor_redis_connection_errors_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis connection issues"
+          description: "Redis connection errors detected"
+
+      # Low Cache Hit Rate
+      - alert: LowCacheHitRate
+        expr: |
+          rate(eleanor_cache_hits_total[15m]) /
+          (rate(eleanor_cache_hits_total[15m]) + rate(eleanor_cache_misses_total[15m])) < 0.5
+        for: 15m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (threshold: 50%)"
+
+      # Weaviate Connection Issues
+      - alert: WeaviateConnectionIssues
+        expr: |
+          rate(eleanor_weaviate_connection_errors_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: vector
+        annotations:
+          summary: "Weaviate connection issues"
+          description: "Weaviate connection errors detected"
+
+  - name: eleanor_v8_resilience
+    interval: 30s
+    rules:
+      # Circuit Breaker Open
+      - alert: CircuitBreakerOpen
+        expr: eleanor_circuit_breaker_state == 1
+        for: 5m
+        labels:
+          severity: warning
+          component: resilience
+        annotations:
+          summary: "Circuit breaker is open"
+          description: "Circuit breaker {{ $labels.circuit }} has been open for more than 5 minutes"
+
+      # High Circuit Breaker Failure Rate
+      - alert: HighCircuitBreakerFailureRate
+        expr: |
+          rate(eleanor_circuit_breaker_failures_total[5m]) /
+          rate(eleanor_circuit_breaker_requests_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: resilience
+        annotations:
+          summary: "High circuit breaker failure rate"
+          description: "Failure rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+
+      # Degraded Components
+      - alert: DegradedComponents
+        expr: eleanor_degraded_components > 0
+        for: 10m
+        labels:
+          severity: warning
+          component: resilience
+        annotations:
+          summary: "Components operating in degraded mode"
+          description: "{{ $value }} components are degraded"
+
+  - name: eleanor_v8_business
+    interval: 1m
+    rules:
+      # High Escalation Rate
+      - alert: HighEscalationRate
+        expr: |
+          rate(eleanor_escalations_total[15m]) /
+          rate(eleanor_decisions_total[15m]) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+          component: business
+        annotations:
+          summary: "High escalation rate"
+          description: "Escalation rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+
+      # High Uncertainty
+      - alert: HighUncertainty
+        expr: |
+          histogram_quantile(0.95, rate(eleanor_uncertainty_score_bucket[15m])) > 0.7
+        for: 15m
+        labels:
+          severity: info
+          component: business
+        annotations:
+          summary: "High uncertainty in decisions"
+          description: "P95 uncertainty is {{ $value }} (threshold: 0.7)"
+
+      # Low Critic Agreement
+      - alert: LowCriticAgreement
+        expr: |
+          histogram_quantile(0.05, rate(eleanor_critic_agreement_bucket[15m])) < 0.5
+        for: 15m
+        labels:
+          severity: warning
+          component: business
+        annotations:
+          summary: "Low critic agreement"
+          description: "P5 critic agreement is {{ $value }} (threshold: 0.5)"
+
+  - name: eleanor_v8_cost
+    interval: 5m
+    rules:
+      # High LLM Cost
+      - alert: HighLLMCost
+        expr: |
+          sum(rate(eleanor_llm_cost_total[1h])) > 100
+        for: 1h
+        labels:
+          severity: warning
+          component: cost
+        annotations:
+          summary: "High LLM API cost"
+          description: "LLM cost is ${{ $value | humanize }} per hour (threshold: $100/hour)"
+
+      # Unusual Token Usage
+      - alert: UnusualTokenUsage
+        expr: |
+          rate(eleanor_llm_tokens_total[1h]) > 1000000
+        for: 1h
+        labels:
+          severity: info
+          component: cost
+        annotations:
+          summary: "Unusual token usage"
+          description: "Token usage is {{ $value | humanize }} tokens/hour"
