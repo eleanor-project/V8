@@ -1,7 +1,11 @@
 import asyncio
 import inspect
 import logging
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, cast, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from engine.types.engine_types import EngineType, CriticRef
+    from engine.schemas.pipeline_types import CriticResult, CriticResultsMap
 
 from engine.cache import CacheKey
 from engine.exceptions import CriticEvaluationError, EvidenceRecordingError
@@ -35,9 +39,9 @@ logger = logging.getLogger("engine.engine")
 
 
 async def run_single_critic(
-    engine: Any,
+    engine: "EngineType",
     name: str,
-    critic_ref: Any,
+    critic_ref: "CriticRef",
     model_response: str,
     input_text: str,
     context: dict,
@@ -243,9 +247,9 @@ async def run_single_critic(
 
 
 async def run_single_critic_with_breaker(
-    engine: Any,
+    engine: "EngineType",
     name: str,
-    critic_ref: Any,
+    critic_ref: "CriticRef",
     model_response: str,
     input_text: str,
     context: dict,
@@ -299,9 +303,9 @@ async def run_single_critic_with_breaker(
 
 
 async def process_critic_batch(
-    engine: Any,
-    items: List[tuple[Any, ...]],
-) -> List[Any]:
+    engine: "EngineType",
+    items: List[tuple[str, "CriticRef", str, str, dict, str, Optional[List[str]], Optional[List[Any]]]],
+) -> List["CriticResult"]:
     tasks = [
         run_single_critic_with_breaker(
             engine,
@@ -329,7 +333,7 @@ async def process_critic_batch(
 
 
 async def run_critics_parallel(
-    engine: Any,
+    engine: "EngineType",
     model_response: str,
     context: dict,
     trace_id: str,
