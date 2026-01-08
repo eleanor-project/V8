@@ -187,7 +187,7 @@ async def run_single_critic(
             engine.adaptive_concurrency.record_latency(duration_ms)
         
         # Publish event if event bus available
-        if EVENT_BUS_AVAILABLE and get_event_bus:
+        if EVENT_BUS_AVAILABLE and get_event_bus and EventType is not None:
             try:
                 event_bus = get_event_bus()
                 severity = float(evaluation_result.get("severity", 0.0))

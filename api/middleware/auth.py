@@ -257,12 +257,8 @@ def require_role(role: str):
                         status_code=status.HTTP_403_FORBIDDEN, 
                         detail=f"Role '{role}' required"
                     )
-            elif token and not token.has_role(role):
-                # In development with auth enabled but wrong role
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN, 
-                    detail=f"Role '{role}' required"
-                )
+            # When auth is disabled (development mode), allow access regardless of role
+            # This makes authentication optional in development as intended
             
             return await func(*args, **kwargs)
 
@@ -276,12 +272,22 @@ def require_scope(scope: str):
 
     def decorator(func):
         @wraps(func)
-        async def wrapper(*args, token: TokenPayload = Depends(verify_token), **kwargs):
+        async def wrapper(*args, token: Optional[TokenPayload] = Depends(verify_token), **kwargs):
             config = get_auth_config()
-            if config.enabled and token and not token.has_scope(scope):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN, detail=f"Scope '{scope}' required"
-                )
+            # When auth is enabled, require token and scope
+            if config.enabled:
+                if token is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Authentication required",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+                if not token.has_scope(scope):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Scope '{scope}' required"
+                    )
+            # When auth is disabled (development mode), allow access regardless of scope
             return await func(*args, **kwargs)
 
         return wrapper

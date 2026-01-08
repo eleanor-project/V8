@@ -163,7 +163,7 @@ async def select_model(
             logger.debug(f"Failed to record LLM cost: {exc}")
     
     # Publish router event if event bus available
-    if OBSERVABILITY_AVAILABLE and get_event_bus:
+    if OBSERVABILITY_AVAILABLE and get_event_bus and EventType is not None:
         try:
             event_bus = get_event_bus()
             trace_id = context.get("trace_id", "unknown")
