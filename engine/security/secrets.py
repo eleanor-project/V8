@@ -12,7 +12,7 @@ import logging
 import os
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Callable
 
 try:
     import boto3 as _boto3  # type: ignore[import-not-found]
@@ -35,6 +35,11 @@ logger = logging.getLogger(__name__)
 
 class SecretsProvider(ABC):
     """Abstract base for secrets management providers"""
+
+    def __init__(self):
+        """Initialize secrets provider with rotation hooks and audit logging."""
+        self._rotation_hooks: List[Callable[[str], None]] = []
+        self._audit_log_enabled = True
 
     @abstractmethod
     def get_secret(self, key: str) -> Optional[str]:
@@ -63,6 +68,64 @@ class SecretsProvider(ABC):
     async def refresh_secrets(self) -> None:
         """Refresh cached secrets (no-op by default)."""
         return None
+    
+    def add_rotation_hook(self, hook: Callable[[str], None]) -> None:
+        """
+        Add a hook to be called when a secret is rotated.
+        
+        Args:
+            hook: Callable that takes the secret key as argument
+        """
+        self._rotation_hooks.append(hook)
+    
+    def _notify_rotation_hooks(self, key: str) -> None:
+        """Notify all rotation hooks that a secret was rotated."""
+        for hook in self._rotation_hooks:
+            try:
+                hook(key)
+            except Exception as e:
+                logger.error(
+                    "rotation_hook_error",
+                    extra={"key": key, "error": str(e)},
+                    exc_info=True,
+                )
+    
+    def _audit_log_secret_access(self, key: str, action: str, success: bool) -> None:
+        """
+        Log secret access for audit purposes (without logging values).
+        
+        Args:
+            key: Secret key accessed
+            action: Action performed (get, list, rotate, etc.)
+            success: Whether the action succeeded
+        """
+        if not self._audit_log_enabled:
+            return
+        
+        logger.info(
+            "secret_access_audit",
+            extra={
+                "secret_key": key,
+                "action": action,
+                "success": success,
+                "provider": self.__class__.__name__,
+            },
+        )
+    
+    def get_secret_with_version(self, key: str, version: Optional[str] = None) -> Optional[str]:
+        """
+        Get secret with optional version support.
+        
+        Args:
+            key: Secret key
+            version: Optional version identifier (provider-specific)
+        
+        Returns:
+            Secret value or None if not found
+        """
+        # Default implementation falls back to get_secret
+        # Providers can override for version-specific retrieval
+        return self.get_secret(key)
 
 
 class EnvironmentSecretsProvider(SecretsProvider):
@@ -77,6 +140,7 @@ class EnvironmentSecretsProvider(SecretsProvider):
         Args:
             prefix: Only consider env vars with this prefix
         """
+        super().__init__()
         self.prefix = prefix
         logger.info("environment_secrets_provider_initialized", extra={"prefix": prefix})
         logger.warning(
@@ -90,6 +154,9 @@ class EnvironmentSecretsProvider(SecretsProvider):
         value = os.getenv(f"{self.prefix}{key}")
         if value is None:
             value = os.getenv(key)
+
+        success = value is not None
+        self._audit_log_secret_access(key, "get", success)
 
         if value:
             logger.debug("secret_retrieved_from_environment", extra={"key": key})
@@ -177,6 +244,7 @@ class AWSSecretsProvider(SecretsProvider):
         if self._is_cache_valid(key):
             logger.debug("secret_retrieved_from_cache", extra={"key": key})
             value, _ = self._cache[key]
+            self._audit_log_secret_access(key, "get_cached", True)
             return value
 
         # Fetch from AWS
@@ -186,18 +254,22 @@ class AWSSecretsProvider(SecretsProvider):
             response = self.client.get_secret_value(SecretId=secret_name)
             secret = response.get("SecretString")
             if secret is None:
+                self._audit_log_secret_access(key, "get", False)
                 return None
             secret_str = str(secret)
 
             # Cache it
             self._cache[key] = (secret_str, time.time())
 
+            self._audit_log_secret_access(key, "get", True)
             logger.info("secret_retrieved_from_aws", extra={"key": key, "secret_name": secret_name})
 
             return secret_str
 
         except self.ClientError as e:
             error_code = e.response["Error"]["Code"]
+
+            self._audit_log_secret_access(key, "get", False)
 
             if error_code == "ResourceNotFoundException":
                 logger.warning(
@@ -214,6 +286,43 @@ class AWSSecretsProvider(SecretsProvider):
                     exc_info=True,
                 )
 
+            return None
+    
+    def get_secret_with_version(self, key: str, version: Optional[str] = None) -> Optional[str]:
+        """
+        Get secret with version support from AWS Secrets Manager.
+        
+        Args:
+            key: Secret key
+            version: AWS Secrets Manager version ID or stage (e.g., "AWSCURRENT", "AWSPREVIOUS")
+        
+        Returns:
+            Secret value or None if not found
+        """
+        secret_name = f"{self.prefix}{key}"
+        
+        try:
+            params = {"SecretId": secret_name}
+            if version:
+                params["VersionStage"] = version
+            
+            response = self.client.get_secret_value(**params)
+            secret = response.get("SecretString")
+            if secret is None:
+                self._audit_log_secret_access(key, f"get_version_{version}", False)
+                return None
+            
+            secret_str = str(secret)
+            self._audit_log_secret_access(key, f"get_version_{version}", True)
+            return secret_str
+            
+        except self.ClientError as e:
+            self._audit_log_secret_access(key, f"get_version_{version}", False)
+            logger.error(
+                "aws_secrets_version_error",
+                extra={"key": key, "version": version, "error": str(e)},
+                exc_info=True,
+            )
             return None
 
     def list_secrets(self) -> List[str]:
@@ -241,7 +350,13 @@ class AWSSecretsProvider(SecretsProvider):
 
     async def refresh_secrets(self) -> None:
         """Clear cached secrets so they are reloaded on next access."""
+        keys_to_notify = list(self._cache.keys())
         self._cache.clear()
+        
+        # Notify rotation hooks
+        for key in keys_to_notify:
+            self._notify_rotation_hooks(key)
+            self._audit_log_secret_access(key, "refresh", True)
 
 
 class VaultSecretsProvider(SecretsProvider):
@@ -305,6 +420,9 @@ class VaultSecretsProvider(SecretsProvider):
             )
 
             value = secret.get("data", {}).get("data", {}).get("value")
+            success = value is not None
+            self._audit_log_secret_access(key, "get", success)
+            
             if value is None:
                 return None
 
@@ -315,12 +433,48 @@ class VaultSecretsProvider(SecretsProvider):
             return str(value)
 
         except Exception as e:
+            self._audit_log_secret_access(key, "get", False)
             logger.error(
                 "vault_secrets_error",
                 extra={
                     "key": key,
                     "error": str(e),
                 },
+                exc_info=True,
+            )
+            return None
+    
+    def get_secret_with_version(self, key: str, version: Optional[int] = None) -> Optional[str]:
+        """
+        Get secret with version support from Vault KV v2.
+        
+        Args:
+            key: Secret key
+            version: Vault secret version number (None for latest)
+        
+        Returns:
+            Secret value or None if not found
+        """
+        try:
+            params = {"path": key, "mount_point": self.mount_point}
+            if version is not None:
+                params["version"] = version
+            
+            secret = self.client.secrets.kv.v2.read_secret_version(**params)
+            value = secret.get("data", {}).get("data", {}).get("value")
+            success = value is not None
+            self._audit_log_secret_access(key, f"get_version_{version}", success)
+            
+            if value is None:
+                return None
+            
+            return str(value)
+            
+        except Exception as e:
+            self._audit_log_secret_access(key, f"get_version_{version}", False)
+            logger.error(
+                "vault_secrets_version_error",
+                extra={"key": key, "version": version, "error": str(e)},
                 exc_info=True,
             )
             return None
