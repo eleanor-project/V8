@@ -72,7 +72,10 @@ class SecurityConfig(BaseSettings):
     def validate_jwt_secret(cls, v: SecretStr, info: ValidationInfo) -> SecretStr:
         """Validate JWT secret strength."""
         secret_value = v.get_secret_value()
-        env = info.data.get("environment", "development")
+        # Get environment from environment variable (most reliable)
+        # SecurityConfig is instantiated before EleanorSettings, so we can't access parent
+        import os
+        env = os.getenv("ENVIRONMENT", "development")
         
         # In production, enforce minimum secret length
         if env == "production":
@@ -96,7 +99,10 @@ class SecurityConfig(BaseSettings):
     @classmethod
     def validate_cors_origins(cls, v: List[str], info: ValidationInfo) -> List[str]:
         """Validate CORS origins configuration."""
-        env = info.data.get("environment", "development")
+        # Get environment from environment variable (most reliable)
+        # SecurityConfig is instantiated before EleanorSettings, so we can't access parent
+        import os
+        env = os.getenv("ENVIRONMENT", "development")
         
         # In production, disallow wildcard
         if env == "production":
@@ -194,6 +200,12 @@ class EleanorSettings(BaseSettings):
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     engine: EngineConfig = Field(default_factory=EngineConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
+
+    @classmethod
+    def _get_environment(cls) -> str:
+        """Get environment from environment variable or default."""
+        import os
+        return os.getenv("ENVIRONMENT", "development")
 
     @field_validator("environment")
     @classmethod
