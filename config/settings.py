@@ -3,8 +3,8 @@ ELEANOR V8 - Centralized Configuration Management
 Secure, type-safe configuration with environment variable support
 """
 
-from typing import Optional, List
-from pydantic import Field, field_validator, SecretStr
+from typing import Optional, List, Any
+from pydantic import Field, field_validator, SecretStr, ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -56,7 +56,7 @@ class SecurityConfig(BaseSettings):
 
     jwt_secret: SecretStr = Field(..., description="JWT signing secret")
     jwt_algorithm: str = Field(default="HS256", description="JWT algorithm")
-    jwt_expiration: int = Field(default=3600, ge=60, description="JWT expiration in seconds")
+    jwt_expiration: int = Field(default=3600, ge=60, le=86400, description="JWT expiration in seconds")
 
     # API security
     api_key_header: str = Field(default="X-API-Key", description="API key header name")
@@ -64,8 +64,48 @@ class SecurityConfig(BaseSettings):
 
     # Rate limiting
     rate_limit_enabled: bool = Field(default=True, description="Enable rate limiting")
-    rate_limit_requests: int = Field(default=100, ge=1, description="Requests per window")
-    rate_limit_window: int = Field(default=60, ge=1, description="Rate limit window in seconds")
+    rate_limit_requests: int = Field(default=100, ge=1, le=10000, description="Requests per window")
+    rate_limit_window: int = Field(default=60, ge=1, le=3600, description="Rate limit window in seconds")
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def validate_jwt_secret(cls, v: SecretStr, info: ValidationInfo) -> SecretStr:
+        """Validate JWT secret strength."""
+        secret_value = v.get_secret_value()
+        env = info.data.get("environment", "development")
+        
+        # In production, enforce minimum secret length
+        if env == "production":
+            if len(secret_value) < 32:
+                raise ValueError("JWT secret must be at least 32 characters in production")
+            if secret_value == "dev-secret" or secret_value == "changeme":
+                raise ValueError("JWT secret cannot use default values in production")
+        
+        return v
+
+    @field_validator("jwt_algorithm")
+    @classmethod
+    def validate_jwt_algorithm(cls, v: str) -> str:
+        """Validate JWT algorithm is secure."""
+        allowed_algorithms = {"HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}
+        if v.upper() not in allowed_algorithms:
+            raise ValueError(f"JWT algorithm must be one of {allowed_algorithms}")
+        return v.upper()
+
+    @field_validator("cors_origins")
+    @classmethod
+    def validate_cors_origins(cls, v: List[str], info: ValidationInfo) -> List[str]:
+        """Validate CORS origins configuration."""
+        env = info.data.get("environment", "development")
+        
+        # In production, disallow wildcard
+        if env == "production":
+            if "*" in v or "" in v:
+                raise ValueError("CORS origins cannot include wildcard (*) or empty string in production")
+            if not v:
+                raise ValueError("CORS origins must be explicitly configured in production")
+        
+        return v
 
 
 class EngineConfig(BaseSettings):

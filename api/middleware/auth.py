@@ -179,23 +179,91 @@ async def verify_token(
 
 
 async def get_current_user(token: Optional[TokenPayload] = Depends(verify_token)) -> Optional[str]:
-    """Get the current user ID from the token."""
+    """
+    Get the current user ID from the token.
+    
+    In production, this will always return a user ID or raise an exception.
+    In development, it may return None if auth is disabled.
+    """
+    config = get_auth_config()
+    
+    # In production, authentication is mandatory
+    if config.enabled and token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
     if token is None:
         return None
     return token.user_id
 
 
+async def require_authenticated_user(token: Optional[TokenPayload] = Depends(verify_token)) -> str:
+    """
+    Require an authenticated user. Raises 401 if not authenticated.
+    
+    Use this for endpoints that MUST have authentication in all environments.
+    """
+    config = get_auth_config()
+    
+    if not config.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication is disabled but required for this endpoint",
+        )
+    
+    if token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    user_id = token.user_id
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token: missing user ID",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return user_id
+
+
 def require_role(role: str):
-    """Decorator to require a specific role."""
+    """
+    Decorator to require a specific role.
+    
+    In production, authentication is mandatory and role is enforced.
+    """
 
     def decorator(func):
         @wraps(func)
-        async def wrapper(*args, token: TokenPayload = Depends(verify_token), **kwargs):
+        async def wrapper(*args, token: Optional[TokenPayload] = Depends(verify_token), **kwargs):
             config = get_auth_config()
-            if config.enabled and token and not token.has_role(role):
+            
+            # In production, authentication is mandatory
+            if config.enabled:
+                if token is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Authentication required",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+                if not token.has_role(role):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN, 
+                        detail=f"Role '{role}' required"
+                    )
+            elif token and not token.has_role(role):
+                # In development with auth enabled but wrong role
                 raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN, detail=f"Role '{role}' required"
+                    status_code=status.HTTP_403_FORBIDDEN, 
+                    detail=f"Role '{role}' required"
                 )
+            
             return await func(*args, **kwargs)
 
         return wrapper
