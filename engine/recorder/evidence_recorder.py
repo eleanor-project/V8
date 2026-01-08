@@ -227,7 +227,7 @@ class EvidenceRecorder:
         await self._write_db(record)
         
         # Publish evidence recorded event
-        if EVENT_BUS_AVAILABLE and get_event_bus:
+        if EVENT_BUS_AVAILABLE and get_event_bus and EventType is not None:
             try:
                 event_bus = get_event_bus()
                 from engine.events.event_bus import Event

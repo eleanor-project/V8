@@ -375,7 +375,7 @@ async def run_engine(
                     record_engine_result(result_dict)
                 
                 # Publish decision event
-                if get_event_bus:
+                if get_event_bus and EventType is not None:
                     event_bus = get_event_bus()
                     decision = aggregated.get("decision", "unknown")
                     confidence = aggregated.get("confidence", 0.0)
