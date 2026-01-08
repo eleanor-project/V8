@@ -74,8 +74,9 @@ class SecurityConfig(BaseSettings):
         secret_value = v.get_secret_value()
         # Get environment from environment variable (most reliable)
         # SecurityConfig is instantiated before EleanorSettings, so we can't access parent
+        # Use ELEANOR_ENVIRONMENT or ELEANOR_ENV to match the rest of the application
         import os
-        env = os.getenv("ENVIRONMENT", "development")
+        env = os.getenv("ELEANOR_ENVIRONMENT") or os.getenv("ELEANOR_ENV") or "development"
         
         # In production, enforce minimum secret length
         if env == "production":
@@ -101,8 +102,9 @@ class SecurityConfig(BaseSettings):
         """Validate CORS origins configuration."""
         # Get environment from environment variable (most reliable)
         # SecurityConfig is instantiated before EleanorSettings, so we can't access parent
+        # Use ELEANOR_ENVIRONMENT or ELEANOR_ENV to match the rest of the application
         import os
-        env = os.getenv("ENVIRONMENT", "development")
+        env = os.getenv("ELEANOR_ENVIRONMENT") or os.getenv("ELEANOR_ENV") or "development"
         
         # In production, disallow wildcard
         if env == "production":

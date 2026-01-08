@@ -1086,13 +1086,15 @@ async def deliberate(
         Deliberation result including decision, critic outputs, and audit trail.
     """
     start_time = time.time()
-    trace_id = payload.trace_id or str(uuid.uuid4())
     
-    # Set correlation ID
+    # Set correlation ID first, then use it as fallback for trace_id
+    correlation_id = None
     if CorrelationContext:
         correlation_id = get_correlation_id()
         CorrelationContext.set(correlation_id)
-        trace_id = trace_id or correlation_id
+    
+    # Use trace_id from payload, or correlation_id, or generate new UUID
+    trace_id = payload.trace_id or correlation_id or str(uuid.uuid4())
     
     # Request fingerprinting
     fingerprinter = RequestFingerprinter()
@@ -1423,7 +1425,7 @@ async def evaluate(
         )
 
         normalized = normalize_engine_result(
-            result_obj, model_output_text, payload.request_id, context
+            result_obj, model_output_text, payload.request_id, validated_context
         )
         aggregated = normalized.get("aggregator_output") or {}
         precedent_alignment = normalized.get("precedent_alignment") or {}
