@@ -216,7 +216,8 @@ async def require_authenticated_user(token: Optional[TokenPayload] = Depends(ver
         import os
         import logging
         logger = logging.getLogger(__name__)
-        env = os.getenv("ENVIRONMENT", "development")
+        # Use ELEANOR_ENVIRONMENT or ELEANOR_ENV to match the rest of the application
+        env = os.getenv("ELEANOR_ENVIRONMENT") or os.getenv("ELEANOR_ENV") or "development"
         if env == "development":
             logger.warning(
                 "auth_disabled_but_required",
