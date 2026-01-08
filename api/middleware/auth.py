@@ -205,14 +205,29 @@ async def require_authenticated_user(token: Optional[TokenPayload] = Depends(ver
     Require an authenticated user. Raises 401 if not authenticated.
     
     Use this for endpoints that MUST have authentication in all environments.
+    In development, if authentication is disabled, this will allow access with a default user.
     """
     config = get_auth_config()
     
     if not config.enabled:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication is disabled but required for this endpoint",
-        )
+        # In development, allow access with default user when auth is disabled
+        # In production, this should never happen (enforced by config validation)
+        import os
+        import logging
+        logger = logging.getLogger(__name__)
+        env = os.getenv("ENVIRONMENT", "development")
+        if env == "development":
+            logger.warning(
+                "auth_disabled_but_required",
+                extra={"endpoint": "require_authenticated_user"},
+            )
+            return "dev-user"  # Allow access in development
+        else:
+            # In production, this is a configuration error
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Authentication is disabled but required for this endpoint",
+            )
     
     if token is None:
         raise HTTPException(
