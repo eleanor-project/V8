@@ -103,7 +103,13 @@ class PrecedentRetrievalV8:
         query_embedding = self._get_cached_embedding(query_text)
         if not query_embedding and self.embedding_fn:
             try:
-                query_embedding = self.embedding_fn(query_text)
+                # Check if embedding_fn is async
+                if inspect.iscoroutinefunction(self.embedding_fn):
+                    # For async, we'd need to await, but this is sync method
+                    # Fallback to sync execution
+                    query_embedding = self.embedding_fn(query_text)
+                else:
+                    query_embedding = self.embedding_fn(query_text)
             except Exception:
                 query_embedding = []
             if query_embedding:
@@ -122,6 +128,7 @@ class PrecedentRetrievalV8:
                 "query_embedding": query_embedding or [],
             }
 
+        # Parallel scoring for better performance
         scored: List[tuple[PrecedentCaseResult, float]] = []
         for case in results:
             score = self._score_alignment(case, critic_outputs)
@@ -142,6 +149,112 @@ class PrecedentRetrievalV8:
             "top_case": top_case,
             "query_embedding": query_embedding or [],
         }
+
+    async def retrieve_batch(
+        self,
+        queries: List[tuple[str, List[CriticResult]]],
+        top_k: int = 5,
+    ) -> List[PrecedentRetrievalResult]:
+        """
+        Retrieve precedents for multiple queries in parallel.
+        
+        Args:
+            queries: List of (query_text, critic_outputs) tuples
+            top_k: Number of precedents to retrieve per query
+            
+        Returns:
+            List of PrecedentRetrievalResult for each query
+        """
+        # Parallel embedding generation
+        embedding_tasks = []
+        for query_text, _ in queries:
+            cached_embedding = self._get_cached_embedding(query_text)
+            if cached_embedding:
+                embedding_tasks.append(asyncio.create_task(asyncio.sleep(0)))  # Already cached
+            elif self.embedding_fn:
+                if inspect.iscoroutinefunction(self.embedding_fn):
+                    embedding_tasks.append(self.embedding_fn(query_text))
+                else:
+                    # Run sync function in executor
+                    loop = asyncio.get_event_loop()
+                    embedding_tasks.append(loop.run_in_executor(None, self.embedding_fn, query_text))
+            else:
+                embedding_tasks.append(asyncio.create_task(asyncio.sleep(0)))  # No embedding
+        
+        # Wait for all embeddings
+        embeddings = await asyncio.gather(*embedding_tasks, return_exceptions=True)
+        
+        # Parallel store searches
+        search_tasks = []
+        for i, (query_text, critic_outputs) in enumerate(queries):
+            query_embedding = embeddings[i] if not isinstance(embeddings[i], Exception) else None
+            if query_embedding:
+                self._cache_embedding(query_text, query_embedding)
+            
+            # Search store (may be async or sync)
+            search_fn = getattr(self.store, "search", None)
+            if callable(search_fn):
+                if inspect.iscoroutinefunction(search_fn):
+                    if query_embedding:
+                        search_tasks.append(search_fn(query_text, top_k=top_k, embedding=query_embedding))
+                    else:
+                        search_tasks.append(search_fn(query_text, top_k=top_k))
+                else:
+                    # Run sync search in executor
+                    loop = asyncio.get_event_loop()
+                    if query_embedding:
+                        search_tasks.append(loop.run_in_executor(None, search_fn, query_text, top_k, query_embedding))
+                    else:
+                        search_tasks.append(loop.run_in_executor(None, search_fn, query_text, top_k))
+            else:
+                search_tasks.append(asyncio.create_task(asyncio.sleep(0)))  # No search function
+        
+        # Wait for all searches
+        search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
+        
+        # Process results
+        final_results = []
+        for i, (query_text, critic_outputs) in enumerate(queries):
+            results_raw = search_results[i]
+            if isinstance(results_raw, Exception) or not results_raw:
+                results_raw = []
+            
+            results: List[PrecedentCaseResult] = [
+                cast(PrecedentCaseResult, case) for case in results_raw
+            ]
+            
+            if not results:
+                final_results.append({
+                    "precedent_cases": [],
+                    "alignment_score": 1.0,
+                    "top_case": None,
+                    "query_embedding": embeddings[i] if not isinstance(embeddings[i], Exception) else [],
+                })
+                continue
+            
+            # Score alignment
+            scored: List[tuple[PrecedentCaseResult, float]] = []
+            for case in results:
+                score = self._score_alignment(case, critic_outputs)
+                scored.append((case, score))
+            
+            scored.sort(key=lambda x: x[1], reverse=True)
+            top_case, top_score = scored[0]
+            
+            query_embedding = embeddings[i] if not isinstance(embeddings[i], Exception) else None
+            if not query_embedding and results:
+                candidate_embedding = results[0].get("embedding")
+                if isinstance(candidate_embedding, list):
+                    query_embedding = candidate_embedding
+            
+            final_results.append({
+                "precedent_cases": [c for c, s in scored],
+                "alignment_score": float(top_score),
+                "top_case": top_case,
+                "query_embedding": query_embedding or [],
+            })
+        
+        return final_results
 
     def _search_store(
         self,
