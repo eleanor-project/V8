@@ -591,7 +591,7 @@ curl http://localhost:8181/v1/policies
 **Solution:**
 ```bash
 # Check policy files exist
-ls docker/governance/policies/*.rego
+ls opa/policies/*.rego
 
 # Restart OPA
 docker-compose -f docker-compose.production.yaml restart opa

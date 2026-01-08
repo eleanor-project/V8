@@ -30,7 +30,7 @@ def _bool_env(name: str, default: bool) -> bool:
 class OPAEnforcerConfig:
     enabled: bool = _bool_env("ELEANOR_OPA_ENABLED", True)
     fail_open: bool = _bool_env("ELEANOR_OPA_FAIL_OPEN", False)
-    base_url: str = os.getenv("ELEANOR_OPA_BASE_URL", "http://localhost:8181")
+    base_url: str = (os.getenv("ELEANOR_OPA_BASE_URL") or os.getenv("OPA_URL") or "http://localhost:8181")
     execution_allow_path: str = os.getenv(
         "ELEANOR_OPA_EXEC_ALLOW", "v1/data/eleanor/execution/allow"
     )

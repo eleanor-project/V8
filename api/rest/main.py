@@ -57,12 +57,19 @@ from api.schemas import (
     HealthResponse,
     ErrorResponse,
 )
-from api.middleware.auth import get_current_user, get_auth_config, require_role
+from api.middleware.auth import (
+    get_current_user,
+    get_auth_config,
+    require_role,
+    require_authenticated_user,
+)
 from api.middleware.rate_limit import (
     RateLimitMiddleware,
     get_rate_limiter,
     RateLimitConfig,
+    check_rate_limit,
 )
+from api.middleware.security_headers import SecurityHeadersMiddleware
 
 # Logging
 from engine.logging_config import configure_logging, get_logger, log_deliberation
@@ -200,15 +207,35 @@ def get_cors_origins() -> list:
 
 
 def check_content_length(request: Request, max_bytes: Optional[int] = None):
-    """Guardrail: reject overly large requests early."""
-    max_allowed = max_bytes or int(os.getenv("MAX_REQUEST_BYTES", "1048576"))  # 1MB default
+    """
+    Guardrail: reject overly large requests early.
+    
+    In production, enforces stricter limits (512KB default).
+    In development, allows larger requests (1MB default).
+    """
+    env = _resolve_environment()
+    is_production = env == "production"
+    
+    # Stricter limits in production
+    default_max = 524288 if is_production else 1048576  # 512KB vs 1MB
+    max_allowed = max_bytes or int(os.getenv("MAX_REQUEST_BYTES", str(default_max)))
+    
+    # Additional production check
+    if is_production and max_allowed > 1048576:  # 1MB
+        logger.warning(
+            "MAX_REQUEST_BYTES exceeds 1MB in production, using 1MB limit",
+            extra={"configured": max_allowed},
+        )
+        max_allowed = 1048576
+    
     content_length = request.headers.get("content-length")
     if content_length is not None:
         try:
-            if int(content_length) > max_allowed:
+            length = int(content_length)
+            if length > max_allowed:
                 raise HTTPException(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail=f"Request too large (>{max_allowed} bytes)",
+                    detail=f"Request too large ({length} bytes, max: {max_allowed} bytes)",
                 )
         except ValueError:
             logger.warning("Invalid content-length header; continuing without size enforcement")
@@ -279,6 +306,10 @@ def run_readiness_checks() -> Dict[str, str]:
         results["cors"] = "configured" if cors_origins else "missing"
         if env != "development" and not cors_origins:
             issues.append("cors_not_configured")
+            logger.error(
+                "CORS not configured in production. Set CORS_ORIGINS environment variable.",
+                extra={"environment": env},
+            )
     except Exception as exc:
         results["cors"] = f"error:{exc}"
         issues.append(f"cors_error:{exc}")
@@ -375,9 +406,12 @@ def initialize_engine():
 
 def resolve_final_decision(aggregator_decision: Optional[str], opa_result: Dict[str, Any]) -> str:
     """Combine aggregator decision with OPA governance outcome."""
-    if not opa_result.get("allow", True):
+    # Fail-closed posture: if OPA denies, we deny unless OPA explicitly requests escalation.
+    if opa_result.get("allow") is False:
+        if opa_result.get("escalate") is True:
+            return "escalate"
         return "deny"
-    if opa_result.get("escalate"):
+    if opa_result.get("escalate") is True:
         return "escalate"
     return aggregator_decision or "allow"
 
@@ -732,20 +766,48 @@ async def lifespan(app: FastAPI):
     skip_readiness = os.getenv("ELEANOR_SKIP_READINESS", "").lower() in ("1", "true", "yes")
     if not skip_readiness:
         run_readiness_checks()
-    if engine is not None and hasattr(engine, "__aenter__"):
-        await engine.__aenter__()
+    
+    # Ensure engine uses async context manager for proper resource initialization
+    if engine is not None:
+        if hasattr(engine, "__aenter__"):
+            await engine.__aenter__()
+        elif hasattr(engine, "_setup_resources"):
+            await engine._setup_resources()
+        else:
+            # Fallback: manually initialize resources
+            from engine.runtime.lifecycle import setup_resources
+            await setup_resources(engine)
+    
     refresh_task = None
     if secret_provider is not None:
         refresh_task = asyncio.create_task(_secret_refresh_loop(secret_provider))
     yield
-    # Shutdown
-    if engine is not None and hasattr(engine, "shutdown"):
-        await engine.shutdown()
+    # Shutdown with timeout
+    shutdown_timeout = float(os.getenv("SHUTDOWN_TIMEOUT_SECONDS", "30.0"))
+    if engine is not None:
+        if hasattr(engine, "shutdown"):
+            try:
+                await asyncio.wait_for(engine.shutdown(), timeout=shutdown_timeout)
+            except asyncio.TimeoutError:
+                logger.error(
+                    "engine_shutdown_timeout",
+                    extra={"timeout": shutdown_timeout},
+                )
+        elif hasattr(engine, "__aexit__"):
+            # Use context manager if available
+            try:
+                await asyncio.wait_for(engine.__aexit__(None, None, None), timeout=shutdown_timeout)
+            except asyncio.TimeoutError:
+                logger.error(
+                    "engine_shutdown_timeout",
+                    extra={"timeout": shutdown_timeout},
+                )
+    
     if refresh_task is not None:
         refresh_task.cancel()
         try:
-            await refresh_task
-        except asyncio.CancelledError:
+            await asyncio.wait_for(refresh_task, timeout=5.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
             pass
     logger.info("Shutting down ELEANOR V8 API server...")
 
@@ -788,6 +850,12 @@ except Exception as e:
 
 # Register websocket router
 app.include_router(ws_router)
+
+
+# ---------------------------------------------
+# Security Headers Middleware
+# ---------------------------------------------
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 # ---------------------------------------------
@@ -838,21 +906,57 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
-    """Handle unexpected exceptions without leaking internal details."""
+    """
+    Handle unexpected exceptions without leaking internal details.
+    
+    This is a catch-all handler for exceptions that weren't handled
+    by more specific handlers. All errors are logged with full context
+    but sanitized responses are returned to clients.
+    """
     trace_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
 
-    # Log the full error internally
-    logger.error(
-        "Unhandled exception",
+    # Classify error type for better handling
+    error_type = type(exc).__name__
+    is_known_error = isinstance(
+        exc,
+        (
+            HTTPException,
+            InputValidationError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+        ),
+    )
+
+    # Log the full error internally with context
+    log_level = "warning" if is_known_error else "error"
+    getattr(logger, log_level)(
+        "unhandled_exception",
         extra={
             "trace_id": trace_id,
             "error": str(exc),
-            "error_type": type(exc).__name__,
+            "error_type": error_type,
             "path": request.url.path,
+            "method": request.method,
+            "is_known_error": is_known_error,
         },
+        exc_info=not is_known_error,  # Full traceback for unknown errors
     )
 
     # Return sanitized error to client
+    # Known errors get more specific messages
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": exc.detail if exc.status_code < 500 else "Internal server error",
+                "trace_id": trace_id,
+            },
+            headers=getattr(exc, "headers", None),
+        )
+
+    # Unknown errors get generic message
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -950,8 +1054,9 @@ async def health_check():
 async def deliberate(
     request: Request,
     payload: DeliberationRequest,
-    user: Optional[str] = Depends(get_current_user),
+    user: str = Depends(require_authenticated_user),
     _size_guard: None = Depends(check_content_length),
+    _rate_limit: None = Depends(check_rate_limit),
 ):
     """
     Run the full ELEANOR V8 deliberation pipeline.
@@ -1013,6 +1118,11 @@ async def deliberate(
             "trace_id": normalized["trace_id"],
             "timestamp": time.time(),
             "schema_version": GOVERNANCE_SCHEMA_VERSION,
+            "policy_profile": payload.policy_profile,
+            "proposed_action": payload.proposed_action.model_dump(mode="json"),
+            "context": payload.context.model_dump(mode="json"),
+            "evidence_inputs": payload.evidence_inputs.model_dump(mode="json") if payload.evidence_inputs else {},
+            "model_metadata": payload.model_metadata.model_dump(mode="json") if payload.model_metadata else {},
         }
 
         governance_result = await evaluate_opa(
@@ -1105,6 +1215,25 @@ async def deliberate(
                 "details": exc.details,
             },
         )
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except (ValueError, TypeError, KeyError, AttributeError) as e:
+        # Known error types - log and return appropriate error
+        duration_ms = (time.time() - start_time) * 1000
+        logger.warning(
+            "deliberation_validation_error",
+            extra={
+                "trace_id": trace_id,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "duration_ms": duration_ms,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid request: {str(e)}",
+        )
     except Exception as e:
         duration_ms = (time.time() - start_time) * 1000
 
@@ -1131,8 +1260,10 @@ async def deliberate(
 
 @app.post("/evaluate", response_model=EvaluateResponse, tags=["Deliberation"])
 async def evaluate(
+    request: Request,
     payload: EvaluateRequest,
-    user: Optional[str] = Depends(get_current_user),
+    user: str = Depends(require_authenticated_user),
+    _rate_limit: None = Depends(check_rate_limit),
 ):
     """
     Evaluate a provided model output against the Engine contract.
@@ -1295,6 +1426,23 @@ async def evaluate(
                 "details": exc.details,
             },
         )
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
+        # Known error types - log and return appropriate error
+        logger.warning(
+            "evaluation_validation_error",
+            extra={
+                "request_id": payload.request_id,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid request: {str(exc)}",
+        )
     except Exception as exc:
         logger.error(
             "evaluation_failed",
@@ -1349,7 +1497,7 @@ async def evaluate(
 @app.get("/trace/{trace_id}", tags=["Audit"])
 async def get_trace(
     trace_id: str,
-    user: Optional[str] = Depends(get_current_user),
+    user: str = Depends(require_authenticated_user),
 ):
     """
     Retrieve an audit record by trace ID.
@@ -1419,7 +1567,7 @@ async def get_trace(
 async def replay_trace(
     trace_id: str,
     rerun: bool = False,
-    user: Optional[str] = Depends(get_current_user),
+    user: str = Depends(require_authenticated_user),
 ):
     """
     Retrieve a stored deliberation and optionally re-run it through the current engine.
@@ -1527,7 +1675,7 @@ async def audit_search(
     severity: Optional[str] = None,
     trace_id: Optional[str] = None,
     limit: int = 100,
-    user: Optional[str] = Depends(get_current_user),
+    user: str = Depends(require_authenticated_user),
 ):
     """
     Search audit evidence by critic, severity label, or trace_id across in-memory buffer and JSONL sink.
@@ -1584,7 +1732,7 @@ async def audit_search(
 @app.post("/governance/preview", tags=["Governance"])
 async def governance_preview(
     payload: GovernancePreviewRequest,
-    user: Optional[str] = Depends(get_current_user),
+    user: str = Depends(require_authenticated_user),
 ):
     """
     Run governance evaluation on a mock evidence bundle.
