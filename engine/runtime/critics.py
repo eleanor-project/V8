@@ -9,6 +9,28 @@ from engine.resilience.degradation import DegradationStrategy
 from engine.schemas.pipeline_types import CriticResult, CriticResultsMap
 from engine.utils.circuit_breaker import CircuitBreakerOpen
 
+# Enhanced observability
+try:
+    from engine.observability.tracing import run_critic_with_trace
+    from engine.observability.correlation import get_correlation_id
+    from engine.observability.business_metrics import record_critic_agreement
+    TRACING_AVAILABLE = True
+except ImportError:
+    TRACING_AVAILABLE = False
+    run_critic_with_trace = None
+    get_correlation_id = None
+    record_critic_agreement = None
+
+# Event bus
+try:
+    from engine.events.event_bus import get_event_bus, CriticEvaluatedEvent, EventType
+    EVENT_BUS_AVAILABLE = True
+except ImportError:
+    EVENT_BUS_AVAILABLE = False
+    get_event_bus = None
+    CriticEvaluatedEvent = None
+    EventType = None
+
 logger = logging.getLogger("engine.engine")
 
 
@@ -163,6 +185,25 @@ async def run_single_critic(
         evaluation_result["duration_ms"] = duration_ms
         if engine.adaptive_concurrency:
             engine.adaptive_concurrency.record_latency(duration_ms)
+        
+        # Publish event if event bus available
+        if EVENT_BUS_AVAILABLE and get_event_bus:
+            try:
+                event_bus = get_event_bus()
+                severity = float(evaluation_result.get("severity", 0.0))
+                violations = list(evaluation_result.get("violations", []))
+                event = CriticEvaluatedEvent(
+                    event_type=EventType.CRITIC_EVALUATED,
+                    timestamp=None,  # Will be set in __post_init__
+                    trace_id=trace_id,
+                    data={"duration_ms": duration_ms},
+                    critic_name=name,
+                    severity=severity,
+                    violations=violations,
+                )
+                await event_bus.publish(event)
+            except Exception as exc:
+                logger.debug(f"Failed to publish critic event: {exc}")
 
         try:
             severity_score = float(evaluation_result.get("score", 0.0))

@@ -7,6 +7,20 @@ from typing import Any, Callable, Dict, Optional, cast
 
 from engine.cache import CacheManager, AdaptiveConcurrencyManager, RouterSelectionCache
 from engine.factory import EngineDependencies
+
+# Enhanced features
+try:
+    from engine.critics.batch_processor import BatchCriticProcessor, BatchCriticConfig
+    from engine.cache.warming import CacheWarmer
+    from engine.resource.adaptive_limits import AdaptiveResourceLimiter, MemoryMonitor
+    ENHANCEMENTS_AVAILABLE = True
+except ImportError:
+    ENHANCEMENTS_AVAILABLE = False
+    BatchCriticProcessor = None
+    BatchCriticConfig = None
+    CacheWarmer = None
+    AdaptiveResourceLimiter = None
+    MemoryMonitor = None
 from engine.protocols import (
     AggregatorProtocol,
     CriticProtocol,
@@ -174,6 +188,43 @@ def initialize_engine(
     engine.instance_id = str(uuid.uuid4())
     engine._shutdown_event = asyncio.Event()
     engine._cleanup_tasks = []
+    
+    # Initialize batch critic processor if available
+    if ENHANCEMENTS_AVAILABLE and BatchCriticProcessor:
+        try:
+            batch_config = BatchCriticConfig(enabled=True)
+            engine.critic_batcher = BatchCriticProcessor(config=batch_config)
+            logger.info("batch_critic_processor_initialized")
+        except Exception as exc:
+            logger.warning(f"Failed to initialize batch processor: {exc}")
+            engine.critic_batcher = None
+    else:
+        engine.critic_batcher = None
+    
+    # Initialize cache warmer if available
+    if ENHANCEMENTS_AVAILABLE and CacheWarmer:
+        try:
+            engine.cache_warmer = CacheWarmer(
+                precedent_retriever=engine.precedent_retriever,
+                embedding_service=getattr(engine, "embedding_service", None),
+                cache_manager=engine.cache_manager,
+            )
+        except Exception as exc:
+            logger.debug(f"Cache warmer not initialized: {exc}")
+            engine.cache_warmer = None
+    else:
+        engine.cache_warmer = None
+    
+    # Initialize adaptive resource limiter if available
+    if ENHANCEMENTS_AVAILABLE and AdaptiveResourceLimiter:
+        try:
+            base_concurrency = engine.config.max_concurrency if hasattr(engine.config, "max_concurrency") else 6
+            engine.adaptive_limiter = AdaptiveResourceLimiter(base_concurrency=base_concurrency)
+        except Exception as exc:
+            logger.debug(f"Adaptive limiter not initialized: {exc}")
+            engine.adaptive_limiter = None
+    else:
+        engine.adaptive_limiter = None
 
     engine.circuit_breakers = None
     engine.degradation_enabled = bool(engine.config.enable_graceful_degradation)
