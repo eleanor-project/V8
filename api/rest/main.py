@@ -1443,7 +1443,7 @@ async def evaluate(
             "schema_version": GOVERNANCE_SCHEMA_VERSION,
             "policy_profile": payload.policy_profile,
             "proposed_action": payload.proposed_action.model_dump(mode="json"),
-            "context": context,
+            "context": validated_context,
             "evidence_inputs": payload.evidence_inputs.model_dump(mode="json")
             if payload.evidence_inputs
             else {},

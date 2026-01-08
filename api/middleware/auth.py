@@ -12,10 +12,12 @@ Configuration via environment variables:
 
 import os
 import time
+import logging
 from typing import Optional, Dict, Any, List, cast
 from types import ModuleType
 from dataclasses import dataclass
 from functools import wraps
+from datetime import datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -31,6 +33,13 @@ except ImportError:
     _jwt = None
 
 jwt: Optional[ModuleType] = _jwt
+
+logger = logging.getLogger(__name__)
+
+# Session management
+_sessions: Dict[str, Dict[str, Any]] = {}
+_session_cleanup_interval = 300  # 5 minutes
+_last_cleanup = time.time()
 
 
 @dataclass
@@ -117,9 +126,37 @@ class TokenPayload:
         return scope in self.scopes
 
 
+def _audit_log_auth_event(
+    event_type: str,
+    user_id: Optional[str] = None,
+    success: bool = True,
+    details: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    Log authentication events for audit purposes.
+    
+    Args:
+        event_type: Type of event (login, logout, token_refresh, token_validation, etc.)
+        user_id: User ID if available
+        success: Whether the operation succeeded
+        details: Additional event details
+    """
+    logger.info(
+        "auth_audit_event",
+        extra={
+            "event_type": event_type,
+            "user_id": user_id,
+            "success": success,
+            "timestamp": datetime.utcnow().isoformat(),
+            **(details or {}),
+        },
+    )
+
+
 def decode_token(token: str, config: AuthConfig) -> TokenPayload:
     """Decode and validate a JWT token."""
     if not JWT_AVAILABLE:
+        _audit_log_auth_event("token_validation", success=False, details={"error": "jwt_not_available"})
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="JWT library not installed. Run: pip install PyJWT",
@@ -128,24 +165,30 @@ def decode_token(token: str, config: AuthConfig) -> TokenPayload:
 
     try:
         payload = jwt.decode(token, config.secret, algorithms=[config.algorithm])
+        user_id = payload.get("sub")
 
         # Check expiration
         if "exp" in payload and payload["exp"] < time.time():
+            _audit_log_auth_event("token_validation", user_id=user_id, success=False, details={"error": "token_expired"})
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token has expired",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        return TokenPayload(payload)
+        token_payload = TokenPayload(payload)
+        _audit_log_auth_event("token_validation", user_id=user_id, success=True)
+        return token_payload
 
     except jwt.ExpiredSignatureError:
+        _audit_log_auth_event("token_validation", success=False, details={"error": "expired_signature"})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
     except jwt.InvalidTokenError as e:
+        _audit_log_auth_event("token_validation", success=False, details={"error": str(e)})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {str(e)}",
@@ -169,13 +212,17 @@ async def verify_token(
 
     # Auth enabled but no credentials provided
     if credentials is None:
+        _audit_log_auth_event("token_verification", success=False, details={"error": "no_credentials"})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization header required",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return decode_token(credentials.credentials, config)
+    token_payload = decode_token(credentials.credentials, config)
+    if token_payload:
+        _audit_log_auth_event("token_verification", user_id=token_payload.user_id, success=True)
+    return token_payload
 
 
 async def get_current_user(token: Optional[TokenPayload] = Depends(verify_token)) -> Optional[str]:
@@ -189,6 +236,7 @@ async def get_current_user(token: Optional[TokenPayload] = Depends(verify_token)
     
     # In production, authentication is mandatory
     if config.enabled and token is None:
+        _audit_log_auth_event("get_current_user", success=False, details={"error": "no_token"})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
@@ -197,7 +245,10 @@ async def get_current_user(token: Optional[TokenPayload] = Depends(verify_token)
     
     if token is None:
         return None
-    return token.user_id
+    
+    user_id = token.user_id
+    _audit_log_auth_event("get_current_user", user_id=user_id, success=True)
+    return user_id
 
 
 async def require_authenticated_user(token: Optional[TokenPayload] = Depends(verify_token)) -> str:
@@ -271,10 +322,25 @@ def require_role(role: str):
                         headers={"WWW-Authenticate": "Bearer"},
                     )
                 if not token.has_role(role):
+                    _audit_log_auth_event(
+                        "role_check",
+                        user_id=token.user_id,
+                        success=False,
+                        details={"required_role": role, "user_roles": token.roles}
+                    )
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN, 
                         detail=f"Role '{role}' required"
                     )
+            # When auth is disabled (development mode), allow access regardless of role
+            # This makes authentication optional in development as intended
+            if config.enabled and token:
+                _audit_log_auth_event(
+                    "role_check",
+                    user_id=token.user_id,
+                    success=True,
+                    details={"required_role": role, "user_roles": token.roles}
+                )
             # When auth is disabled (development mode), allow access regardless of role
             # This makes authentication optional in development as intended
             
@@ -301,10 +367,24 @@ def require_scope(scope: str):
                         headers={"WWW-Authenticate": "Bearer"},
                     )
                 if not token.has_scope(scope):
+                    _audit_log_auth_event(
+                        "scope_check",
+                        user_id=token.user_id,
+                        success=False,
+                        details={"required_scope": scope, "user_scopes": token.scopes}
+                    )
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail=f"Scope '{scope}' required"
                     )
+            # When auth is disabled (development mode), allow access regardless of scope
+            if config.enabled and token:
+                _audit_log_auth_event(
+                    "scope_check",
+                    user_id=token.user_id,
+                    success=True,
+                    details={"required_scope": scope, "user_scopes": token.scopes}
+                )
             # When auth is disabled (development mode), allow access regardless of scope
             return await func(*args, **kwargs)
 
@@ -339,4 +419,170 @@ def create_token(
         "scopes": scopes or [],
     }
 
-    return cast(str, jwt.encode(payload, config.secret, algorithm=config.algorithm))
+    token = cast(str, jwt.encode(payload, config.secret, algorithm=config.algorithm))
+    _audit_log_auth_event("token_created", user_id=user_id, success=True, details={"roles": roles, "scopes": scopes})
+    return token
+
+
+def refresh_token(
+    token: str,
+    config: Optional[AuthConfig] = None,
+) -> str:
+    """
+    Refresh a JWT token by creating a new one with extended expiration.
+    
+    Args:
+        token: Existing JWT token to refresh
+        config: Optional auth config (uses default if not provided)
+    
+    Returns:
+        New JWT token with extended expiration
+    
+    Raises:
+        HTTPException: If token is invalid or expired
+    """
+    if not JWT_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="JWT library not installed. Run: pip install PyJWT",
+        )
+    assert jwt is not None
+
+    config = config or get_auth_config()
+    
+    try:
+        # Decode without expiration check to allow refresh of soon-to-expire tokens
+        payload = jwt.decode(token, config.secret, algorithms=[config.algorithm], options={"verify_exp": False})
+        user_id = payload.get("sub")
+        
+        # Check if token is too old to refresh (e.g., expired more than 1 hour ago)
+        exp = payload.get("exp", 0)
+        if exp < time.time() - 3600:  # 1 hour grace period
+            _audit_log_auth_event("token_refresh", user_id=user_id, success=False, details={"error": "token_too_old"})
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token is too old to refresh",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Create new token with extended expiration
+        new_payload = {
+            "sub": user_id,
+            "iat": int(time.time()),
+            "exp": int(time.time()) + config.token_expiry_seconds,
+            "roles": payload.get("roles", []),
+            "scopes": payload.get("scopes", []),
+        }
+        
+        new_token = cast(str, jwt.encode(new_payload, config.secret, algorithm=config.algorithm))
+        _audit_log_auth_event("token_refresh", user_id=user_id, success=True)
+        return new_token
+        
+    except jwt.InvalidTokenError as e:
+        _audit_log_auth_event("token_refresh", success=False, details={"error": str(e)})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def create_session(
+    user_id: str,
+    session_data: Optional[Dict[str, Any]] = None,
+    ttl_seconds: int = 3600,
+) -> str:
+    """
+    Create a session for long-running operations.
+    
+    Args:
+        user_id: User ID for the session
+        session_data: Optional session data to store
+        ttl_seconds: Session time-to-live in seconds
+    
+    Returns:
+        Session ID
+    """
+    import uuid
+    session_id = str(uuid.uuid4())
+    expires_at = datetime.utcnow() + timedelta(seconds=ttl_seconds)
+    
+    _sessions[session_id] = {
+        "user_id": user_id,
+        "created_at": datetime.utcnow().isoformat(),
+        "expires_at": expires_at.isoformat(),
+        "data": session_data or {},
+    }
+    
+    _audit_log_auth_event("session_created", user_id=user_id, success=True, details={"session_id": session_id})
+    _cleanup_expired_sessions()
+    
+    return session_id
+
+
+def get_session(session_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get session data by session ID.
+    
+    Args:
+        session_id: Session ID
+    
+    Returns:
+        Session data or None if not found/expired
+    """
+    _cleanup_expired_sessions()
+    
+    if session_id not in _sessions:
+        return None
+    
+    session = _sessions[session_id]
+    expires_at = datetime.fromisoformat(session["expires_at"])
+    
+    if datetime.utcnow() > expires_at:
+        del _sessions[session_id]
+        return None
+    
+    return session
+
+
+def delete_session(session_id: str) -> bool:
+    """
+    Delete a session.
+    
+    Args:
+        session_id: Session ID to delete
+    
+    Returns:
+        True if session was deleted, False if not found
+    """
+    if session_id in _sessions:
+        user_id = _sessions[session_id].get("user_id")
+        del _sessions[session_id]
+        _audit_log_auth_event("session_deleted", user_id=user_id, success=True, details={"session_id": session_id})
+        return True
+    return False
+
+
+def _cleanup_expired_sessions() -> None:
+    """Clean up expired sessions (called periodically)."""
+    global _last_cleanup
+    current_time = time.time()
+    
+    # Only cleanup every N seconds to avoid overhead
+    if current_time - _last_cleanup < _session_cleanup_interval:
+        return
+    
+    _last_cleanup = current_time
+    now = datetime.utcnow()
+    expired = []
+    
+    for session_id, session in _sessions.items():
+        expires_at = datetime.fromisoformat(session["expires_at"])
+        if now > expires_at:
+            expired.append(session_id)
+    
+    for session_id in expired:
+        del _sessions[session_id]
+    
+    if expired:
+        logger.debug("expired_sessions_cleaned", extra={"count": len(expired)})

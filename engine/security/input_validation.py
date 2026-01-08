@@ -7,10 +7,19 @@ Comprehensive input validation and security hardening.
 
 import re
 import logging
+import time
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import quote
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
+
+# Validation metrics tracking
+_validation_metrics = {
+    "total_validations": 0,
+    "rejections": defaultdict(int),
+    "rejection_reasons": defaultdict(int),
+}
 
 
 class InputValidator:
@@ -64,6 +73,7 @@ class InputValidator:
         max_dict_depth: int = 10,
         max_list_length: int = 10_000,
         strict_mode: bool = True,
+        track_metrics: bool = True,
     ):
         """
         Initialize input validator.
@@ -73,11 +83,13 @@ class InputValidator:
             max_dict_depth: Maximum dictionary nesting depth
             max_list_length: Maximum list length
             strict_mode: Enable strict security checks
+            track_metrics: Track validation metrics for monitoring
         """
         self.max_string_length = max_string_length
         self.max_dict_depth = max_dict_depth
         self.max_list_length = max_list_length
         self.strict_mode = strict_mode
+        self.track_metrics = track_metrics
     
     def validate_string(
         self,
@@ -101,21 +113,42 @@ class InputValidator:
         Raises:
             ValueError: If validation fails
         """
-        if not isinstance(value, str):
-            raise ValueError(f"{field_name} must be a string, got {type(value).__name__}")
+        if self.track_metrics:
+            _validation_metrics["total_validations"] += 1
         
-        if not allow_empty and not value.strip():
-            raise ValueError(f"{field_name} cannot be empty")
-        
-        if len(value) > self.max_string_length:
-            raise ValueError(
-                f"{field_name} exceeds maximum length of {self.max_string_length} characters"
-            )
-        
-        if sanitize:
-            value = self._sanitize_string(value, field_name)
-        
-        return value
+        try:
+            if not isinstance(value, str):
+                if self.track_metrics:
+                    _validation_metrics["rejections"]["type_error"] += 1
+                    _validation_metrics["rejection_reasons"][f"{field_name}_type_error"] += 1
+                raise ValueError(f"{field_name} must be a string, got {type(value).__name__}")
+            
+            if not allow_empty and not value.strip():
+                if self.track_metrics:
+                    _validation_metrics["rejections"]["empty"] += 1
+                    _validation_metrics["rejection_reasons"][f"{field_name}_empty"] += 1
+                raise ValueError(f"{field_name} cannot be empty")
+            
+            if len(value) > self.max_string_length:
+                if self.track_metrics:
+                    _validation_metrics["rejections"]["length_exceeded"] += 1
+                    _validation_metrics["rejection_reasons"][f"{field_name}_too_long"] += 1
+                raise ValueError(
+                    f"{field_name} exceeds maximum length of {self.max_string_length} characters"
+                )
+            
+            if sanitize:
+                value = self._sanitize_string(value, field_name)
+            
+            return value
+        except ValueError as e:
+            # Re-raise validation errors
+            raise
+        except Exception as e:
+            if self.track_metrics:
+                _validation_metrics["rejections"]["unknown_error"] += 1
+                _validation_metrics["rejection_reasons"][f"{field_name}_unknown"] += 1
+            raise ValueError(f"{field_name} validation failed: {str(e)}")
     
     def validate_dict(
         self,
@@ -182,6 +215,9 @@ class InputValidator:
         # Check for SQL injection
         for pattern in self.SQL_INJECTION_PATTERNS:
             if re.search(pattern, value, re.IGNORECASE):
+                if self.track_metrics:
+                    _validation_metrics["rejections"]["sql_injection"] += 1
+                    _validation_metrics["rejection_reasons"][f"{field_name}_sql_injection"] += 1
                 logger.warning(
                     "potential_sql_injection_detected",
                     extra={"field": field_name, "pattern": pattern},
@@ -191,6 +227,9 @@ class InputValidator:
         # Check for XSS
         for pattern in self.XSS_PATTERNS:
             if re.search(pattern, value, re.IGNORECASE):
+                if self.track_metrics:
+                    _validation_metrics["rejections"]["xss"] += 1
+                    _validation_metrics["rejection_reasons"][f"{field_name}_xss"] += 1
                 logger.warning(
                     "potential_xss_detected",
                     extra={"field": field_name, "pattern": pattern},
@@ -200,6 +239,9 @@ class InputValidator:
         # Check for path traversal
         for pattern in self.PATH_TRAVERSAL_PATTERNS:
             if re.search(pattern, value, re.IGNORECASE):
+                if self.track_metrics:
+                    _validation_metrics["rejections"]["path_traversal"] += 1
+                    _validation_metrics["rejection_reasons"][f"{field_name}_path_traversal"] += 1
                 logger.warning(
                     "potential_path_traversal_detected",
                     extra={"field": field_name, "pattern": pattern},
@@ -207,6 +249,40 @@ class InputValidator:
                 raise ValueError(f"{field_name} contains potentially dangerous path traversal patterns")
         
         return value
+    
+    @staticmethod
+    def get_validation_metrics() -> Dict[str, Any]:
+        """
+        Get validation metrics for monitoring.
+        
+        Returns:
+            Dictionary with validation statistics:
+            - total_validations: Total number of validations performed
+            - rejections: Count of rejections by reason
+            - rejection_reasons: Detailed rejection reasons by field
+            - rejection_rate: Percentage of validations that were rejected
+        """
+        total = _validation_metrics["total_validations"]
+        total_rejections = sum(_validation_metrics["rejections"].values())
+        rejection_rate = (total_rejections / total * 100) if total > 0 else 0.0
+        
+        return {
+            "total_validations": total,
+            "total_rejections": total_rejections,
+            "rejection_rate": round(rejection_rate, 2),
+            "rejections_by_reason": dict(_validation_metrics["rejections"]),
+            "rejection_reasons_by_field": dict(_validation_metrics["rejection_reasons"]),
+        }
+    
+    @staticmethod
+    def reset_validation_metrics() -> None:
+        """Reset validation metrics (useful for testing)."""
+        global _validation_metrics
+        _validation_metrics = {
+            "total_validations": 0,
+            "rejections": defaultdict(int),
+            "rejection_reasons": defaultdict(int),
+        }
     
     def _validate_dict_recursive(
         self,
