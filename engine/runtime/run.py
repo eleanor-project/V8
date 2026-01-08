@@ -83,12 +83,27 @@ async def run_engine(
     try:
         detector_payload = await engine._run_detectors(text, context, timings)
     except DetectorExecutionError as exc:
+        # Expected error - already properly typed
         engine._emit_error(exc, stage="detectors", trace_id=trace_id, context=context)
         detector_payload = None
-    except Exception as exc:
+    except (asyncio.TimeoutError, ConnectionError, OSError) as exc:
+        # Network/system errors - convert to DetectorExecutionError
         detector_error = DetectorExecutionError(
-            "Detector execution failed",
-            details={"error": str(exc)},
+            "Detector execution failed due to system error",
+            details={"error": str(exc), "error_type": type(exc).__name__},
+        )
+        engine._emit_error(
+            detector_error,
+            stage="detectors",
+            trace_id=trace_id,
+            context=context,
+        )
+        detector_payload = None
+    except Exception as exc:
+        # Unexpected errors - log with full context
+        detector_error = DetectorExecutionError(
+            "Detector execution failed with unexpected error",
+            details={"error": str(exc), "error_type": type(exc).__name__},
         )
         engine._emit_error(
             detector_error,

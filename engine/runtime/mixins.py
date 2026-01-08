@@ -1,4 +1,15 @@
 from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, List, Optional, Type, cast
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from engine.runtime.models import EngineResult
+    from engine.schemas.pipeline_types import (
+        AggregationOutput,
+        CriticResult,
+        CriticResultsMap,
+        PrecedentAlignmentResult,
+        UncertaintyResult,
+    )
 
 from engine.runtime.config import EngineConfig, load_config_from_yaml
 from engine.runtime.critics import (
@@ -42,12 +53,84 @@ from governance.review_triggers import Case
 
 
 class EngineRuntimeMixin:
+    """
+    Engine runtime mixin with proper async context manager implementation.
+    
+    Fixed issues:
+    - Proper exception handling in __aexit__
+    - Resource cleanup on exceptions
+    - Type safety improvements
+    """
+    
     async def __aenter__(self) -> "EngineRuntimeMixin":
-        await self._setup_resources()
-        return self
+        """
+        Async context manager entry.
+        
+        Sets up resources and returns self.
+        Raises exception if setup fails.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            await self._setup_resources()
+            return self
+        except Exception as exc:
+            logger.error(
+                "engine_setup_failed",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+                exc_info=True,
+            )
+            # Clean up any partially initialized resources
+            try:
+                await self.shutdown(timeout=5.0)
+            except Exception as cleanup_exc:
+                logger.warning(
+                    "cleanup_after_setup_failure_failed",
+                    extra={"error": str(cleanup_exc)},
+                )
+            raise
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        await self.shutdown()
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[Any],
+    ) -> bool:
+        """
+        Async context manager exit.
+        
+        Properly handles exceptions and ensures cleanup.
+        
+        Args:
+            exc_type: Exception type if exception occurred
+            exc_val: Exception value if exception occurred
+            exc_tb: Exception traceback if exception occurred
+        
+        Returns:
+            False to propagate exceptions, True to suppress them
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            await self.shutdown()
+        except Exception as shutdown_exc:
+            logger.error(
+                "engine_shutdown_failed",
+                extra={
+                    "error": str(shutdown_exc),
+                    "error_type": type(shutdown_exc).__name__,
+                    "original_exception": str(exc_val) if exc_val else None,
+                },
+                exc_info=True,
+            )
+            # Don't suppress original exception if shutdown fails
+            if exc_val:
+                raise exc_val from shutdown_exc
+        
+        # Return False to propagate any exceptions that occurred
+        return False
 
     async def _setup_resources(self) -> None:
         await setup_resources(self)
