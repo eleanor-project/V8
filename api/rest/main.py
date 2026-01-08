@@ -1109,9 +1109,59 @@ async def deliberate(
     )
 
     if engine is None:
+        logger.error(
+            "engine_not_initialized",
+            extra={"trace_id": trace_id, "user_id": user},
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Engine not initialized",
+        )
+
+    # Input validation with security hardening
+    from engine.security.input_validation import InputValidator
+    validator = InputValidator(strict_mode=True)
+    
+    # Validate input text
+    try:
+        validated_input = validator.validate_string(
+            payload.input,
+            field_name="input",
+            allow_empty=False,
+            sanitize=True,
+        )
+    except ValueError as validation_error:
+        logger.warning(
+            "input_validation_failed",
+            extra={
+                "trace_id": trace_id,
+                "user_id": user,
+                "error": str(validation_error),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Input validation failed: {str(validation_error)}",
+        )
+    
+    # Validate context
+    try:
+        validated_context = validator.validate_dict(
+            payload.context.model_dump(mode="json") if payload.context else {},
+            field_name="context",
+        )
+    except ValueError as validation_error:
+        logger.warning(
+            "context_validation_failed",
+            extra={
+                "trace_id": trace_id,
+                "user_id": user,
+                "error": str(validation_error),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Context validation failed: {str(validation_error)}",
         )
 
     try:
@@ -1129,7 +1179,7 @@ async def deliberate(
         else:
             raise RuntimeError("Engine does not expose run() or deliberate()")
 
-        normalized = normalize_engine_result(result_obj, payload.input, trace_id, payload.context)
+        normalized = normalize_engine_result(result_obj, validated_input, trace_id, validated_context)
         model_used = normalized["model_used"]
         critic_outputs = normalized["critic_outputs"]
         aggregated = normalized["aggregator_output"]
@@ -1195,14 +1245,6 @@ async def deliberate(
             escalated=final_assessment == "requires_human_review",
             raw_decision=final_decision,
         )
-        
-        # Record business metrics
-        if OBSERVABILITY_AVAILABLE and record_engine_result:
-            try:
-                record_engine_result(response_payload)
-                record_decision(final_decision, final_assessment)
-            except Exception as exc:
-                logger.debug(f"Failed to record metrics: {exc}")
 
         response_payload = {
             **normalized,
@@ -1213,6 +1255,14 @@ async def deliberate(
             if execution_decision
             else None,
         }
+        
+        # Record business metrics (after response_payload is defined)
+        if OBSERVABILITY_AVAILABLE and record_engine_result:
+            try:
+                record_engine_result(response_payload)
+                record_decision(final_decision, final_assessment)
+            except Exception as exc:
+                logger.debug(f"Failed to record metrics: {exc}")
 
         # persist replay record
         await replay_store.save_async(
