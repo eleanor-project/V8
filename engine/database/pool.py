@@ -202,9 +202,12 @@ class DatabasePool:
                 },
                 exc_info=True,
             )
-            # Don't suppress original exception if close fails
+            # Raise cleanup exception, chaining original exception if it exists
+            # This ensures cleanup failures are not masked
             if exc_val:
-                raise exc_val from close_exc
+                raise close_exc from exc_val
+            else:
+                raise close_exc
         
         # Return False to propagate any exceptions that occurred
         return False

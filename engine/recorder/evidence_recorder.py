@@ -248,7 +248,6 @@ class EvidenceRecorder:
                 from engine.events.event_bus import Event
                 event = Event(
                     event_type=EventType.EVIDENCE_RECORDED,
-                    timestamp=None,  # Will be set in __post_init__
                     trace_id=trace_id,
                     data={
                         "critic": critic,

@@ -8,7 +8,7 @@ Event-driven architecture for decoupled component communication.
 import asyncio
 import logging
 from typing import Dict, List, Callable, Any, Type, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
@@ -27,20 +27,21 @@ class EventType(Enum):
     EVIDENCE_RECORDED = "evidence_recorded"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Event:
     """Base event class."""
     event_type: EventType
-    timestamp: datetime
     trace_id: str
-    data: Dict[str, Any]
+    data: Dict[str, Any] = field(default_factory=dict)
+    timestamp: Optional[datetime] = None
     
     def __post_init__(self):
-        if not self.timestamp:
+        # Set timestamp to current time if not provided
+        if self.timestamp is None:
             self.timestamp = datetime.utcnow()
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CriticEvaluatedEvent(Event):
     """Event fired when critic evaluation completes."""
     critic_name: str
@@ -48,7 +49,7 @@ class CriticEvaluatedEvent(Event):
     violations: List[str]
 
 
-@dataclass
+@dataclass(kw_only=True)
 class RouterSelectedEvent(Event):
     """Event fired when router selects a model."""
     model_name: str
@@ -56,7 +57,7 @@ class RouterSelectedEvent(Event):
     cost_estimate: Optional[float]
 
 
-@dataclass
+@dataclass(kw_only=True)
 class EscalationRequiredEvent(Event):
     """Event fired when escalation is required."""
     tier: int
@@ -65,7 +66,7 @@ class EscalationRequiredEvent(Event):
     rationale: str
 
 
-@dataclass
+@dataclass(kw_only=True)
 class DecisionMadeEvent(Event):
     """Event fired when final decision is made."""
     decision: str
