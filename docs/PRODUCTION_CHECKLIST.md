@@ -202,7 +202,7 @@ echo "✅ API key validation complete"
 ### 4.2 OPA Policies
 
 - [ ] **All required Rego policies are present**
-  - **Location:** `/governance/policies/` or `docker/governance/policies/`
+  - **Location:** `/opa/policies/` (mounted into the OPA container as `/policies`)
   - **Required Policies:**
     - [ ] `autonomy_check.rego`
     - [ ] `dignity_check.rego`

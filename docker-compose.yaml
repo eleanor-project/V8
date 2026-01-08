@@ -26,7 +26,7 @@ services:
       - opa
       - weaviate
       - pgvector
-
+      - prometheus
     ports:
       - "8000:8000"
     volumes:
@@ -126,7 +126,7 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-
+      - prometheus
 
 networks:
   default:
