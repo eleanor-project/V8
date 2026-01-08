@@ -206,12 +206,13 @@ async def require_authenticated_user(token: Optional[TokenPayload] = Depends(ver
     
     Use this for endpoints that MUST have authentication in all environments.
     In development, if authentication is disabled, this will allow access with a default user.
+    In production, if authentication is disabled, this raises 401 to indicate authentication is required.
     """
     config = get_auth_config()
     
     if not config.enabled:
         # In development, allow access with default user when auth is disabled
-        # In production, this should never happen (enforced by config validation)
+        # In production, raise 401 to indicate authentication is required (not a server error)
         import os
         import logging
         logger = logging.getLogger(__name__)
@@ -223,10 +224,11 @@ async def require_authenticated_user(token: Optional[TokenPayload] = Depends(ver
             )
             return "dev-user"  # Allow access in development
         else:
-            # In production, this is a configuration error
+            # In production, raise 401 (not 500) to indicate authentication is required
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Authentication is disabled but required for this endpoint",
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required for this endpoint",
+                headers={"WWW-Authenticate": "Bearer"},
             )
     
     if token is None:
