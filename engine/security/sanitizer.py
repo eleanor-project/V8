@@ -10,9 +10,19 @@ Prevents credential leakage in:
 
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional, Set, Union
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
+
+# Sanitization performance metrics
+_sanitization_metrics = {
+    "total_operations": 0,
+    "total_time_ms": 0.0,
+    "operations_by_type": defaultdict(int),
+    "time_by_type": defaultdict(float),
+}
 
 
 class SecretsSanitizer:
@@ -86,11 +96,13 @@ class SecretsSanitizer:
         self,
         custom_patterns: Optional[List[tuple[str, str]]] = None,
         additional_sensitive_keys: Optional[Set[str]] = None,
+        track_metrics: bool = True,
     ):
         """
         Args:
             custom_patterns: Additional (regex, replacement) patterns
             additional_sensitive_keys: Additional key names to redact
+            track_metrics: Track performance metrics for sanitization operations
         """
         self.patterns = self.DEFAULT_PATTERNS.copy()
         if custom_patterns:
@@ -105,6 +117,8 @@ class SecretsSanitizer:
             (re.compile(pattern, re.IGNORECASE | re.MULTILINE), replacement)
             for pattern, replacement in self.patterns
         ]
+        
+        self.track_metrics = track_metrics
 
         logger.debug(
             "secrets_sanitizer_initialized",
@@ -161,9 +175,18 @@ class SecretsSanitizer:
         if not isinstance(text, str):
             return text
 
+        start_time = time.time() if self.track_metrics else None
+        
         result = text
         for pattern, replacement in self.compiled_patterns:
             result = pattern.sub(replacement, result)
+
+        if self.track_metrics and start_time:
+            duration_ms = (time.time() - start_time) * 1000
+            _sanitization_metrics["total_operations"] += 1
+            _sanitization_metrics["total_time_ms"] += duration_ms
+            _sanitization_metrics["operations_by_type"]["string"] += 1
+            _sanitization_metrics["time_by_type"]["string"] += duration_ms
 
         return result
 
@@ -182,6 +205,8 @@ class SecretsSanitizer:
         if not isinstance(data, dict):
             return data
 
+        start_time = time.time() if self.track_metrics else None
+
         sanitized: Dict[str, Any] = {}
 
         for key, value in data.items():
@@ -196,6 +221,13 @@ class SecretsSanitizer:
                 sanitized[key] = self._sanitize_string(value)
             else:
                 sanitized[key] = value
+
+        if self.track_metrics and start_time:
+            duration_ms = (time.time() - start_time) * 1000
+            _sanitization_metrics["total_operations"] += 1
+            _sanitization_metrics["total_time_ms"] += duration_ms
+            _sanitization_metrics["operations_by_type"]["dict"] += 1
+            _sanitization_metrics["time_by_type"]["dict"] += duration_ms
 
         return sanitized
 
@@ -272,6 +304,42 @@ class SecretsSanitizer:
         """Add a sensitive key name at runtime"""
         self.sensitive_keys.add(key.lower())
         logger.debug("sensitive_key_added", extra={"key": key})
+    
+    @staticmethod
+    def get_sanitization_metrics() -> Dict[str, Any]:
+        """
+        Get sanitization performance metrics.
+        
+        Returns:
+            Dictionary with sanitization statistics:
+            - total_operations: Total number of sanitization operations
+            - total_time_ms: Total time spent on sanitization (ms)
+            - avg_time_ms: Average time per operation (ms)
+            - operations_by_type: Count of operations by type (string, dict, list)
+            - time_by_type: Time spent by operation type (ms)
+        """
+        total_ops = _sanitization_metrics["total_operations"]
+        total_time = _sanitization_metrics["total_time_ms"]
+        avg_time = (total_time / total_ops) if total_ops > 0 else 0.0
+        
+        return {
+            "total_operations": total_ops,
+            "total_time_ms": round(total_time, 2),
+            "avg_time_ms": round(avg_time, 2),
+            "operations_by_type": dict(_sanitization_metrics["operations_by_type"]),
+            "time_by_type": {k: round(v, 2) for k, v in _sanitization_metrics["time_by_type"].items()},
+        }
+    
+    @staticmethod
+    def reset_sanitization_metrics() -> None:
+        """Reset sanitization metrics (useful for testing)."""
+        global _sanitization_metrics
+        _sanitization_metrics = {
+            "total_operations": 0,
+            "total_time_ms": 0.0,
+            "operations_by_type": defaultdict(int),
+            "time_by_type": defaultdict(float),
+        }
 
 
 class CredentialSanitizer:
