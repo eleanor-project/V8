@@ -14,6 +14,14 @@ from dataclasses import dataclass
 from cachetools import TTLCache  # type: ignore[import-untyped]
 import time
 
+# Fast hash for cache keys (2-3x faster than SHA256)
+try:
+    import xxhash
+    XXHASH_AVAILABLE = True
+except ImportError:
+    XXHASH_AVAILABLE = False
+    xxhash = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,8 +44,12 @@ class CacheKey:
         # Create stable JSON representation
         serialized = json.dumps(data, sort_keys=True, default=str)
 
-        # Hash for compact key
-        content_hash = hashlib.sha256(serialized.encode()).hexdigest()[:16]
+        # Hash for compact key (use xxhash for speed, fallback to SHA256)
+        serialized_bytes = serialized.encode()
+        if XXHASH_AVAILABLE:
+            content_hash = xxhash.xxh64(serialized_bytes).hexdigest()[:16]
+        else:
+            content_hash = hashlib.sha256(serialized_bytes).hexdigest()[:16]
 
         return cls(prefix=prefix, content_hash=content_hash)
 
@@ -215,6 +227,56 @@ class CacheManager:
 
         stats.sets += 1
         logger.debug(f"Cache set: {key_str}")
+
+    async def set_batch(self, items: Dict[CacheKey, Any]) -> None:
+        """
+        Set multiple cache items using Redis pipeline for performance.
+
+        Args:
+            items: Dictionary of cache keys to values
+        """
+        if not items:
+            return
+
+        # Update L1 cache for all items
+        for key, value in items.items():
+            l1_cache = self._get_l1(key.prefix)
+            l1_cache[str(key)] = value
+            stats = self._get_stats(key.prefix)
+            stats.sets += 1
+
+        # Use Redis pipeline for batch L2 operations
+        if self.redis:
+            try:
+                # Check if redis client supports pipeline
+                if hasattr(self.redis, "pipeline"):
+                    pipe = self.redis.pipeline()
+                    for key, value in items.items():
+                        key_str = str(key)
+                        ttl = self.l2_ttls.get(key.prefix, 3600)
+                        serialized = json.dumps(value, default=str)
+                        pipe.setex(key_str, ttl, serialized)
+                    
+                    # Execute pipeline
+                    if hasattr(pipe, "execute"):
+                        result = pipe.execute()
+                        if asyncio.iscoroutine(result):
+                            await result
+                    elif hasattr(pipe, "__aenter__"):
+                        async with pipe:
+                            await pipe.execute()
+                else:
+                    # Fallback to individual sets
+                    for key, value in items.items():
+                        await self.set(key, value)
+            except Exception as e:
+                logger.error(f"Redis batch set failed: {e}")
+                # Fallback to individual sets
+                for key, value in items.items():
+                    try:
+                        await self.set(key, value)
+                    except Exception:
+                        pass
 
     async def get_or_compute(self, key: CacheKey, compute_fn: Callable, *args, **kwargs) -> Any:
         """

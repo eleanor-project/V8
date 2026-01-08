@@ -8,6 +8,7 @@ Batch multiple critic evaluations into single LLM call for performance.
 import asyncio
 import json
 import logging
+import time
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
@@ -15,6 +16,14 @@ from engine.schemas.pipeline_types import CriticResult, CriticResultsMap
 from engine.protocols import CriticProtocol
 
 logger = logging.getLogger(__name__)
+
+# Optional adaptive batch sizing
+try:
+    from engine.critics.adaptive_batch_sizer import AdaptiveBatchSizer
+    ADAPTIVE_BATCH_AVAILABLE = True
+except ImportError:
+    ADAPTIVE_BATCH_AVAILABLE = False
+    AdaptiveBatchSizer = None
 
 
 @dataclass
@@ -35,8 +44,16 @@ class BatchCriticProcessor:
     the number of LLM API calls.
     """
 
-    def __init__(self, config: Optional[BatchCriticConfig] = None):
+    def __init__(
+        self,
+        config: Optional[BatchCriticConfig] = None,
+        adaptive_sizer: Optional["AdaptiveBatchSizer"] = None,
+    ):
         self.config = config or BatchCriticConfig()
+        self.adaptive_sizer = adaptive_sizer
+        if self.adaptive_sizer:
+            # Update config with adaptive batch size
+            self.config.max_batch_size = self.adaptive_sizer.get_current_batch_size()
 
     def _combine_critic_prompts(
         self,
@@ -176,17 +193,25 @@ Provide your evaluation in JSON format:
                 critics, model_response, input_text, context, model_adapter
             )
         
+        # Get current batch size (may be adaptive)
+        current_batch_size = self.config.max_batch_size
+        if self.adaptive_sizer:
+            current_batch_size = self.adaptive_sizer.get_current_batch_size()
+            self.config.max_batch_size = current_batch_size
+        
         # Group critics into batches
         critic_list = list(critics.items())
         batches = [
-            critic_list[i : i + self.config.max_batch_size]
-            for i in range(0, len(critic_list), self.config.max_batch_size)
+            critic_list[i : i + current_batch_size]
+            for i in range(0, len(critic_list), current_batch_size)
         ]
         
         all_results: Dict[str, CriticResult] = {}
         
         # Process each batch
         for batch in batches:
+            batch_start = time.time()
+            batch_success = False
             try:
                 # Combine prompts
                 combined_prompt = self._combine_critic_prompts(
@@ -202,6 +227,7 @@ Provide your evaluation in JSON format:
                 # Parse and split results
                 batch_results = self._parse_batch_response(batch_response, batch)
                 all_results.update(batch_results)
+                batch_success = True
             
             except asyncio.TimeoutError:
                 logger.warning("batch_evaluation_timeout", extra={"batch_size": len(batch)})
@@ -224,6 +250,17 @@ Provide your evaluation in JSON format:
                     batch_dict, model_response, input_text, context, model_adapter
                 )
                 all_results.update(individual_results)
+            
+            # Record performance for adaptive sizing
+            if self.adaptive_sizer:
+                batch_latency = time.time() - batch_start
+                batch_success_rate = 1.0 if batch_success else 0.0
+                self.adaptive_sizer.record_performance(batch_latency, batch_success_rate)
+                
+                # Adjust batch size based on performance
+                self.adaptive_sizer.adjust_batch_size(batch_latency, batch_success_rate)
+                # Update config for next batch
+                self.config.max_batch_size = self.adaptive_sizer.get_current_batch_size()
         
         return all_results
 
