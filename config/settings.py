@@ -216,18 +216,58 @@ class EleanorSettings(BaseSettings):
 _settings: Optional[EleanorSettings] = None
 
 
-def get_settings() -> EleanorSettings:
-    """Get application settings (singleton)"""
+def get_settings(validate: bool = True) -> EleanorSettings:
+    """
+    Get application settings (singleton).
+    
+    Args:
+        validate: Whether to validate settings on load
+    
+    Returns:
+        EleanorSettings instance
+    
+    Raises:
+        ValidationError: If validation fails and validate=True
+    """
     global _settings
     if _settings is None:
         _settings = EleanorSettings()
+        if validate:
+            from config.validation import ConfigValidator
+            try:
+                ConfigValidator.validate_and_raise(_settings)
+            except ValidationError as exc:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error("settings_validation_failed", extra={"errors": str(exc)})
+                raise
     return _settings
 
 
-def reload_settings() -> EleanorSettings:
-    """Reload settings (useful for testing)"""
+def reload_settings(validate: bool = True) -> EleanorSettings:
+    """
+    Reload settings (useful for testing).
+    
+    Args:
+        validate: Whether to validate settings on reload
+    
+    Returns:
+        EleanorSettings instance
+    
+    Raises:
+        ValidationError: If validation fails and validate=True
+    """
     global _settings
     _settings = EleanorSettings()
+    if validate:
+        from config.validation import ConfigValidator
+        try:
+            ConfigValidator.validate_and_raise(_settings)
+        except ValidationError as exc:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error("settings_validation_failed", extra={"errors": str(exc)})
+            raise
     return _settings
 
 

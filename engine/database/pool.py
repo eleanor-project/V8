@@ -7,8 +7,11 @@ Async database connection pool with proper lifecycle management.
 
 import asyncio
 import logging
-from typing import Optional, Any
+from typing import Optional, Any, TYPE_CHECKING
 from contextlib import asynccontextmanager
+
+if TYPE_CHECKING:
+    from asyncpg import Pool, Connection
 
 logger = logging.getLogger(__name__)
 
@@ -145,14 +148,66 @@ class DatabasePool:
             self._initialized = False
             logger.info("database_pool_closed")
 
-    async def __aenter__(self):
-        """Async context manager entry."""
-        await self.initialize()
-        return self
+    async def __aenter__(self) -> "DatabasePool":
+        """
+        Async context manager entry.
+        
+        Initializes the pool and returns self.
+        Raises exception if initialization fails.
+        """
+        try:
+            await self.initialize()
+            return self
+        except Exception as exc:
+            logger.error(
+                "database_pool_init_failed_in_context",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+                exc_info=True,
+            )
+            # Ensure cleanup on failure
+            try:
+                await self.close()
+            except Exception:
+                pass
+            raise
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        await self.close()
+    async def __aexit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[Any],
+    ) -> bool:
+        """
+        Async context manager exit.
+        
+        Properly handles exceptions and ensures pool cleanup.
+        
+        Args:
+            exc_type: Exception type if exception occurred
+            exc_val: Exception value if exception occurred
+            exc_tb: Exception traceback if exception occurred
+        
+        Returns:
+            False to propagate exceptions, True to suppress them
+        """
+        try:
+            await self.close()
+        except Exception as close_exc:
+            logger.error(
+                "database_pool_close_failed",
+                extra={
+                    "error": str(close_exc),
+                    "error_type": type(close_exc).__name__,
+                    "original_exception": str(exc_val) if exc_val else None,
+                },
+                exc_info=True,
+            )
+            # Don't suppress original exception if close fails
+            if exc_val:
+                raise exc_val from close_exc
+        
+        # Return False to propagate any exceptions that occurred
+        return False
 
 
 __all__ = ["DatabasePool"]

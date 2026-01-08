@@ -2,7 +2,10 @@ import asyncio
 import inspect
 import logging
 import time
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Optional, cast, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from engine.types.engine_types import EngineType
 
 from engine.cache import CacheKey
 from engine.exceptions import DetectorExecutionError, RouterSelectionError
@@ -26,7 +29,7 @@ logger = logging.getLogger("engine.engine")
 
 
 async def run_detectors(
-    engine: Any,
+    engine: "EngineType",
     text: str,
     context: Dict[str, Any],
     timings: Dict[str, float],
@@ -66,7 +69,7 @@ async def run_detectors(
 
 
 async def select_model(
-    engine: Any,
+    engine: "EngineType",
     text: str,
     context: dict,
     timings: Optional[Dict[str, float]] = None,
@@ -108,15 +111,25 @@ async def select_model(
             call = engine.router.route(text=text, context=context)
             router_result = await call if inspect.isawaitable(call) else call
     except RouterSelectionError:
+        # Expected error - already properly typed, re-raise
         end = asyncio.get_event_loop().time()
         timings["router_selection_ms"] = (end - start) * 1000
         raise
-    except Exception as exc:
+    except (asyncio.TimeoutError, ConnectionError, OSError) as exc:
+        # Network/system errors - convert to RouterSelectionError
         end = asyncio.get_event_loop().time()
         timings["router_selection_ms"] = (end - start) * 1000
         raise RouterSelectionError(
-            "Router failed to select a model",
-            details={"error": str(exc)},
+            "Router failed to select a model due to system error",
+            details={"error": str(exc), "error_type": type(exc).__name__},
+        ) from exc
+    except Exception as exc:
+        # Unexpected errors - convert to RouterSelectionError with context
+        end = asyncio.get_event_loop().time()
+        timings["router_selection_ms"] = (end - start) * 1000
+        raise RouterSelectionError(
+            "Router failed to select a model with unexpected error",
+            details={"error": str(exc), "error_type": type(exc).__name__},
         ) from exc
 
     if not router_result or router_result.get("response_text") is None:
