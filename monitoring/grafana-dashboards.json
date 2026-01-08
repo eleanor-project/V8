@@ -1,0 +1,236 @@
+{
+  "dashboard": {
+    "title": "ELEANOR V8 Production Dashboard",
+    "tags": ["eleanor", "production"],
+    "timezone": "browser",
+    "schemaVersion": 27,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Request Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(eleanor_deliberate_requests_total[5m])",
+            "legendFormat": "{{outcome}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Error Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(eleanor_deliberate_requests_total{outcome=\"error\"}[5m]) / rate(eleanor_deliberate_requests_total[5m])",
+            "legendFormat": "Error Rate",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "thresholds": [
+          {"value": 0.01, "colorMode": "critical", "op": "gt"}
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Latency (P50, P95, P99)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(eleanor_deliberate_duration_seconds_bucket[5m]))",
+            "legendFormat": "P50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(eleanor_deliberate_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(eleanor_deliberate_duration_seconds_bucket[5m]))",
+            "legendFormat": "P99",
+            "refId": "C"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "yaxes": [
+          {"format": "s", "label": "Latency"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Cache Hit Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(eleanor_cache_hits_total[5m]) / (rate(eleanor_cache_hits_total[5m]) + rate(eleanor_cache_misses_total[5m]))",
+            "legendFormat": "Hit Rate",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "yaxes": [
+          {"format": "percentunit", "max": 1, "min": 0},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Circuit Breaker States",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "eleanor_circuit_breaker_state",
+            "legendFormat": "{{circuit}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 16},
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {"options": {"0": {"text": "CLOSED", "color": "green"}}, "type": "value"},
+              {"options": {"1": {"text": "OPEN", "color": "red"}}, "type": "value"},
+              {"options": {"2": {"text": "HALF_OPEN", "color": "yellow"}}, "type": "value"}
+            ]
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Active Traces",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "eleanor_active_traces",
+            "legendFormat": "Active",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 16}
+      },
+      {
+        "id": 7,
+        "title": "LLM Cost (USD)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(eleanor_llm_cost_total[1h]))",
+            "legendFormat": "{{model}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+        "yaxes": [
+          {"format": "currencyUSD", "label": "Cost"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 8,
+        "title": "LLM Token Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(eleanor_llm_tokens_total[5m])",
+            "legendFormat": "{{model}} - {{type}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20}
+      },
+      {
+        "id": 9,
+        "title": "CPU Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(container_cpu_usage_seconds_total{pod=~\"eleanor-v8-.*\"}[5m])",
+            "legendFormat": "{{pod}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+        "yaxes": [
+          {"format": "percentunit", "max": 1, "min": 0},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "container_memory_usage_bytes{pod=~\"eleanor-v8-.*\"} / container_spec_memory_limit_bytes{pod=~\"eleanor-v8-.*\"}",
+            "legendFormat": "{{pod}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+        "yaxes": [
+          {"format": "percentunit", "max": 1, "min": 0},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Business Metrics - Decisions",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(eleanor_decisions_total[5m])",
+            "legendFormat": "{{decision_type}} - {{final_assessment}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36}
+      },
+      {
+        "id": 12,
+        "title": "Business Metrics - Escalations",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(eleanor_escalations_total[5m])",
+            "legendFormat": "Tier {{tier}} - {{critic}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36}
+      },
+      {
+        "id": 13,
+        "title": "Uncertainty Distribution",
+        "type": "histogram",
+        "targets": [
+          {
+            "expr": "rate(eleanor_uncertainty_score_bucket[5m])",
+            "legendFormat": "{{le}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 44}
+      },
+      {
+        "id": 14,
+        "title": "Critic Agreement",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(eleanor_critic_agreement_bucket[5m])",
+            "legendFormat": "{{le}}",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 44}
+      }
+    ]
+  }
+}
