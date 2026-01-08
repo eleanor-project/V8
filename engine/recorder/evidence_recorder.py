@@ -87,6 +87,8 @@ class EvidenceRecorder:
         self.buffer: List[EvidenceRecord] = []
         self.flush_interval = flush_interval or 5.0
         self._pending: List[EvidenceRecord] = []
+        self._db_pending: List[EvidenceRecord] = []  # Batch buffer for DB writes
+        self._db_batch_size = int(os.getenv("ELEANOR_DB_BATCH_SIZE", "50"))  # Batch size for DB writes
         self._flush_task: Optional[asyncio.Task] = None
         self._shutdown = False
 
@@ -95,6 +97,7 @@ class EvidenceRecorder:
 
         self._lock = asyncio.Lock()
         self._state_lock = asyncio.Lock()
+        self._db_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         """Initialize recorder resources."""
@@ -146,6 +149,11 @@ class EvidenceRecorder:
     async def _write_db(self, record: EvidenceRecord):
         if self.db_sink:
             await self.db_sink.write(record)
+
+    async def _write_db_batch(self, records: List[EvidenceRecord]):
+        """Write multiple records to DB sink in batch for performance."""
+        if self.db_sink and records:
+            await self.db_sink.write_batch(records)
 
     # -----------------------------------------------------
     # Public API: Record an evidence event
@@ -223,8 +231,15 @@ class EvidenceRecorder:
             if should_flush:
                 await self.flush()
 
-        # DB sink
-        await self._write_db(record)
+        # DB sink (batch writes for performance)
+        async with self._db_lock:
+            self._db_pending.append(record)
+            if len(self._db_pending) >= self._db_batch_size:
+                # Flush batch
+                batch = list(self._db_pending)
+                self._db_pending.clear()
+                # Write batch asynchronously (don't await to avoid blocking)
+                asyncio.create_task(self._write_db_batch(batch))
         
         # Publish evidence recorded event
         if EVENT_BUS_AVAILABLE and get_event_bus and EventType is not None:
@@ -284,3 +299,9 @@ class EvidenceRecorder:
                 pass
             self._flush_task = None
         await self.flush()
+        
+        # Flush any pending DB writes
+        async with self._db_lock:
+            if self._db_pending:
+                await self._write_db_batch(list(self._db_pending))
+                self._db_pending.clear()
