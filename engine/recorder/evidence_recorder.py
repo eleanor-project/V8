@@ -10,6 +10,15 @@ from pydantic import BaseModel, Field
 from .db_sink import EvidenceDBSink
 from engine.security.sanitizer import CredentialSanitizer
 
+# Enhanced observability
+try:
+    from engine.events.event_bus import get_event_bus, EventType
+    EVENT_BUS_AVAILABLE = True
+except ImportError:
+    EVENT_BUS_AVAILABLE = False
+    get_event_bus = None
+    EventType = None
+
 
 # ---------------------------------------------------------
 # Evidence Record Model
@@ -216,6 +225,25 @@ class EvidenceRecorder:
 
         # DB sink
         await self._write_db(record)
+        
+        # Publish evidence recorded event
+        if EVENT_BUS_AVAILABLE and get_event_bus and EventType is not None:
+            try:
+                event_bus = get_event_bus()
+                from engine.events.event_bus import Event
+                event = Event(
+                    event_type=EventType.EVIDENCE_RECORDED,
+                    timestamp=None,  # Will be set in __post_init__
+                    trace_id=trace_id,
+                    data={
+                        "critic": critic,
+                        "severity": severity,
+                        "rule_id": rule_id,
+                    },
+                )
+                await event_bus.publish(event)
+            except Exception as exc:
+                logger.debug(f"Failed to publish evidence event: {exc}")
 
         return record
 
