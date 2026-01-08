@@ -212,35 +212,6 @@ def _build_precedent_layer(
     return retriever
 
 
-class HeuristicDetector:
-    """
-    Lightweight detector to reduce empty detector registry: scans for coercion
-    and harmful patterns and returns DetectorSignal-like dicts.
-    """
-
-    def __init__(self, name: str, patterns):
-        self.name = name
-        self.patterns = patterns
-
-    async def detect(self, text: str, context: dict):
-        import re
-
-        matches = []
-        for pat in self.patterns:
-            regex = re.compile(pat, re.IGNORECASE)
-            hits = regex.findall(text)
-            if hits:
-                matches.extend(hits[:3])
-        violation = bool(matches)
-        return {
-            "violation": violation,
-            "severity": "S2" if violation else "S0",
-            "description": f"{self.name} detected" if violation else "clear",
-            "confidence": 0.6 if violation else 0.0,
-            "metadata": {"matches": matches},
-        }
-
-
 def build_eleanor_engine_v8(
     *,
     llm_fn=None,
@@ -386,17 +357,11 @@ def build_eleanor_engine_v8(
         flush_interval=evidence_flush_interval,
     )
 
-    detectors = {
-        "coercion": HeuristicDetector(
-            "coercion", [r"no choice", r"you must", r"or else", r"cannot refuse"]
-        ),
-        "hallucination": HeuristicDetector("hallucination", [r"\bmake up\b", r"\binvented\b"]),
-        "privacy": HeuristicDetector(
-            "privacy", [r"reveal personal", r"publish.*private", r"share.*medical"]
-        ),
-    }
-
-    detector_engine = DetectorEngineV8(detectors=cast(Dict[str, Any], detectors))
+    # Detectors
+    # Production posture: use the real detector engine (auto-loads built-in detectors).
+    # No heuristic stubs in the core runtime.
+    detector_timeout = float(os.getenv("DETECTOR_TIMEOUT_SECONDS", "2.0"))
+    detector_engine = DetectorEngineV8(timeout_seconds=detector_timeout)
 
     uncertainty = UncertaintyEngineV8() if UncertaintyEngineV8 is not None else None
     aggregator = AggregatorV8()
