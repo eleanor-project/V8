@@ -70,9 +70,26 @@ from api.middleware.rate_limit import (
     check_rate_limit,
 )
 from api.middleware.security_headers import SecurityHeadersMiddleware
+from api.middleware.user_rate_limit import UserRateLimiter
+from api.middleware.fingerprinting import RequestFingerprinter
 
 # Logging
 from engine.logging_config import configure_logging, get_logger, log_deliberation
+
+# Enhanced observability
+try:
+    from engine.observability.business_metrics import record_engine_result, record_decision
+    from engine.observability.correlation import CorrelationContext, get_correlation_id
+    from engine.observability.cost_tracking import record_llm_call, extract_token_usage
+    OBSERVABILITY_AVAILABLE = True
+except ImportError:
+    OBSERVABILITY_AVAILABLE = False
+    record_engine_result = None
+    record_decision = None
+    CorrelationContext = None
+    get_correlation_id = None
+    record_llm_call = None
+    extract_token_usage = None
 
 # Engine bootstrap
 from api.bootstrap import (
@@ -1070,6 +1087,17 @@ async def deliberate(
     """
     start_time = time.time()
     trace_id = payload.trace_id or str(uuid.uuid4())
+    
+    # Set correlation ID
+    if CorrelationContext:
+        correlation_id = get_correlation_id()
+        CorrelationContext.set(correlation_id)
+        trace_id = trace_id or correlation_id
+    
+    # Request fingerprinting
+    fingerprinter = RequestFingerprinter()
+    fingerprint = fingerprinter.fingerprint(request)
+    fingerprint_components = fingerprinter.get_fingerprint_components(request)
 
     logger.info(
         "deliberation_started",
@@ -1167,6 +1195,14 @@ async def deliberate(
             escalated=final_assessment == "requires_human_review",
             raw_decision=final_decision,
         )
+        
+        # Record business metrics
+        if OBSERVABILITY_AVAILABLE and record_engine_result:
+            try:
+                record_engine_result(response_payload)
+                record_decision(final_decision, final_assessment)
+            except Exception as exc:
+                logger.debug(f"Failed to record metrics: {exc}")
 
         response_payload = {
             **normalized,

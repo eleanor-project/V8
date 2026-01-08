@@ -20,6 +20,24 @@ from engine.schemas.pipeline_types import (
 )
 from engine.utils.circuit_breaker import CircuitBreakerOpen
 
+# Enhanced observability
+try:
+    from engine.observability.business_metrics import (
+        record_engine_result,
+        set_degraded_components,
+    )
+    from engine.observability.correlation import CorrelationContext
+    from engine.events.event_bus import get_event_bus, DecisionMadeEvent, EventType
+    OBSERVABILITY_AVAILABLE = True
+except ImportError:
+    OBSERVABILITY_AVAILABLE = False
+    record_engine_result = None
+    set_degraded_components = None
+    CorrelationContext = None
+    get_event_bus = None
+    DecisionMadeEvent = None
+    EventType = None
+
 
 async def run_engine(
     engine: Any,
@@ -281,6 +299,10 @@ async def run_engine(
             "degraded_components": degraded_components,
             "is_degraded": True,
         }
+    
+    # Record degraded components metric
+    if OBSERVABILITY_AVAILABLE and set_degraded_components:
+        set_degraded_components(len(degraded_components))
 
     evidence_count = len(evidence_records) if evidence_records else None
 
@@ -331,7 +353,7 @@ async def run_engine(
             evidence_references=[r.dict() if hasattr(r, "dict") else r for r in forensic_buffer],
         )
 
-        return EngineResult(
+        result = EngineResult(
             trace_id=base_result.trace_id,
             output_text=base_result.output_text,
             model_info=base_result.model_info,
@@ -344,5 +366,35 @@ async def run_engine(
             is_degraded=base_result.is_degraded,
             forensic=forensic_data,
         )
+        
+        # Record metrics and publish events
+        if OBSERVABILITY_AVAILABLE:
+            try:
+                result_dict = result.model_dump() if hasattr(result, "model_dump") else result.dict()
+                if record_engine_result:
+                    record_engine_result(result_dict)
+                
+                # Publish decision event
+                if get_event_bus:
+                    event_bus = get_event_bus()
+                    decision = aggregated.get("decision", "unknown")
+                    confidence = aggregated.get("confidence", 0.0)
+                    escalated = bool(result_dict.get("human_review_required") or 
+                                   any("escalate" in str(v).lower() for v in result_dict.get("critic_findings", {}).values()))
+                    
+                    event = DecisionMadeEvent(
+                        event_type=EventType.DECISION_MADE,
+                        timestamp=None,  # Will be set in __post_init__
+                        trace_id=trace_id,
+                        data={"degraded_components": degraded_components},
+                        decision=decision,
+                        confidence=float(confidence),
+                        escalated=escalated,
+                    )
+                    await event_bus.publish(event)
+            except Exception as exc:
+                logger.debug(f"Failed to record metrics or publish event: {exc}")
+        
+        return result
 
     raise ValueError(f"Invalid detail_level: {level}")
