@@ -198,7 +198,6 @@ async def run_single_critic(
                 violations = list(evaluation_result.get("violations", []))
                 event = CriticEvaluatedEvent(
                     event_type=EventType.CRITIC_EVALUATED,
-                    timestamp=None,  # Will be set in __post_init__
                     trace_id=trace_id,
                     data={"duration_ms": duration_ms},
                     critic_name=name,
