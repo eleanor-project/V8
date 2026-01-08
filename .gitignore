@@ -86,3 +86,4 @@ docker-compose.override.yml
 # Monitoring
 prometheus/
 grafana/
+*.zip
