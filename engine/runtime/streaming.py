@@ -409,6 +409,31 @@ async def run_stream_engine(
         "trace_id": trace_id,
         "data": aggregated,
     }
+
+    # Traffic Light governance (observer hook) — run_stream()
+    governance_meta = None
+    if getattr(engine, 'traffic_light_governance', None) is not None:
+        try:
+            governance_meta = await engine.traffic_light_governance.apply(
+                trace_id=trace_id,
+                text=text,
+                context=context,
+                aggregated=aggregated,
+                precedent_data=precedent_data,
+                uncertainty_data=uncertainty_data,
+            )
+        except Exception as exc:
+            governance_meta = {'error': str(exc)}
+
+        if isinstance(aggregated, dict) and governance_meta:
+            aggregated['governance_meta'] = governance_meta
+
+        yield {
+            'event': 'governance',
+            'trace_id': trace_id,
+            'data': governance_meta,
+        }
+
     try:
         case = engine._build_case_for_review(
             trace_id=trace_id,

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eleanor.ai/schemas/case.packet.schema.json",
+  "title": "ELEANOR Case Packet (Reviewer Input)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["case_id", "context", "signals", "candidate_precedents", "request_summary"],
+  "properties": {
+    "case_id": { "type": "string" },
+    "request_summary": { "type": "string" },
+
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jurisdiction", "product", "workflow", "user_role"],
+      "properties": {
+        "jurisdiction": { "type": "string" },
+        "product": { "type": "string" },
+        "workflow": { "type": "string" },
+        "user_role": { "type": "string" }
+      }
+    },
+
+    "signals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route", "risk_domain", "coverage_score"],
+      "properties": {
+        "route": { "type": "string", "enum": ["amber", "red"] },
+        "risk_domain": { "type": "string" },
+        "coverage_score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "uncertainty_telemetry": { "type": ["object", "null"] },
+        "uncertainty_proxy": { "type": ["object", "null"] }
+      }
+    },
+
+    "candidate_precedents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["precedent_id", "version", "match_score", "binding_level", "summary"],
+        "properties": {
+          "precedent_id": { "type": "string" },
+          "version": { "type": "integer" },
+          "match_score": { "type": "number", "minimum": 0, "maximum": 1 },
+          "binding_level": { "type": "string", "enum": ["hard", "soft", "advisory"] },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+
+    "explicitly_excluded": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Never include critic ensemble internals here."
+    }
+  }
+}
