@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eleanor.ai/schemas/precedent.card.schema.json",
+  "title": "ELEANOR Precedent Card (Hybrid Core + Overlay)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "precedent_id",
+    "version",
+    "status",
+    "binding_level",
+    "scope",
+    "domains",
+    "risk_tier",
+    "core_rights_tags",
+    "triggers",
+    "decision",
+    "rationale",
+    "examples",
+    "escalation",
+    "owner",
+    "audit"
+  ],
+  "properties": {
+    "precedent_id": {
+      "type": "string",
+      "pattern": "^P-[0-9]{5,}$",
+      "description": "Stable ID across versions (e.g., P-00882)."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic version number for this precedent_id."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "active", "deprecated"],
+      "description": "Only active precedents are eligible at runtime."
+    },
+    "binding_level": {
+      "type": "string",
+      "enum": ["hard", "soft", "advisory"],
+      "description": "Hard precedents act like constitutional constraints."
+    },
+    "title": { "type": "string", "minLength": 5, "maxLength": 160 },
+    "summary": { "type": "string", "maxLength": 600 },
+
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jurisdiction", "applies_to"],
+      "properties": {
+        "jurisdiction": {
+          "type": "string",
+          "description": "Policy jurisdiction / regime (e.g., US-CA, EU, Org-Policy-Set-A)."
+        },
+        "applies_to": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["products", "workflows", "user_roles"],
+          "properties": {
+            "products": { "type": "array", "items": { "type": "string" } },
+            "workflows": { "type": "array", "items": { "type": "string" } },
+            "user_roles": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+
+    "domains": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+
+    "risk_tier": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Risk tier for this precedent’s typical application context."
+    },
+
+    "core_rights_tags": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "dignity",
+          "autonomy_agency",
+          "non_discrimination_fairness",
+          "privacy",
+          "informed_consent",
+          "due_process_contestability",
+          "transparency_explainability",
+          "safety_precaution",
+          "accountability_auditability"
+        ]
+      }
+    },
+
+    "overlays": {
+      "type": "array",
+      "description": "Optional citations / references that map to core_rights_tags (does not change runtime vocabulary).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["regime", "refs"],
+        "properties": {
+          "regime": {
+            "type": "string",
+            "enum": ["UDHR", "UNESCO", "OrgPolicy", "Regulatory", "Other"]
+          },
+          "refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "label"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "e.g., UDHR-Art-12, UNESCO-Value-xx, POL-123"
+                },
+                "label": { "type": "string", "description": "Human-readable citation/title." },
+                "url": { "type": "string", "format": "uri" }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "triggers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trigger_types", "trigger_patterns"],
+      "properties": {
+        "trigger_types": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": ["uncertainty", "rights_conflict", "safety_risk", "legal_ambiguity", "novelty", "policy_violation"]
+          }
+        },
+        "trigger_patterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Phrases/regex-like hints used for high-precision matching."
+        }
+      }
+    },
+
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome"],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["permit", "modify", "refuse", "route_to_human"]
+        },
+        "conditions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Required constraints when outcome is permit/modify."
+        },
+        "must_include": { "type": "array", "items": { "type": "string" } },
+        "must_not": { "type": "array", "items": { "type": "string" } },
+        "required_checks": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "rationale": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "bullet_points"],
+      "properties": {
+        "summary": { "type": "string", "maxLength": 800 },
+        "bullet_points": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
+    },
+
+    "examples": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["green", "amber", "red"],
+      "properties": {
+        "green": { "type": "array", "items": { "type": "string" } },
+        "amber": { "type": "array", "items": { "type": "string" } },
+        "red": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "escalation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_when"],
+      "properties": {
+        "required_when": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "queue": { "type": "string", "description": "e.g., human-review-general, legal-review, safety-review" }
+      }
+    },
+
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decided_by", "decided_role", "date_decided"],
+      "properties": {
+        "decided_by": { "type": "string", "description": "Human identity (or role-based pseudonym)." },
+        "decided_role": { "type": "string", "description": "Reviewer role (e.g., Policy Steward, Ethics Lead)." },
+        "date_decided": { "type": "string", "format": "date" }
+      }
+    },
+
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "next_review_date": { "type": "string", "format": "date" },
+        "sunset_date": { "type": ["string", "null"], "format": "date" }
+      }
+    },
+
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["created_at", "created_by", "hash", "supersedes"],
+      "properties": {
+        "created_at": { "type": "string", "format": "date-time" },
+        "created_by": { "type": "string", "description": "System identity that recorded the precedent." },
+        "hash": { "type": "string", "description": "Content hash for tamper-evidence." },
+        "supersedes": { "type": ["string", "null"], "description": "Prior version reference, if any." }
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "case_id": "CASE-2026-0001",
+  "request_summary": "User asked for guidance on sharing identifiable medical records during a public health emergency.",
+  "context": {
+    "jurisdiction": "US-CA",
+    "product": "*",
+    "workflow": "*",
+    "user_role": "*"
+  },
+  "signals": {
+    "route": "amber",
+    "risk_domain": "health",
+    "coverage_score": 0.18,
+    "uncertainty_telemetry": null,
+    "uncertainty_proxy": {
+      "divergence_score": 0.41
+    }
+  },
+  "candidate_precedents": [
+    {
+      "precedent_id": "P-00882",
+      "version": 1,
+      "match_score": 0.18,
+      "binding_level": "hard",
+      "summary": "Emergency disclosure allowed only with minimization + audit."
+    }
+  ],
+  "explicitly_excluded": [
+    "critic_ensemble_outputs",
+    "critic_internal_state",
+    "raw_token_logprobs"
+  ]
+}

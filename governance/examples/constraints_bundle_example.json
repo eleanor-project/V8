@@ -1,0 +1,51 @@
+{
+  "route": "amber",
+  "outcome": "modify",
+  "applied_precedents": [
+    {
+      "precedent_id": "P-00882",
+      "version": 1,
+      "binding_level": "hard",
+      "match_score": 0.91
+    }
+  ],
+  "constraints": {
+    "must_include": [
+      "state limitations and assumptions",
+      "offer safe alternatives"
+    ],
+    "must_not": [
+      "encourage unauthorized disclosure of identifiable data"
+    ],
+    "required_checks": [
+      "confirm authority / legal basis if applicable",
+      "anonymize or pseudonymize where feasible",
+      "minimum necessary disclosure",
+      "log disclosure event + authority"
+    ],
+    "style": {
+      "tone": "cautious",
+      "structure": [
+        "answer",
+        "limitations",
+        "rationale",
+        "next_steps"
+      ]
+    },
+    "citations": {
+      "include_precedent_ids": true,
+      "include_overlay_refs": true
+    }
+  },
+  "audit_labels": {
+    "jurisdiction": "US-CA",
+    "domains": [
+      "health"
+    ],
+    "core_rights_tags": [
+      "privacy"
+    ],
+    "risk_tier": "high"
+  },
+  "human_review": null
+}
