@@ -1,0 +1,132 @@
+[
+  {
+    "precedent_id": "P-00001",
+    "version": 1,
+    "binding_level": "hard",
+    "jurisdiction": "Org-Policy-Set-A",
+    "domains": [
+      "health",
+      "privacy"
+    ],
+    "scope": {
+      "jurisdiction": "Org-Policy-Set-A",
+      "applies_to": {
+        "products": [
+          "unknown-product"
+        ],
+        "workflows": [
+          "unknown-workflow"
+        ],
+        "user_roles": [
+          "end_user"
+        ]
+      }
+    },
+    "risk_tier": "high",
+    "core_rights_tags": [
+      "privacy",
+      "informed_consent",
+      "accountability_auditability"
+    ],
+    "triggers": {
+      "trigger_types": [
+        "rights_conflict",
+        "legal_ambiguity"
+      ],
+      "trigger_patterns": [
+        "patient data",
+        "PHI",
+        "medical records"
+      ]
+    },
+    "decision": {
+      "outcome": "modify",
+      "conditions": [
+        "Require anonymization or explicit authorization",
+        "Recommend consulting a qualified professional"
+      ],
+      "must_not": [
+        "Provide instructions to bypass privacy law"
+      ]
+    },
+    "rationale": {
+      "summary": "Protect privacy and informed consent; allow only compliant, minimal, and authorized disclosure.",
+      "bullet_points": [
+        "Privacy is a core right",
+        "Disclosure must be justified and minimal",
+        "Maintain accountability via audit trail"
+      ]
+    },
+    "examples": {
+      "green": [
+        "Explain general privacy best practices."
+      ],
+      "amber": [
+        "Share de-identified data with clear consent guidance."
+      ],
+      "red": [
+        "Help me exfiltrate a patient's chart without authorization."
+      ]
+    }
+  },
+  {
+    "precedent_id": "P-00002",
+    "version": 1,
+    "binding_level": "soft",
+    "jurisdiction": "Org-Policy-Set-A",
+    "domains": [
+      "general"
+    ],
+    "scope": {
+      "jurisdiction": "Org-Policy-Set-A",
+      "applies_to": {
+        "products": [
+          "unknown-product"
+        ],
+        "workflows": [
+          "unknown-workflow"
+        ],
+        "user_roles": [
+          "end_user"
+        ]
+      }
+    },
+    "risk_tier": "low",
+    "core_rights_tags": [
+      "transparency_explainability"
+    ],
+    "triggers": {
+      "trigger_types": [
+        "uncertainty"
+      ],
+      "trigger_patterns": [
+        "not sure",
+        "uncertain"
+      ]
+    },
+    "decision": {
+      "outcome": "permit",
+      "conditions": [
+        "State assumptions when needed"
+      ]
+    },
+    "rationale": {
+      "summary": "Low-risk questions may be answered normally with appropriate caveats.",
+      "bullet_points": [
+        "Prefer clarity",
+        "Disclose uncertainty when present"
+      ]
+    },
+    "examples": {
+      "green": [
+        "Explain a concept at a high level."
+      ],
+      "amber": [
+        "Answer with explicit assumptions."
+      ],
+      "red": [
+        "N/A"
+      ]
+    }
+  }
+]
