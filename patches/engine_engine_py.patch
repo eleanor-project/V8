@@ -1,0 +1,99 @@
+--- a/engine/engine.py
++++ b/engine/engine.py
+@@ -8,6 +8,7 @@
+ """
+ 
+ import asyncio
++import os
+ import importlib
+ import inspect
+ import uuid
+@@ -93,6 +94,11 @@
+     timeout_seconds: float = 10.0
+ 
+     enable_reflection: bool = True
++
++    # Traffic Light governance hook (external governor; sanctity-preserving)
++    enable_traffic_light_governance: bool = True
++    traffic_light_router_config_path: str = 'governance/router_config.yaml'
++    governance_events_jsonl_path: str | None = 'governance_events.jsonl'
+     enable_drift_check: bool = True
+     enable_precedent_analysis: bool = True
+ 
+@@ -226,6 +232,20 @@
+         # Diagnostics
+         self.timings: Dict[str, float] = {}
+         self.router_diagnostics: Dict[str, Any] = {}
++
++        # Traffic Light governance hook (external governor).
++        # This is an *observer* hook by default: it does not override critic outcomes.
++        try:
++            from engine.integrations.traffic_light_governance import TrafficLightGovernanceHook
++            self.traffic_light_governance = TrafficLightGovernanceHook.from_env(
++                enabled=bool(getattr(self.config, 'enable_traffic_light_governance', True)),
++                router_config_path=str(getattr(self.config, 'traffic_light_router_config_path', 'governance/router_config.yaml')),
++                events_jsonl_path=getattr(self.config, 'governance_events_jsonl_path', 'governance_events.jsonl'),
++                mode='observe',
++            )
++        except Exception:
++            self.traffic_light_governance = None
++
+ 
+         print(f"[ELEANOR ENGINE] Initialized V8 engine {self.instance_id}")
+ 
+@@ -496,6 +516,24 @@
+             uncertainty_data=uncertainty_data,
+         )
+ 
++        # Traffic Light governance (observer hook) — run()
++        governance_meta = None
++        if getattr(self, 'traffic_light_governance', None) is not None:
++            try:
++                governance_meta = await self.traffic_light_governance.apply(
++                    trace_id=trace_id,
++                    text=text,
++                    context=context,
++                    aggregated=aggregated,
++                    precedent_data=precedent_data,
++                    uncertainty_data=uncertainty_data,
++                )
++            except Exception as exc:
++                governance_meta = {'error': str(exc)}
++
++            if isinstance(aggregated, dict) and governance_meta:
++                aggregated['governance_meta'] = governance_meta
++
+         # Timing
+         pipeline_end = asyncio.get_event_loop().time()
+         self.timings["total_pipeline_ms"] = (pipeline_end - pipeline_start) * 1000
+@@ -670,6 +708,30 @@
+             "data": aggregated,
+         }
+ 
++        # Traffic Light governance (observer hook) — run_stream()
++        governance_meta = None
++        if getattr(self, 'traffic_light_governance', None) is not None:
++            try:
++                governance_meta = await self.traffic_light_governance.apply(
++                    trace_id=trace_id,
++                    text=text,
++                    context=context,
++                    aggregated=aggregated,
++                    precedent_data=precedent_data,
++                    uncertainty_data=uncertainty_data,
++                )
++            except Exception as exc:
++                governance_meta = {'error': str(exc)}
++
++            if isinstance(aggregated, dict) and governance_meta:
++                aggregated['governance_meta'] = governance_meta
++
++        yield {
++            'event': 'governance',
++            'trace_id': trace_id,
++            'data': governance_meta,
++        }
++
+         # Final Output
+         final_output = aggregated.get("final_output", "") if isinstance(aggregated, dict) else ""
+         if not final_output:
