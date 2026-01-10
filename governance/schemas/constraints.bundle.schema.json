@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eleanor.ai/schemas/constraints.bundle.schema.json",
+  "title": "ELEANOR Constraints Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["route", "outcome", "applied_precedents", "constraints", "audit_labels"],
+  "properties": {
+    "route": { "type": "string", "enum": ["green", "amber", "red"] },
+    "outcome": { "type": "string", "enum": ["permit", "modify", "refuse", "route_to_human"] },
+
+    "applied_precedents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["precedent_id", "version", "binding_level", "match_score"],
+        "properties": {
+          "precedent_id": { "type": "string" },
+          "version": { "type": "integer" },
+          "binding_level": { "type": "string", "enum": ["hard", "soft", "advisory"] },
+          "match_score": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["must_include", "must_not", "required_checks", "style", "citations"],
+      "properties": {
+        "must_include": { "type": "array", "items": { "type": "string" } },
+        "must_not": { "type": "array", "items": { "type": "string" } },
+        "required_checks": { "type": "array", "items": { "type": "string" } },
+
+        "style": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tone", "structure"],
+          "properties": {
+            "tone": { "type": "string", "enum": ["neutral", "supportive", "firm", "cautious"] },
+            "structure": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["answer", "limitations", "rationale", "next_steps"] }
+            }
+          }
+        },
+
+        "citations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["include_precedent_ids", "include_overlay_refs"],
+          "properties": {
+            "include_precedent_ids": { "type": "boolean" },
+            "include_overlay_refs": { "type": "boolean" }
+          }
+        }
+      }
+    },
+
+    "audit_labels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jurisdiction", "domains", "core_rights_tags", "risk_tier"],
+      "properties": {
+        "jurisdiction": { "type": "string" },
+        "domains": { "type": "array", "items": { "type": "string" } },
+        "core_rights_tags": { "type": "array", "items": { "type": "string" } },
+        "risk_tier": { "type": "string", "enum": ["low", "medium", "high"] }
+      }
+    },
+
+    "human_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": { "type": "boolean" },
+        "queue": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    }
+  }
+}

@@ -94,7 +94,7 @@ class ErrorRecoveryStrategy(ABC):
         Raises:
             Exception: If recovery fails
         """
-        pass
+        ...
 
 
 class RetryStrategy(ErrorRecoveryStrategy):

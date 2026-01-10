@@ -2316,6 +2316,7 @@ class FeatureFlagsResponse(BaseModel):
     streaming_governance: bool
     adaptive_critic_weighting: bool
     temporal_precedent_evolution: bool
+    # Legacy feature flags
     reflection: bool
     drift_check: bool
     precedent_analysis: bool
