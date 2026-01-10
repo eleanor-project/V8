@@ -189,8 +189,20 @@ def initialize_engine(
     engine._shutdown_event = asyncio.Event()
     engine._cleanup_tasks = []
     
-    # Initialize batch critic processor if available
-    if ENHANCEMENTS_AVAILABLE and BatchCriticProcessor:
+    # Initialize batch critic processor - will be overridden by GPU batcher if enabled
+    # GPU batching takes precedence, so only initialize if GPU won't override
+    engine.critic_batcher = None
+    # Check if GPU batching will be used (check device directly since gpu_available set later)
+    gpu_batching_will_override = (
+        settings and 
+        getattr(settings, "gpu", None) and 
+        settings.gpu.critics.gpu_batching and 
+        settings.gpu.critics.use_gpu and
+        engine.gpu_manager and 
+        engine.gpu_manager.device is not None
+    )
+    
+    if not gpu_batching_will_override and ENHANCEMENTS_AVAILABLE and BatchCriticProcessor:
         try:
             batch_config = BatchCriticConfig(enabled=True)
             engine.critic_batcher = BatchCriticProcessor(config=batch_config)
@@ -198,8 +210,6 @@ def initialize_engine(
         except Exception as exc:
             logger.warning(f"Failed to initialize batch processor: {exc}")
             engine.critic_batcher = None
-    else:
-        engine.critic_batcher = None
     
     # Initialize cache warmer if available
     if ENHANCEMENTS_AVAILABLE and CacheWarmer:
@@ -281,7 +291,7 @@ def initialize_engine(
     else:
         engine.semaphore = asyncio.Semaphore(engine.config.max_concurrency)
 
-    engine.critic_batcher = None
+    # GPU-based critic batching takes precedence over enhancement-based batching
     if settings and getattr(settings, "gpu", None):
         if settings.gpu.critics.gpu_batching and settings.gpu.critics.use_gpu:
             if engine.gpu_manager and engine.gpu_available:
@@ -291,6 +301,9 @@ def initialize_engine(
                     logger.warning("gpu_batch_processor_unavailable", extra={"error": str(exc)})
                     record_dependency_failure("engine.gpu.batch_processor", exc)
                 else:
+                    # Override any previously set critic_batcher with GPU version
+                    if engine.critic_batcher is not None:
+                        logger.info("gpu_critic_batcher_overriding_enhancement_batcher")
                     engine.critic_batcher = BatchProcessor(
                         process_fn=engine._process_critic_batch,
                         device=engine.gpu_manager.get_device(),
@@ -299,5 +312,23 @@ def initialize_engine(
                         min_batch_size=1,
                         dynamic_sizing=settings.gpu.batching.dynamic_batching,
                     )
+                    logger.info("gpu_critic_batcher_initialized", extra={
+                        "device": str(engine.gpu_manager.device),
+                        "batch_size": settings.gpu.critics.batch_size,
+                    })
+
+    # Traffic Light governance hook (external governor).
+    # This is an *observer* hook by default: it does not override critic outcomes.
+    engine.traffic_light_governance = None
+    try:
+        from engine.integrations.traffic_light_governance import TrafficLightGovernanceHook
+        engine.traffic_light_governance = TrafficLightGovernanceHook.from_env(
+            enabled=bool(getattr(engine.config, 'enable_traffic_light_governance', True)),
+            router_config_path=str(getattr(engine.config, 'traffic_light_router_config_path', 'governance/router_config.yaml')),
+            events_jsonl_path=getattr(engine.config, 'governance_events_jsonl_path', 'governance_events.jsonl'),
+            mode='observe',
+        )
+    except Exception as exc:
+        logger.debug(f"Traffic Light governance hook not initialized: {exc}")
 
     print(f"[ELEANOR ENGINE] Initialized V8 engine {engine.instance_id}")

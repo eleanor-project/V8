@@ -1061,6 +1061,7 @@ const AdminPanel = () => {
       <div style={{ marginTop: 20 }}>
         <FeatureFlagsPanel />
       </div>
+<<<<<<< HEAD
       <div style={{ marginTop: 20 }}>
         <div className="row" style={{ marginBottom: 12, gap: 8 }}>
           <button
@@ -1093,6 +1094,8 @@ const AdminPanel = () => {
         {advancedTab === "evolution" && <TemporalEvolutionPanel />}
         {advancedTab === "weighting" && <AdaptiveWeightingPanel />}
       </div>
+=======
+>>>>>>> origin/eleanor/production-hardening
     </div>
   );
 };

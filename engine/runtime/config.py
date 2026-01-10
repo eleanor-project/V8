@@ -24,6 +24,11 @@ class EngineConfig(BaseModel):
     enable_drift_check: bool = True
     enable_precedent_analysis: bool = True
 
+    # Traffic Light governance hook (external governor; sanctity-preserving)
+    enable_traffic_light_governance: bool = True
+    traffic_light_router_config_path: str = 'governance/router_config.yaml'
+    governance_events_jsonl_path: str | None = 'governance_events.jsonl'
+
     jsonl_evidence_path: Optional[str] = "evidence.jsonl"
 
     @classmethod
