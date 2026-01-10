@@ -93,6 +93,34 @@ When `enable_explainable_governance` is enabled:
 - Use `get_explanation_for_result()` helper function to generate explanations
 - Explanations can be included in API responses via optional query parameter
 
+### API Integration
+
+#### Include Explanation in Deliberate/Evaluate
+
+Add `include_explanation=true` query parameter:
+
+```bash
+curl -X POST "http://localhost:8000/deliberate?include_explanation=true&explanation_detail=detailed" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"input": "Should I approve this loan?"}'
+```
+
+#### Get Explanation for Existing Trace
+
+```bash
+curl -X GET "http://localhost:8000/explanation/{trace_id}?detail_level=interactive" \
+  -H "Authorization: Bearer <token>"
+```
+
+Response includes:
+- `decision`: GREEN/AMBER/RED
+- `primary_factors`: List of causal factors
+- `counterfactuals`: What would need to change
+- `critic_contributions`: Which critics influenced the decision
+- `human_readable`: Formatted markdown explanation
+- `interactive_data`: Structured data for UI visualization (if detail_level=interactive)
+
 ---
 
 ## 2. Semantic Cache
