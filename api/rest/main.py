@@ -2429,6 +2429,281 @@ async def update_feature_flags(flags: FeatureFlagsUpdate):
 
 
 # ---------------------------------------------
+# Advanced Features Endpoints
+# ---------------------------------------------
+
+
+@app.get("/admin/precedent-evolution/analytics", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def get_precedent_evolution_analytics(case_id: Optional[str] = None):
+    """Get analytics on precedent evolution."""
+    try:
+        if engine is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not available"
+            )
+        
+        tracker = getattr(engine, "temporal_evolution_tracker", None)
+        if not tracker:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Temporal Evolution Tracking not enabled. Enable via feature flag."
+            )
+        
+        analytics = tracker.get_evolution_analytics(case_id=case_id)
+        return analytics
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Failed to get precedent evolution analytics: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get analytics: {exc}",
+        )
+
+
+@app.get("/admin/precedent-evolution/{case_id}/drift", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def detect_precedent_drift(case_id: str):
+    """Detect temporal drift for a specific precedent."""
+    try:
+        if engine is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not available"
+            )
+        
+        tracker = getattr(engine, "temporal_evolution_tracker", None)
+        if not tracker:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Temporal Evolution Tracking not enabled. Enable via feature flag."
+            )
+        
+        drift_info = tracker.detect_temporal_drift(case_id)
+        return drift_info
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Failed to detect drift: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to detect drift: {exc}",
+        )
+
+
+@app.get("/admin/precedent-evolution/recommendations", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def get_deprecation_recommendations(min_versions: int = 3):
+    """Get deprecation recommendations for precedents."""
+    try:
+        if engine is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not available"
+            )
+        
+        tracker = getattr(engine, "temporal_evolution_tracker", None)
+        if not tracker:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Temporal Evolution Tracking not enabled. Enable via feature flag."
+            )
+        
+        recommendations = tracker.recommend_deprecations(min_versions=min_versions)
+        return {"recommendations": recommendations, "count": len(recommendations)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Failed to get recommendations: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get recommendations: {exc}",
+        )
+
+
+@app.post("/admin/precedent-evolution/{case_id}/lifecycle", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def update_precedent_lifecycle(
+    case_id: str,
+    state: str,  # "active", "deprecated", "superseded", "archived"
+    superseded_by: Optional[str] = None,
+):
+    """Update the lifecycle state of a precedent."""
+    try:
+        if engine is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not available"
+            )
+        
+        tracker = getattr(engine, "temporal_evolution_tracker", None)
+        if not tracker:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Temporal Evolution Tracking not enabled. Enable via feature flag."
+            )
+        
+        from engine.precedent.temporal_evolution import PrecedentLifecycleState
+        
+        try:
+            lifecycle_state = PrecedentLifecycleState(state.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid state: {state}. Must be one of: active, deprecated, superseded, archived"
+            )
+        
+        success = tracker.set_lifecycle_state(
+            case_id=case_id,
+            state=lifecycle_state,
+            superseded_by=superseded_by if lifecycle_state == PrecedentLifecycleState.SUPERSEDED else None
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Precedent {case_id} not found"
+            )
+        
+        return {"success": True, "case_id": case_id, "new_state": state}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Failed to update lifecycle: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update lifecycle: {exc}",
+        )
+
+
+@app.get("/admin/adaptive-weighting/performance", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def get_adaptive_weighting_performance():
+    """Get performance report for adaptive critic weighting."""
+    try:
+        if engine is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not available"
+            )
+        
+        adaptive_weighting = getattr(engine, "adaptive_weighting", None)
+        if not adaptive_weighting:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Adaptive Critic Weighting not enabled. Enable via feature flag."
+            )
+        
+        report = adaptive_weighting.get_performance_report()
+        return report
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Failed to get performance report: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get performance report: {exc}",
+        )
+
+
+@app.get("/admin/adaptive-weighting/weights", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def get_critic_weights():
+    """Get current critic weights."""
+    try:
+        if engine is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not available"
+            )
+        
+        adaptive_weighting = getattr(engine, "adaptive_weighting", None)
+        if not adaptive_weighting:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Adaptive Critic Weighting not enabled. Enable via feature flag."
+            )
+        
+        weights = adaptive_weighting.get_weights()
+        return {"weights": weights}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Failed to get weights: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get weights: {exc}",
+        )
+
+
+@app.post("/admin/adaptive-weighting/update", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def update_critic_weights():
+    """Trigger weight update based on recent feedback."""
+    try:
+        if engine is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not available"
+            )
+        
+        adaptive_weighting = getattr(engine, "adaptive_weighting", None)
+        if not adaptive_weighting:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Adaptive Critic Weighting not enabled. Enable via feature flag."
+            )
+        
+        updates = adaptive_weighting.update_weights()
+        return {
+            "success": True,
+            "updates_count": len(updates),
+            "updates": [
+                {
+                    "critic_name": u.critic_name,
+                    "old_weight": u.old_weight,
+                    "new_weight": u.new_weight,
+                    "update_reason": u.update_reason,
+                    "confidence": u.confidence,
+                }
+                for u in updates
+            ],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Failed to update weights: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update weights: {exc}",
+        )
+
+
+@app.post("/admin/adaptive-weighting/reset", tags=["Admin"])
+@require_role(ADMIN_ROLE)
+async def reset_critic_weights():
+    """Reset critic weights to default uniform weights."""
+    try:
+        if engine is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Engine not available"
+            )
+        
+        adaptive_weighting = getattr(engine, "adaptive_weighting", None)
+        if not adaptive_weighting:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Adaptive Critic Weighting not enabled. Enable via feature flag."
+            )
+        
+        adaptive_weighting.reset_weights()
+        return {"success": True, "weights": adaptive_weighting.get_weights()}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Failed to reset weights: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to reset weights: {exc}",
+        )
+
+
+# ---------------------------------------------
 # Development Server Entry Point
 # ---------------------------------------------
 
