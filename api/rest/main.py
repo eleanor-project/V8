@@ -1074,6 +1074,8 @@ async def deliberate(
     user: str = Depends(require_authenticated_user),
     _size_guard: None = Depends(check_content_length),
     _rate_limit: None = Depends(check_rate_limit),
+    include_explanation: bool = False,
+    explanation_detail: str = "summary",
 ):
     """
     Run the full ELEANOR V8 deliberation pipeline.
@@ -1258,6 +1260,28 @@ async def deliberate(
             else None,
         }
         
+        # Add explainable governance explanation if requested and enabled
+        if include_explanation and hasattr(engine, "explainable_governance"):
+            try:
+                from engine.core.feature_integration import get_explanation_for_result
+                explanation = get_explanation_for_result(
+                    engine,
+                    {
+                        **normalized,
+                        "aggregated": aggregated,
+                        "decision": final_assessment,
+                    },
+                    detail_level=explanation_detail
+                )
+                if explanation:
+                    response_payload["explanation"] = explanation
+            except Exception as exc:
+                logger.warning(
+                    "explanation_generation_failed",
+                    extra={"trace_id": trace_id, "error": str(exc)},
+                    exc_info=True
+                )
+        
         # Record business metrics (after response_payload is defined)
         if OBSERVABILITY_AVAILABLE and record_engine_result:
             try:
@@ -1352,6 +1376,8 @@ async def evaluate(
     payload: EvaluateRequest,
     user: str = Depends(require_authenticated_user),
     _rate_limit: None = Depends(check_rate_limit),
+    include_explanation: bool = False,
+    explanation_detail: str = "summary",
 ):
     """
     Evaluate a provided model output against the Engine contract.
@@ -2199,6 +2225,81 @@ async def register_adapter(adapter: AdapterRegistration):
         "available_adapters": list(adapters.keys()),
         "policy": router.policy,
     }
+
+
+# ---------------------------------------------
+# Explainable Governance Endpoints
+# ---------------------------------------------
+
+
+@app.get("/explanation/{trace_id}", tags=["Governance"])
+async def get_explanation(
+    trace_id: str,
+    detail_level: str = "summary",
+    user: str = Depends(require_authenticated_user),
+):
+    """
+    Get explainable governance explanation for a trace.
+    
+    Args:
+        trace_id: Trace ID to get explanation for
+        detail_level: Level of detail (summary, detailed, interactive)
+    
+    Returns:
+        Explanation of the governance decision for the trace
+    """
+    if engine is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Engine not initialized"
+        )
+    
+    # Check if explainable governance is enabled
+    if not hasattr(engine, "explainable_governance"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Explainable Governance is not enabled. Enable via feature flags."
+        )
+    
+    # Retrieve trace data
+    try:
+        trace_data = await replay_store.get_async(trace_id)
+        if not trace_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Trace {trace_id} not found"
+            )
+        
+        response_data = trace_data.get("response") or trace_data
+        
+        # Generate explanation
+        from engine.core.feature_integration import get_explanation_for_result
+        explanation = get_explanation_for_result(
+            engine,
+            response_data,
+            detail_level=detail_level
+        )
+        
+        if not explanation:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate explanation"
+            )
+        
+        return explanation
+    
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "explanation_retrieval_failed",
+            extra={"trace_id": trace_id, "error": str(exc)},
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve explanation: {str(exc)}"
+        )
 
 
 # ---------------------------------------------
