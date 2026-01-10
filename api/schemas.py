@@ -61,7 +61,7 @@ class DeliberationRequest(BaseModel):
             return True
 
         if not check_depth(v):
-            raise ValueError("Context structure is too deeply nested (max depth: 10)")
+            raise ValueError("Context structure is too deeply nested (max depth: 5)")
         return v
 
 

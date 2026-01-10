@@ -3,7 +3,7 @@ Hard governance guardrails for precedent promotion.
 This is the constitutional backstop.
 """
 
-from replay_store import load_human_reviews
+from engine.replay_store import load_human_reviews
 
 
 class PromotionBlocked(Exception):

@@ -1,5 +1,5 @@
 """
-ELEANOR V8 â€” Enterprise Constitutional Engine Runtime
+ELEANOR V8 - Enterprise Constitutional Engine Runtime
 Dual API (run + run_stream)
 Dependency Injection Ready
 Full Evidence Recorder Integration
@@ -45,7 +45,7 @@ from engine.validation import validate_input  # compatibility for tests/monkeypa
 from engine.utils.dependency_tracking import record_dependency_failure
 from governance.review_packets import build_review_packet
 from governance.review_triggers import Case
-from replay_store import store_review_packet
+from engine.replay_store import store_review_packet
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +224,10 @@ def create_engine(
         gpu_embedding_cache=gpu_embedding_cache,
     )
 
-    print(f"[ELEANOR ENGINE] create_engine() â†’ Engine instance ready: {engine.instance_id}")
+    logger.info(
+        "engine_created",
+        extra={"instance_id": getattr(engine, "instance_id", None)},
+    )
     return engine
 
 
@@ -237,5 +240,3 @@ __all__ = [
     "EngineForensicData",
     "create_engine",
 ]
-
-print("[ELEANOR ENGINE] V8 Enterprise Engine module loaded successfully.")

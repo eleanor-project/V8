@@ -337,4 +337,7 @@ def initialize_engine(
     except Exception as exc:
         logger.debug(f"Traffic Light governance hook not initialized: {exc}")
 
-    print(f"[ELEANOR ENGINE] Initialized V8 engine {engine.instance_id}")
+    logger.info(
+        "engine_initialized",
+        extra={"instance_id": getattr(engine, "instance_id", None)},
+    )
