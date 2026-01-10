@@ -38,6 +38,17 @@ except ImportError:
 logger = logging.getLogger("engine.engine")
 
 
+def _process_batch_with_engine(batcher: Any, batch_items: List[Any], engine: Any) -> Any:
+    """Call process_batch, passing engine only if supported."""
+    try:
+        sig = inspect.signature(batcher.process_batch)
+        if "engine" in sig.parameters:
+            return batcher.process_batch(batch_items, engine=engine)
+    except Exception:
+        pass
+    return batcher.process_batch(batch_items)
+
+
 async def run_single_critic(
     engine: "EngineType",
     name: str,
@@ -358,7 +369,7 @@ async def run_critics_parallel(
             )
             for name, critic_ref in critic_items
         ]
-        results = await engine.critic_batcher.process_batch(batch_items, engine=engine)
+        results = await _process_batch_with_engine(engine.critic_batcher, batch_items, engine)
     else:
         tasks = [
             asyncio.create_task(
@@ -378,7 +389,12 @@ async def run_critics_parallel(
         ]
         results = cast(List[Any], await asyncio.gather(*tasks, return_exceptions=True))
     output: CriticResultsMap = {}
-    for (critic_name, _), result in zip(critic_items, results):
+    if isinstance(results, dict):
+        iter_results = [(name, results.get(name)) for name, _ in critic_items]
+    else:
+        iter_results = list(zip((name for name, _ in critic_items), results))
+
+    for critic_name, result in iter_results:
         if isinstance(result, CriticEvaluationError):
             engine._emit_error(
                 result,
@@ -415,5 +431,7 @@ async def run_critics_parallel(
             )
             continue
         critic_result = cast(CriticResult, result)
+        if "duration_ms" not in critic_result:
+            critic_result["duration_ms"] = 0.0
         output[critic_result.get("critic", critic_name)] = critic_result
     return output

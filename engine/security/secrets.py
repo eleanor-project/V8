@@ -14,6 +14,8 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterable, List, Optional, Callable
 
+from engine.security.audit import audit_log
+
 try:
     import boto3 as _boto3  # type: ignore[import-not-found]
     from botocore.exceptions import ClientError as _ClientError  # type: ignore[import-not-found]
@@ -102,15 +104,14 @@ class SecretsProvider(ABC):
         if not self._audit_log_enabled:
             return
         
-        logger.info(
-            "secret_access_audit",
-            extra={
-                "secret_key": key,
-                "action": action,
-                "success": success,
-                "provider": self.__class__.__name__,
-            },
-        )
+        payload = {
+            "secret_key": key,
+            "action": action,
+            "success": success,
+            "provider": self.__class__.__name__,
+        }
+        logger.info("secret_access_audit", extra=payload)
+        audit_log("secret_access_audit", extra=payload)
     
     def get_secret_with_version(self, key: str, version: Optional[str] = None) -> Optional[str]:
         """
@@ -208,6 +209,7 @@ class AWSSecretsProvider(SecretsProvider):
             raise ImportError(
                 "boto3 required for AWSSecretsProvider. " "Install with: pip install boto3"
             )
+        super().__init__()
         self.boto3 = boto3
         self.ClientError = ClientError
 
@@ -386,6 +388,7 @@ class VaultSecretsProvider(SecretsProvider):
             raise ImportError(
                 "hvac required for VaultSecretsProvider. " "Install with: pip install hvac"
             )
+        super().__init__()
         self.hvac = hvac
 
         self.vault_addr = vault_addr
