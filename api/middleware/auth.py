@@ -17,7 +17,7 @@ from typing import Optional, Dict, Any, List, cast
 from types import ModuleType
 from dataclasses import dataclass
 from functools import wraps
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -147,7 +147,7 @@ def _audit_log_auth_event(
             "event_type": event_type,
             "user_id": user_id,
             "success": success,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             **(details or {}),
         },
     )
