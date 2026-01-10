@@ -9,25 +9,25 @@
 # 3. Default: Falls back to default_model if not specified
 
 # Default model used when no specific assignment exists
-default_model: claude-sonnet-4.5
+default_model: claude-3-5-sonnet-20241022
 
 # Tier definitions: Map performance tiers to specific models
 tiers:
-  premium: claude-opus-4.5      # Highest accuracy, highest cost
-  standard: claude-sonnet-4.5    # Balanced performance/cost
-  economy: claude-haiku-4.0      # Fast, low cost
+  premium: claude-3-opus-20240229      # Highest accuracy, highest cost
+  standard: claude-3-5-sonnet-20241022 # Balanced performance/cost
+  economy: claude-3-haiku-20240307     # Fast, low cost
 
 # Critic-specific configurations
 critics:
   # High-accuracy critics use premium models
   rights:
-    model: claude-opus-4.5       # Explicit model assignment
+    model: claude-3-opus-20240229       # Explicit model assignment
 
   fairness:
     tier: premium                # Tier-based assignment
 
   truth:
-    model: claude-opus-4.5
+    model: claude-3-opus-20240229
 
   # Balanced critics use standard models
   risk:
