@@ -358,7 +358,7 @@ async def run_critics_parallel(
             )
             for name, critic_ref in critic_items
         ]
-        results = await engine.critic_batcher.process_batch(batch_items)
+        results = await engine.critic_batcher.process_batch(batch_items, engine=engine)
     else:
         tasks = [
             asyncio.create_task(

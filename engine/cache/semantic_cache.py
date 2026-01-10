@@ -8,16 +8,30 @@ cache hit rates by finding semantically similar queries.
 
 import logging
 import hashlib
+import math
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
+# Optional dependency guards
+try:
+    import numpy as np
+
+    NUMPY_AVAILABLE = True
+except ImportError:  # pragma: no cover - import guard
+    NUMPY_AVAILABLE = False
+    np = None  # type: ignore
+    logger.warning(
+        "numpy not available; semantic cache will use a pure-Python similarity fallback"
+    )
+
 try:
     from sentence_transformers import SentenceTransformer
+
     SENTENCE_TRANSFORMERS_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover - import guard
     SENTENCE_TRANSFORMERS_AVAILABLE = False
     logger.warning("sentence-transformers not available. Semantic cache will use fallback methods.")
 
@@ -90,7 +104,8 @@ class SemanticCache:
                 "similarity_threshold": similarity_threshold,
                 "max_size": max_size,
                 "embedding_model": embedding_model_name,
-                "sentence_transformers_available": SENTENCE_TRANSFORMERS_AVAILABLE
+                "sentence_transformers_available": SENTENCE_TRANSFORMERS_AVAILABLE,
+                "numpy_available": NUMPY_AVAILABLE,
             }
         )
     
@@ -129,7 +144,9 @@ class SemanticCache:
             return None
         
         try:
-            embedding = self._embedding_model.encode(text, convert_to_numpy=True)
+            embedding = self._embedding_model.encode(
+                text, convert_to_numpy=NUMPY_AVAILABLE
+            )
             return embedding.tolist()
         except Exception as e:
             logger.error(f"Failed to compute embedding: {e}", exc_info=True)
@@ -138,25 +155,25 @@ class SemanticCache:
     def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
         """Compute cosine similarity between two embeddings."""
         try:
-            import numpy as np
-            a_np = np.array(a)
-            b_np = np.array(b)
-            
-            norm_a = np.linalg.norm(a_np)
-            norm_b = np.linalg.norm(b_np)
-            
-            if norm_a == 0 or norm_b == 0:
-                return 0.0
-            
-            return float(np.dot(a_np, b_np) / (norm_a * norm_b))
-        except ImportError:
+            if NUMPY_AVAILABLE and np is not None:
+                a_np = np.array(a)
+                b_np = np.array(b)
+                
+                norm_a = np.linalg.norm(a_np)
+                norm_b = np.linalg.norm(b_np)
+                
+                if norm_a == 0 or norm_b == 0:
+                    return 0.0
+                
+                return float(np.dot(a_np, b_np) / (norm_a * norm_b))
+
             # Fallback without numpy
             dot = sum(x * y for x, y in zip(a, b))
-            norm_a = sum(x * x for x in a) ** 0.5
-            norm_b = sum(x * x for x in b) ** 0.5
+            norm_a = math.sqrt(sum(x * x for x in a))
+            norm_b = math.sqrt(sum(x * x for x in b))
             if norm_a == 0 or norm_b == 0:
                 return 0.0
-            return dot / (norm_a * norm_b)
+            return float(dot / (norm_a * norm_b))
         except Exception as e:
             logger.error(f"Failed to compute cosine similarity: {e}", exc_info=True)
             return 0.0

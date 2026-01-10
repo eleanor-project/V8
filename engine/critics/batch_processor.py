@@ -55,6 +55,74 @@ class BatchCriticProcessor:
             # Update config with adaptive batch size
             self.config.max_batch_size = self.adaptive_sizer.get_current_batch_size()
 
+    async def process_batch(
+        self,
+        batch_items: List[
+            tuple[
+                str,
+                CriticProtocol,
+                str,
+                str,
+                dict,
+                str,
+                Optional[List[str]],
+                Optional[List[Any]],
+            ]
+        ],
+        engine: Optional[Any] = None,
+    ) -> Dict[str, CriticResult]:
+        """
+        Wrapper used by runtime to batch critic execution.
+
+        Args:
+            batch_items: Tuples of (name, critic, model_response, input_text, context, trace_id, degraded, evidence)
+            engine: Optional engine instance to provide model_adapter
+
+        Returns:
+            Mapping critic_name -> CriticResult
+        """
+        if not batch_items:
+            return {}
+
+        # Rehydrate shared values (all items share the same response/input/context in current pipeline)
+        model_response = batch_items[0][2]
+        input_text = batch_items[0][3]
+        context = batch_items[0][4]
+        critics = {name: critic_ref for name, critic_ref, *_ in batch_items}
+
+        # If disabled, fall back to individual evaluation
+        if not self.config.enabled or len(critics) < self.config.min_batch_size:
+            return await self._evaluate_individually(
+                critics,
+                model_response,
+                input_text,
+                context,
+                getattr(engine, "model_adapter", None),
+            )
+
+        try:
+            adapter = getattr(engine, "model_adapter", None)
+            return await self.evaluate_batch(
+                critics,
+                model_response=model_response,
+                input_text=input_text,
+                context=context,
+                model_adapter=adapter,
+            )
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            logger.warning(
+                "batch_process_fallback",
+                extra={"error": str(exc)},
+                exc_info=True,
+            )
+            return await self._evaluate_individually(
+                critics,
+                model_response,
+                input_text,
+                context,
+                getattr(engine, "model_adapter", None),
+            )
+
     def _combine_critic_prompts(
         self,
         critics: List[tuple[str, CriticProtocol]],

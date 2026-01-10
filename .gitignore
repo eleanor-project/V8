@@ -42,6 +42,11 @@ build/
 *.key
 *.crt
 secrets/
+secrets.yaml
+secrets.yml
+secrets.json
+config/secrets.yaml
+*.secrets.*
 
 # Logs and evidence
 evidence.jsonl
@@ -53,6 +58,7 @@ logs/
 # IDE
 .vscode/
 .idea/
+*.code-workspace
 *.swp
 *.swo
 *~
