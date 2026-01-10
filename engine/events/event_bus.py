@@ -9,7 +9,7 @@ import asyncio
 import logging
 from typing import Dict, List, Callable, Any, Type, Optional
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ class Event:
     def __post_init__(self):
         # Set timestamp to current time if not provided
         if self.timestamp is None:
-            self.timestamp = datetime.utcnow()
+            self.timestamp = datetime.now(timezone.utc)
 
 
 @dataclass(kw_only=True)

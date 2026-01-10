@@ -140,16 +140,45 @@ def apply_precedence_resolver(candidates: List[PrecedentCandidate], ctx: Request
 
     sorted_list = sorted(candidates, key=key, reverse=True)
 
-    # Normalize to a 0..1 match_score using retrieval_score as a placeholder.
-    if sorted_list:
-        top = max(1e-9, sorted_list[0].retrieval_score)
-        normalized: List[PrecedentCandidate] = []
-        for c in sorted_list:
-            ms = max(0.0, min(1.0, c.retrieval_score / top)) if top > 0 else 0.0
-            normalized.append(PrecedentCandidate(**{**c.__dict__, "final_score": key(c)[-1], "match_score": ms}))
-        return normalized
+    if not sorted_list:
+        return sorted_list
 
-    return sorted_list
+    max_binding = max(binding_rank(c.binding_level) for c in sorted_list) or 1
+    max_specificity = max(scope_specificity(c.scope, ctx) for c in sorted_list) or 1
+    max_version = max(c.version for c in sorted_list) or 1
+    max_conservatism = max(conservatism_rank((c.decision or {}).get("outcome", "permit"), ctx.risk_tier) for c in sorted_list) or 1
+    max_retrieval = max(c.retrieval_score for c in sorted_list) or 1
+
+    def _norm(value: float, max_value: float) -> float:
+        return value / max_value if max_value else 0.0
+
+    weighted: List[PrecedentCandidate] = []
+    for c in sorted_list:
+        b = binding_rank(c.binding_level)
+        s = scope_specificity(c.scope, ctx)
+        r = c.version
+        cons = conservatism_rank((c.decision or {}).get("outcome", "permit"), ctx.risk_tier)
+        retrieval = c.retrieval_score
+
+        composite = (
+            0.35 * _norm(b, max_binding)
+            + 0.25 * _norm(s, max_specificity)
+            + 0.15 * _norm(r, max_version)
+            + 0.10 * _norm(cons, max_conservatism)
+            + 0.15 * _norm(retrieval, max_retrieval)
+        )
+        composite = max(0.0, min(1.0, composite))
+
+        weighted.append(
+            PrecedentCandidate(
+                **{
+                    **c.__dict__,
+                    "final_score": composite,
+                    "match_score": composite,
+                }
+            )
+        )
+    return weighted
 
 
 def match_precedents(
