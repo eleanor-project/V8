@@ -13,7 +13,9 @@ Features:
 - Automatic deprecation recommendations
 """
 
+import json
 import time
+from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 from enum import Enum
@@ -98,6 +100,9 @@ class TemporalPrecedentEvolutionTracker:
         self._evolutions: Dict[str, PrecedentEvolution] = {}
         self._store_backend = store_backend
         self._drift_threshold: float = 0.3  # Configurable threshold for drift detection
+        self._persisted_cache: Dict[str, Dict[str, Any]] = {}
+        self._persistence_path = self._resolve_persistence_path(store_backend)
+        self._load_persisted_cache()
     
     def track_precedent_update(
         self,
@@ -468,6 +473,90 @@ class TemporalPrecedentEvolutionTracker:
         if not self._store_backend:
             return
         
-        # Store evolution record (implementation depends on backend)
-        # This is a placeholder - actual implementation would use the store backend
-        pass
+        payload = evolution.to_dict()
+        case_id = payload.get("case_id")
+
+        # 1) Explicit evolution persistence hooks
+        for attr in ("save_evolution", "store_evolution", "upsert_evolution"):
+            save_fn = getattr(self._store_backend, attr, None)
+            if callable(save_fn):
+                save_fn(payload)
+                self._persisted_cache[case_id] = payload
+                return
+
+        # 2) Generic key/value stores (put/set)
+        for attr in ("put", "set"):
+            fn = getattr(self._store_backend, attr, None)
+            if callable(fn):
+                try:
+                    fn(f"precedent_evolution:{case_id}", payload)
+                    self._persisted_cache[case_id] = payload
+                    return
+                except Exception:
+                    logger.debug("evolution_generic_persist_failed", exc_info=True)
+
+        # 3) File-backed stores (JSONFileStore, etc.) — persist alongside store file
+        self._persisted_cache[case_id] = payload
+        try:
+            self._persistence_path.parent.mkdir(parents=True, exist_ok=True)
+            self._persistence_path.write_text(
+                json.dumps({"evolutions": list(self._persisted_cache.values())}, indent=2)
+            )
+        except Exception as exc:
+            logger.error(
+                "evolution_file_persist_failed",
+                extra={"case_id": case_id, "error": str(exc), "path": str(self._persistence_path)},
+            )
+
+    def _resolve_persistence_path(self, store_backend: Optional[Any]) -> Path:
+        base_path: Optional[str] = None
+        if store_backend:
+            base_path = getattr(store_backend, "evolution_path", None)
+            if not base_path:
+                file_path = getattr(store_backend, "file_path", None)
+                if file_path:
+                    base_path = str(Path(file_path).with_suffix(".evolution.json"))
+        if not base_path:
+            base_path = "data/precedent_evolutions.json"
+        path = Path(base_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def _load_persisted_cache(self) -> None:
+        """Load previously persisted evolutions from disk."""
+        try:
+            if self._persistence_path.exists():
+                data = json.loads(self._persistence_path.read_text())
+                evolutions = data.get("evolutions", [])
+                if isinstance(evolutions, list):
+                    for evo in evolutions:
+                        case_id = evo.get("case_id")
+                        if case_id:
+                            self._persisted_cache[case_id] = evo
+                            # Warm in-memory map for quick reads
+                            try:
+                                lifecycle_val = evo.get("lifecycle_state", PrecedentLifecycleState.ACTIVE)
+                                lifecycle_state = (
+                                    lifecycle_val
+                                    if isinstance(lifecycle_val, PrecedentLifecycleState)
+                                    else PrecedentLifecycleState(lifecycle_val)
+                                )
+                                versions = [
+                                    PrecedentVersion(**v)
+                                    for v in evo.get("versions", [])
+                                    if isinstance(v, dict)
+                                ]
+                                self._evolutions[case_id] = PrecedentEvolution(
+                                    case_id=case_id,
+                                    versions=versions,
+                                    lifecycle_state=lifecycle_state,
+                                    created_at=evo.get("created_at", time.time()),
+                                    updated_at=evo.get("updated_at", time.time()),
+                                    deprecated_at=evo.get("deprecated_at"),
+                                    superseded_by=evo.get("superseded_by"),
+                                    evolution_metadata=evo.get("evolution_metadata", {}),
+                                )
+                            except Exception:
+                                logger.debug("evolution_cache_entry_load_failed", exc_info=True)
+        except Exception:
+            logger.debug("evolution_cache_load_failed", exc_info=True)

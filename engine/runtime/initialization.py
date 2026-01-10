@@ -259,6 +259,12 @@ def initialize_engine(
     )
 
     engine.router = cast(RouterProtocol, deps.router)
+    # Finish wiring cache warmer now that router/router_cache are ready
+    if getattr(engine, "cache_warmer", None):
+        engine.cache_warmer.router = engine.router
+        engine.cache_warmer.router_cache = engine.router_cache
+        engine.cache_warmer.cache_manager = engine.cache_manager
+        engine.cache_warmer.engine = engine
     engine.critics = canonicalize_critic_map(deps.critics or {})
     engine.critic_models = deps.critic_models or {}
     engine.detector_engine = deps.detector_engine
