@@ -37,22 +37,35 @@ class PrecedentCandidate:
         }
 
 
-# ---- Retrieval primitives (stubs) ----
+# ---- Retrieval primitives ----
 def vector_similarity(query_text: str, candidate_text: str) -> float:
-    """Stub: replace with real embedding similarity."""
-    return 0.0
+    """Lightweight similarity using sequence matcher (0..1)."""
+    if not query_text or not candidate_text:
+        return 0.0
+    from difflib import SequenceMatcher
+
+    return SequenceMatcher(None, query_text.lower(), candidate_text.lower()).ratio()
 
 
 def bm25_normalized(query_text: str, candidate_text: str) -> float:
-    """Stub: replace with real keyword retrieval."""
-    return 0.0
+    """
+    Approximate BM25-style relevance: token overlap ratio (0..1).
+    Falls back to 0 when either side is empty.
+    """
+    qtoks = {t for t in query_text.lower().split() if t}
+    ctoks = {t for t in candidate_text.lower().split() if t}
+    if not qtoks or not ctoks:
+        return 0.0
+    overlap = len(qtoks & ctoks)
+    return min(1.0, overlap / float(len(qtoks)))
 
 
 def trigger_hits(query_text: str, patterns: List[str]) -> float:
-    """Stub: basic string containment scoring; replace with regex / pattern engine."""
+    """Score based on trigger pattern hits (0..1)."""
     hits = 0
+    normalized = query_text.lower()
     for p in patterns or []:
-        if p and p.lower() in query_text.lower():
+        if p and p.lower() in normalized:
             hits += 1
     if not patterns:
         return 0.0
