@@ -392,6 +392,17 @@ def build_eleanor_engine_v8(
             policy_path=os.getenv("OPA_POLICY_PATH", "v1/data/eleanor/decision"),
         )
         setattr(engine_instance, "opa_callback", opa_client.evaluate)
+    
+    # Integrate optional features based on feature flags
+    try:
+        from engine.core.feature_integration import integrate_optional_features
+        integrate_optional_features(engine_instance, settings)
+    except Exception as exc:
+        logger.warning(
+            "Failed to integrate optional features",
+            extra={"error": str(exc)},
+            exc_info=True
+        )
 
     return engine_instance
 
