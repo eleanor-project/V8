@@ -93,3 +93,5 @@ docker-compose.override.yml
 prometheus/
 grafana/
 *.zip
+ELEANOR_CODE.md
+export_top_level_md.py
