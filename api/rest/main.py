@@ -25,12 +25,10 @@ Security Features:
 """
 
 import os
-import json
 import uuid
-import time
 import asyncio
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List, Literal
+from typing import Optional, Dict
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Depends, Request, status
@@ -61,7 +59,7 @@ from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.middleware.user_rate_limit import UserRateLimiter
 
 # Logging
-from engine.logging_config import configure_logging, get_logger, log_deliberation
+from engine.logging_config import configure_logging, get_logger
 
 # Enhanced observability
 try:
@@ -93,13 +91,6 @@ from api.rest.metrics import (
     CONTENT_TYPE_LATEST,
     generate_latest,
 )
-from api.rest.services.deliberation_utils import (
-    normalize_engine_result,
-    resolve_final_decision,
-    resolve_execution_decision,
-    apply_execution_gate,
-    map_assessment_label,
-)
 from engine.router.adapters import (
     GPTAdapter,
     ClaudeAdapter,
@@ -115,12 +106,8 @@ from engine.security.secrets import (
 from api.websocket.websocket_server import ws_router
 from pydantic import BaseModel
 from pathlib import Path
-from engine.execution.human_review import enforce_human_review
-from engine.schemas.escalation import AggregationResult, HumanAction, ExecutableDecision
 from engine.exceptions import InputValidationError
-from engine.version import ELEANOR_VERSION
-from engine.utils.critic_names import canonical_critic_name, canonicalize_critic_map
-from engine.utils.validation import sanitize_for_logging
+from engine.utils.critic_names import canonical_critic_name
 from engine.utils.dependency_tracking import get_dependency_metrics
 
 # Initialize logging
@@ -462,10 +449,12 @@ try:
     from api.rest.review import router as review_router
     from api.rest.governance import router as governance_router
     from api.rest.routes.deliberation import router as deliberation_router
+    from api.rest.routes.audit import router as audit_router
 
     app.include_router(review_router)
     app.include_router(governance_router)
     app.include_router(deliberation_router)
+    app.include_router(audit_router)
     logger.info("Human review API endpoints registered")
 except Exception as e:
     logger.warning(f"Failed to register review router: {e}")
@@ -672,238 +661,8 @@ async def health_check():
 # ---------------------------------------------
 
 # ---------------------------------------------
-# Retrieve Evidence Bundle by Trace ID
+# Audit routes are defined in api/rest/routes/audit.py
 # ---------------------------------------------
-
-
-@app.get("/trace/{trace_id}", tags=["Audit"])
-async def get_trace(
-    trace_id: str,
-    user: str = Depends(require_authenticated_user),
-):
-    """
-    Retrieve an audit record by trace ID.
-
-    Returns the full evidence bundle for a previous deliberation.
-    """
-    if engine is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Engine not initialized",
-        )
-
-    # Validate trace_id format (should be UUID)
-    try:
-        uuid.UUID(trace_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid trace ID format",
-        )
-
-    recorder = getattr(engine, "recorder", None) or getattr(engine, "evidence_recorder", None)
-
-    if recorder is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Evidence recorder not available",
-        )
-
-    buffer = getattr(recorder, "buffer", None)
-    if buffer:
-        for record in buffer:
-            record_dict = record.dict() if hasattr(record, "dict") else record
-            if record_dict.get("trace_id") == trace_id:
-                return record_dict
-
-    # Fallback to JSONL sink if configured
-    jsonl_path = getattr(recorder, "jsonl_path", None) or getattr(recorder, "file_path", None)
-    if jsonl_path:
-        try:
-            with open(jsonl_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    try:
-                        item = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if item.get("trace_id") == trace_id:
-                        return item
-        except FileNotFoundError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Audit log not found",
-            )
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Trace ID not found",
-    )
-
-
-# ---------------------------------------------
-# Replay Endpoint
-# ---------------------------------------------
-
-
-@app.get("/replay/{trace_id}", tags=["Audit"])
-async def replay_trace(
-    trace_id: str,
-    rerun: bool = False,
-    user: str = Depends(require_authenticated_user),
-):
-    """
-    Retrieve a stored deliberation and optionally re-run it through the current engine.
-    """
-    record = await replay_store.get_async(trace_id)
-    if record is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Trace ID not found in replay log"
-        )
-
-    if not rerun:
-        return record
-
-    if engine is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Engine not initialized",
-        )
-
-    input_text = record.get("input")
-    context = record.get("context", {})
-    if not input_text:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Replay record missing input"
-        )
-
-    new_trace = str(uuid.uuid4())
-    run_fn = getattr(engine, "run", None)
-    deliberate_fn = getattr(engine, "deliberate", None)
-
-    if run_fn is not None:
-        result_obj = await run_fn(input_text, context=context, trace_id=new_trace, detail_level=3)
-    elif asyncio.iscoroutinefunction(deliberate_fn):
-        result_obj = await deliberate_fn(input_text)
-    elif deliberate_fn:
-        result_obj = deliberate_fn(input_text)
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Engine does not expose run() or deliberate()",
-        )
-
-    normalized = normalize_engine_result(result_obj, input_text, new_trace, context)
-    governance_payload = {
-        "critics": normalized["critic_outputs"],
-        "aggregator": normalized["aggregator_output"],
-        "precedent": normalized["precedent_alignment"],
-        "uncertainty": normalized["uncertainty"],
-        "model_used": normalized["model_used"],
-        "input": input_text,
-        "trace_id": normalized["trace_id"],
-        "timestamp": time.time(),
-        "schema_version": GOVERNANCE_SCHEMA_VERSION,
-    }
-    governance_result = await evaluate_opa(
-        getattr(engine, "opa_callback", None), governance_payload
-    )
-    final_decision = resolve_final_decision(
-        normalized["aggregator_output"].get("decision"), governance_result
-    )
-    execution_decision = None
-    try:
-        execution_decision = resolve_execution_decision(normalized["aggregator_output"], None)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    final_decision = apply_execution_gate(final_decision, execution_decision)
-    final_assessment = map_assessment_label(final_decision)
-
-    rerun_payload = {
-        **normalized,
-        "opa_governance": governance_result,
-        "governance": governance_result,
-        "final_decision": final_assessment,
-        "execution_decision": execution_decision.model_dump(mode="json")
-        if execution_decision
-        else None,
-        "replay_of": trace_id,
-    }
-
-    await replay_store.save_async(
-        {
-            "trace_id": rerun_payload["trace_id"],
-            "input": input_text,
-            "context": context,
-            "response": rerun_payload,
-            "timestamp": rerun_payload["timestamp"],
-            "replay_of": trace_id,
-        }
-    )
-
-    return {
-        "original": record,
-        "rerun": rerun_payload,
-    }
-
-
-# ---------------------------------------------
-# Audit Search Endpoint
-# ---------------------------------------------
-
-
-@app.get("/audit/search", tags=["Audit"])
-async def audit_search(
-    critic: Optional[str] = None,
-    severity: Optional[str] = None,
-    trace_id: Optional[str] = None,
-    limit: int = 100,
-    user: str = Depends(require_authenticated_user),
-):
-    """
-    Search audit evidence by critic, severity label, or trace_id across in-memory buffer and JSONL sink.
-    """
-    recorder = getattr(engine, "recorder", None) if engine else None
-    if recorder is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Evidence recorder not available",
-        )
-
-    matches: List[Dict[str, Any]] = []
-
-    def record_matches(rec: Any) -> bool:
-        if hasattr(rec, "dict"):
-            rec = rec.dict()
-        if trace_id and rec.get("trace_id") != trace_id:
-            return False
-        if critic and rec.get("critic") != critic:
-            return False
-        if severity and rec.get("severity") != severity:
-            return False
-        return True
-
-    buffer = getattr(recorder, "buffer", [])
-    for rec in reversed(buffer):
-        if len(matches) >= limit:
-            break
-        if record_matches(rec):
-            matches.append(rec.dict() if hasattr(rec, "dict") else rec)
-
-    if len(matches) < limit:
-        jsonl_path = getattr(recorder, "jsonl_path", None) or getattr(recorder, "file_path", None)
-        if jsonl_path and os.path.exists(jsonl_path):
-            with open(jsonl_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    if len(matches) >= limit:
-                        break
-                    try:
-                        item = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if record_matches(item):
-                        matches.append(item)
-
-    return {"matches": matches[:limit], "count": len(matches)}
 
 
 # ---------------------------------------------
