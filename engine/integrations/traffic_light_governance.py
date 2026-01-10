@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -10,6 +11,8 @@ from governance.governor import evaluate
 from governance.audit import make_governance_event
 from governance.audit_sink import append_jsonl_safely
 from governance.precedent_engine import PrecedentCandidate
+
+logger = logging.getLogger(__name__)
 
 
 def _truthy(val: Optional[str]) -> bool:
@@ -165,8 +168,8 @@ def divergence_from_uncertainty(uncertainty: Optional[Dict[str, Any]]) -> float:
         if key in uncertainty:
             try:
                 return float(uncertainty.get(key) or 0.0)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to extract uncertainty value for key '{key}': {e}")
     return 0.0
 
 

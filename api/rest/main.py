@@ -2202,6 +2202,133 @@ async def register_adapter(adapter: AdapterRegistration):
 
 
 # ---------------------------------------------
+# Feature Flags Management
+# ---------------------------------------------
+
+
+class FeatureFlagsResponse(BaseModel):
+    """Feature flags configuration response."""
+    explainable_governance: bool
+    semantic_cache: bool
+    intelligent_model_selection: bool
+    anomaly_detection: bool
+    streaming_governance: bool
+    adaptive_critic_weighting: bool
+    temporal_precedent_evolution: bool
+    # Legacy feature flags
+    reflection: bool
+    drift_check: bool
+    precedent_analysis: bool
+
+
+class FeatureFlagsUpdate(BaseModel):
+    """Feature flags update request."""
+    explainable_governance: Optional[bool] = None
+    semantic_cache: Optional[bool] = None
+    intelligent_model_selection: Optional[bool] = None
+    anomaly_detection: Optional[bool] = None
+    streaming_governance: Optional[bool] = None
+    adaptive_critic_weighting: Optional[bool] = None
+    temporal_precedent_evolution: Optional[bool] = None
+    reflection: Optional[bool] = None
+    drift_check: Optional[bool] = None
+    precedent_analysis: Optional[bool] = None
+
+
+@app.get("/admin/feature-flags", tags=["Admin"], response_model=FeatureFlagsResponse)
+@require_role(ADMIN_ROLE)
+async def get_feature_flags():
+    """Get current feature flags configuration."""
+    try:
+        from engine.config.settings import get_settings
+        
+        settings = get_settings()
+        return FeatureFlagsResponse(
+            explainable_governance=settings.enable_explainable_governance,
+            semantic_cache=settings.enable_semantic_cache,
+            intelligent_model_selection=settings.enable_intelligent_model_selection,
+            anomaly_detection=settings.enable_anomaly_detection,
+            streaming_governance=settings.enable_streaming_governance,
+            adaptive_critic_weighting=settings.enable_adaptive_critic_weighting,
+            temporal_precedent_evolution=settings.enable_temporal_precedent_evolution,
+            reflection=settings.enable_reflection,
+            drift_check=settings.enable_drift_check,
+            precedent_analysis=settings.enable_precedent_analysis,
+        )
+    except Exception as exc:
+        logger.error(f"Failed to get feature flags: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get feature flags: {exc}",
+        )
+
+
+@app.post("/admin/feature-flags", tags=["Admin"], response_model=FeatureFlagsResponse)
+@require_role(ADMIN_ROLE)
+async def update_feature_flags(flags: FeatureFlagsUpdate):
+    """Update feature flags configuration."""
+    try:
+        from engine.config.settings import get_settings, reload_settings
+        import os
+        
+        # Update environment variables (persists across restarts if .env file exists)
+        env_updates = {}
+        if flags.explainable_governance is not None:
+            env_updates["ELEANOR_ENABLE_EXPLAINABLE_GOVERNANCE"] = str(flags.explainable_governance).lower()
+        if flags.semantic_cache is not None:
+            env_updates["ELEANOR_ENABLE_SEMANTIC_CACHE"] = str(flags.semantic_cache).lower()
+        if flags.intelligent_model_selection is not None:
+            env_updates["ELEANOR_ENABLE_INTELLIGENT_MODEL_SELECTION"] = str(flags.intelligent_model_selection).lower()
+        if flags.anomaly_detection is not None:
+            env_updates["ELEANOR_ENABLE_ANOMALY_DETECTION"] = str(flags.anomaly_detection).lower()
+        if flags.streaming_governance is not None:
+            env_updates["ELEANOR_ENABLE_STREAMING_GOVERNANCE"] = str(flags.streaming_governance).lower()
+        if flags.adaptive_critic_weighting is not None:
+            env_updates["ELEANOR_ENABLE_ADAPTIVE_CRITIC_WEIGHTING"] = str(flags.adaptive_critic_weighting).lower()
+        if flags.temporal_precedent_evolution is not None:
+            env_updates["ELEANOR_ENABLE_TEMPORAL_PRECEDENT_EVOLUTION"] = str(flags.temporal_precedent_evolution).lower()
+        if flags.reflection is not None:
+            env_updates["ELEANOR_ENABLE_REFLECTION"] = str(flags.reflection).lower()
+        if flags.drift_check is not None:
+            env_updates["ELEANOR_ENABLE_DRIFT_CHECK"] = str(flags.drift_check).lower()
+        if flags.precedent_analysis is not None:
+            env_updates["ELEANOR_ENABLE_PRECEDENT_ANALYSIS"] = str(flags.precedent_analysis).lower()
+        
+        # Update environment variables in current process
+        for key, value in env_updates.items():
+            os.environ[key] = value
+        
+        # Reload settings to pick up changes
+        settings = reload_settings(validate=False)
+        
+        # Note: Runtime changes only affect current process
+        # To persist, the .env file should be updated or settings should be stored in a database
+        logger.info(
+            "feature_flags_updated",
+            extra={"flags": {k: v for k, v in flags.model_dump().items() if v is not None}}
+        )
+        
+        return FeatureFlagsResponse(
+            explainable_governance=settings.enable_explainable_governance,
+            semantic_cache=settings.enable_semantic_cache,
+            intelligent_model_selection=settings.enable_intelligent_model_selection,
+            anomaly_detection=settings.enable_anomaly_detection,
+            streaming_governance=settings.enable_streaming_governance,
+            adaptive_critic_weighting=settings.enable_adaptive_critic_weighting,
+            temporal_precedent_evolution=settings.enable_temporal_precedent_evolution,
+            reflection=settings.enable_reflection,
+            drift_check=settings.enable_drift_check,
+            precedent_analysis=settings.enable_precedent_analysis,
+        )
+    except Exception as exc:
+        logger.error(f"Failed to update feature flags: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update feature flags: {exc}",
+        )
+
+
+# ---------------------------------------------
 # Development Server Entry Point
 # ---------------------------------------------
 

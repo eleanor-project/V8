@@ -622,6 +622,29 @@ class EleanorSettings(BaseSettings):
     enable_precedent_analysis: bool = Field(
         default=True, description="Enable precedent-based reasoning"
     )
+    
+    # New Feature Flags
+    enable_explainable_governance: bool = Field(
+        default=False, description="Enable explainable governance with causal reasoning"
+    )
+    enable_semantic_cache: bool = Field(
+        default=False, description="Enable semantic cache for embedding-based similarity caching"
+    )
+    enable_intelligent_model_selection: bool = Field(
+        default=False, description="Enable intelligent model selection for cost optimization"
+    )
+    enable_anomaly_detection: bool = Field(
+        default=False, description="Enable anomaly detection for proactive problem detection"
+    )
+    enable_streaming_governance: bool = Field(
+        default=False, description="Enable streaming governance with WebSocket incremental decisions"
+    )
+    enable_adaptive_critic_weighting: bool = Field(
+        default=False, description="Enable adaptive critic weighting with meta-learning"
+    )
+    enable_temporal_precedent_evolution: bool = Field(
+        default=False, description="Enable temporal precedent evolution tracking"
+    )
 
     # Component Configurations
     llm: LLMConfig = Field(default_factory=LLMConfig)

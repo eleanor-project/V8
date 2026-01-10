@@ -167,8 +167,8 @@ class DatabasePool:
             # Ensure cleanup on failure
             try:
                 await self.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Error during database pool cleanup after initialization failure: {e}", exc_info=True)
             raise
 
     async def __aexit__(
