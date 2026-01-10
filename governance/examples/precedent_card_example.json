@@ -1,0 +1,121 @@
+{
+  "precedent_id": "P-00882",
+  "version": 1,
+  "status": "active",
+  "binding_level": "hard",
+  "title": "Privacy vs Public Safety \u2014 emergency disclosure with minimization",
+  "summary": "Limited disclosure may be permitted in emergencies with strict minimization and audit.",
+  "scope": {
+    "jurisdiction": "US-CA",
+    "applies_to": {
+      "products": [
+        "*"
+      ],
+      "workflows": [
+        "*"
+      ],
+      "user_roles": [
+        "*"
+      ]
+    }
+  },
+  "domains": [
+    "health",
+    "public_safety",
+    "data_sharing"
+  ],
+  "risk_tier": "high",
+  "core_rights_tags": [
+    "privacy",
+    "safety_precaution",
+    "accountability_auditability",
+    "due_process_contestability"
+  ],
+  "overlays": [
+    {
+      "regime": "UDHR",
+      "refs": [
+        {
+          "id": "UDHR-Art-12",
+          "label": "Privacy"
+        }
+      ]
+    },
+    {
+      "regime": "OrgPolicy",
+      "refs": [
+        {
+          "id": "POL-DATA-12",
+          "label": "Minimum Necessary Disclosure"
+        }
+      ]
+    }
+  ],
+  "triggers": {
+    "trigger_types": [
+      "rights_conflict",
+      "legal_ambiguity",
+      "novelty"
+    ],
+    "trigger_patterns": [
+      "share medical data",
+      "disclose patient info",
+      "public health emergency"
+    ]
+  },
+  "decision": {
+    "outcome": "modify",
+    "conditions": [
+      "anonymize or pseudonymize where feasible",
+      "minimum necessary disclosure",
+      "log disclosure event + authority"
+    ],
+    "must_include": [
+      "state limitations and assumptions",
+      "offer safe alternatives"
+    ],
+    "must_not": [
+      "encourage unauthorized disclosure of identifiable data"
+    ],
+    "required_checks": [
+      "confirm authority / legal basis if applicable"
+    ]
+  },
+  "rationale": {
+    "summary": "Public safety can justify limited disclosure when minimization and audit safeguards are enforced.",
+    "bullet_points": [
+      "Respect privacy unless a narrowly-scoped emergency exception applies.",
+      "Prefer minimization and anonymization to reduce harm.",
+      "Maintain an audit trail for contestability and accountability."
+    ]
+  },
+  "examples": {
+    "green": [
+      "Provide aggregated anonymized trend info to public health agency."
+    ],
+    "amber": [
+      "Request involves minors or unclear legal authority."
+    ],
+    "red": [
+      "Disclose identifiable data without authority or minimization."
+    ]
+  },
+  "escalation": {
+    "required_when": [
+      "no clear authority",
+      "novel context not covered by examples"
+    ],
+    "queue": "legal-review"
+  },
+  "owner": {
+    "decided_by": "Policy Steward",
+    "decided_role": "Ethics Lead",
+    "date_decided": "2026-01-08"
+  },
+  "audit": {
+    "created_at": "2026-01-08T00:00:00Z",
+    "created_by": "eleanor-ledger",
+    "hash": "<computed>",
+    "supersedes": null
+  }
+}
