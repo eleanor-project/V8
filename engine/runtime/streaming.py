@@ -190,8 +190,8 @@ async def run_stream_engine(
             )
             for name, critic_ref in critic_items
         ]
-        results = await engine.critic_batcher.process_batch(batch_items)
-        for (critic_name, _), res in zip(critic_items, results):
+        results = await engine.critic_batcher.process_batch(batch_items, engine=engine)
+        for critic_name, res in results.items():
             if isinstance(res, CriticEvaluationError):
                 crit_error = res
                 engine._emit_error(
@@ -201,11 +201,9 @@ async def run_stream_engine(
                     critic=critic_name,
                     context=context,
                 )
-                critic_fallback = (
-                    crit_error.details.get("result")
-                    if isinstance(crit_error.details, dict)
-                    else None
-                )
+                critic_fallback = crit_error.details.get("result") if isinstance(
+                    crit_error.details, dict
+                ) else None
                 res = critic_fallback or engine._build_critic_error_result(critic_name, crit_error)
             elif isinstance(res, Exception):
                 unknown_error = res
