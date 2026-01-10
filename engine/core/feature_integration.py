@@ -108,21 +108,62 @@ def integrate_optional_features(engine: Any, settings: Any) -> None:
         except Exception as exc:
             logger.error(f"Failed to integrate Anomaly Detection: {exc}", exc_info=True)
     
-    # Streaming Governance (placeholder for future implementation)
+    # Streaming Governance
     if getattr(settings, "enable_streaming_governance", False):
-        logger.info("Streaming Governance flag enabled (implementation pending)")
-        # TODO: Implement streaming governance when ready
+        try:
+            from engine.governance.streaming import StreamingGovernance
+            streaming_gov = StreamingGovernance(
+                early_decision_threshold=0.85,
+                deny_threshold=0.7,
+                escalation_threshold=0.6
+            )
+            setattr(engine, "streaming_governance", streaming_gov)
+            logger.info("Streaming Governance enabled and integrated")
+        except Exception as exc:
+            logger.error(f"Failed to integrate Streaming Governance: {exc}", exc_info=True)
     
-    # Adaptive Critic Weighting (placeholder for future implementation)
+    # Adaptive Critic Weighting
     if getattr(settings, "enable_adaptive_critic_weighting", False):
-        logger.info("Adaptive Critic Weighting flag enabled (implementation pending)")
-        # TODO: Implement adaptive critic weighting when ready
+        try:
+            from engine.aggregator.adaptive_weighting import AdaptiveCriticWeighting
+            adaptive_weighting = AdaptiveCriticWeighting(
+                learning_rate=0.1,
+                exploration_rate=0.05,
+                decay_factor=0.95,
+                min_weight=0.1,
+                max_weight=2.0,
+                min_samples=10
+            )
+            setattr(engine, "adaptive_weighting", adaptive_weighting)
+            
+            # Integrate with aggregator if available
+            aggregator = getattr(engine, "aggregator", None)
+            if aggregator:
+                # Store reference for use during aggregation
+                setattr(aggregator, "adaptive_weighting", adaptive_weighting)
+            
+            logger.info("Adaptive Critic Weighting enabled and integrated")
+        except Exception as exc:
+            logger.error(f"Failed to integrate Adaptive Critic Weighting: {exc}", exc_info=True)
     
-    # Temporal Precedent Evolution (placeholder - basic drift detection exists)
+    # Temporal Precedent Evolution
     if getattr(settings, "enable_temporal_precedent_evolution", False):
-        logger.info("Temporal Precedent Evolution flag enabled (enhancement pending)")
-        # Basic drift detection exists in PrecedentAlignmentEngineV8
-        # TODO: Enhance with full temporal tracking when ready
+        try:
+            from engine.precedent.temporal_evolution import TemporalPrecedentEvolutionTracker
+            
+            # Get precedent store if available
+            precedent_store = getattr(engine, "precedent_store", None)
+            if not precedent_store:
+                # Try to get from precedent_retriever
+                precedent_retriever = getattr(engine, "precedent_retriever", None)
+                if precedent_retriever:
+                    precedent_store = getattr(precedent_retriever, "store", None)
+            
+            evolution_tracker = TemporalPrecedentEvolutionTracker(store_backend=precedent_store)
+            setattr(engine, "temporal_evolution_tracker", evolution_tracker)
+            logger.info("Temporal Precedent Evolution Tracking enabled and integrated")
+        except Exception as exc:
+            logger.error(f"Failed to integrate Temporal Precedent Evolution: {exc}", exc_info=True)
 
 
 def get_explanation_for_result(engine: Any, result: Dict[str, Any], detail_level: str = "summary") -> Optional[Dict[str, Any]]:

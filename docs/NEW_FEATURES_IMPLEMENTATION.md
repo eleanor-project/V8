@@ -671,5 +671,376 @@ if hasattr(engine, "intelligent_model_selector"):
 
 ---
 
+## 8. Temporal Precedent Evolution Tracking
+
+**File**: `engine/precedent/temporal_evolution.py`  
+**Feature Flag**: `enable_temporal_precedent_evolution`  
+**Status**: ✅ **IMPLEMENTED**  
+**Priority**: Tier 2 - High Innovation  
+**Complexity**: Medium-High
+
+### What It Does
+
+The Temporal Precedent Evolution Tracking system monitors how precedents change over time, detecting drift patterns and managing the full lifecycle of precedents. It provides comprehensive analytics on precedent evolution, automatic deprecation recommendations, and maintains a complete version history for auditability.
+
+### Key Features
+
+1. **Version History Tracking**: Maintains a complete version history for each precedent, tracking:
+   - Decision changes over time
+   - Score variations
+   - Value set modifications
+   - Rationale evolution
+   - Critic output changes
+
+2. **Lifecycle Management**: Supports four lifecycle states:
+   - **Active**: Current, in-use precedent
+   - **Deprecated**: No longer recommended but retained for historical reference
+   - **Superseded**: Replaced by a newer precedent
+   - **Archived**: Long-term storage, not used in active decisions
+
+3. **Temporal Drift Detection**: Analyzes evolution patterns to detect:
+   - Decision consistency changes
+   - Score variance trends
+   - Value drift over time
+   - Automatic drift scoring and alerts
+
+4. **Evolution Analytics**: Provides comprehensive metrics on:
+   - Version count per precedent
+   - Lifecycle state distribution
+   - Average versions per precedent
+   - Drift distribution (high/medium/low/none)
+   - Deprecation recommendations
+
+5. **Automatic Recommendations**: Suggests precedents for deprecation based on:
+   - High drift scores (>0.5)
+   - Decision inconsistency (>50% changes)
+   - High score variance (>0.4)
+
+### How It Works
+
+```python
+from engine.precedent.temporal_evolution import (
+    TemporalPrecedentEvolutionTracker,
+    PrecedentLifecycleState
+)
+
+# Initialize tracker (typically done automatically via feature integration)
+tracker = TemporalPrecedentEvolutionTracker(store_backend=precedent_store)
+
+# Track a precedent update (called automatically when precedent is updated)
+version = tracker.track_precedent_update(
+    case_id="case_123",
+    decision="allow",
+    aggregate_score=0.85,
+    values=["autonomy", "fairness"],
+    rationale="Strong autonomy considerations",
+    critic_outputs={"rights": {...}, "fairness": {...}},
+    metadata={"source": "api"}
+)
+
+# Get evolution analytics
+analytics = tracker.get_evolution_analytics(case_id="case_123")
+print(f"Versions: {analytics['version_count']}")
+print(f"Drift score: {analytics['drift_metrics']['drift_score']}")
+
+# Detect drift
+drift_info = tracker.detect_temporal_drift("case_123")
+if drift_info["drift_detected"]:
+    print(f"Drift detected: {drift_info['message']}")
+
+# Update lifecycle state
+tracker.set_lifecycle_state(
+    case_id="case_123",
+    state=PrecedentLifecycleState.DEPRECATED
+)
+
+# Get deprecation recommendations
+recommendations = tracker.recommend_deprecations(min_versions=3)
+for rec in recommendations:
+    print(f"Recommend deprecating {rec['case_id']}: {rec['reason']}")
+```
+
+### Benefits to ELEANOR
+
+1. **Constitutional Stability**: Ensures precedents maintain consistency over time, detecting when they drift from original intent.
+2. **Auditability**: Complete version history provides audit trail for governance decisions.
+3. **Proactive Management**: Automatic recommendations help identify precedents that need review or deprecation.
+4. **Quality Improvement**: Evolution analytics help identify patterns in precedent quality and decision-making.
+5. **Lifecycle Governance**: Structured lifecycle management prevents stale precedents from influencing decisions.
+
+### Integration
+
+When `enable_temporal_precedent_evolution` is enabled:
+- A `TemporalPrecedentEvolutionTracker` instance is attached to the engine as `engine.temporal_evolution_tracker`
+- Precedent updates automatically create version records
+- Analytics are available via the tracker instance
+
+---
+
+## 9. Streaming Governance with Incremental Decisions
+
+**File**: `engine/governance/streaming.py`  
+**Feature Flag**: `enable_streaming_governance`  
+**Status**: ✅ **IMPLEMENTED**  
+**Priority**: Tier 2 - High Innovation  
+**Complexity**: Medium
+
+### What It Does
+
+Streaming Governance provides real-time, incremental governance decisions during the pipeline execution. Instead of waiting for the full pipeline to complete, it evaluates governance at each stage (critics, precedent alignment, aggregation) and provides progressive decision signals, enabling faster feedback loops and early decision-making.
+
+### Key Features
+
+1. **Incremental Evaluation**: Evaluates governance at multiple pipeline stages:
+   - **Critics Partial**: After first few critic results
+   - **Critics Complete**: After all critics finish
+   - **Precedent Alignment**: After precedent retrieval
+   - **Aggregation**: After final aggregation
+
+2. **Progressive Decision Signals**: Provides early governance signals:
+   - **Preliminary Allow/Deny/Escalate**: Early signals based on partial evidence
+   - **Confirmed Allow/Deny/Escalate**: Final confirmed decisions
+   - **Insufficient Evidence**: When more data is needed
+
+3. **Confidence-Based Decisions**: Each decision includes:
+   - Confidence score (0.0 to 1.0)
+   - Stage of evaluation
+   - Rationale for the decision
+   - Evidence supporting the decision
+   - Flag indicating if confirmation is required
+
+4. **Early Decision Making**: Enables faster responses by:
+   - Detecting strong denial signals early (high violation ratio)
+   - Identifying high uncertainty requiring escalation
+   - Confirming strong positive signals with precedent alignment
+
+5. **Decision History Tracking**: Maintains history of all incremental decisions for a trace, showing how confidence evolves.
+
+### How It Works
+
+```python
+from engine.governance.streaming import StreamingGovernance, GovernanceSignal
+
+# Initialize streaming governance (typically done automatically)
+streaming_gov = StreamingGovernance(
+    early_decision_threshold=0.85,
+    deny_threshold=0.7,
+    escalation_threshold=0.6
+)
+
+# During streaming pipeline execution
+async for event in engine.run_stream(text, context):
+    # Extract stage data
+    if event["event"] == "critics_complete":
+        decision = await streaming_gov.evaluate_incremental(
+            trace_id=trace_id,
+            stage="critics_complete",
+            current_data={"critic_results": event["critics"]},
+            previous_decisions=previous_decisions
+        )
+        
+        if decision:
+            print(f"Decision: {decision.signal.value}")
+            print(f"Confidence: {decision.confidence}")
+            print(f"Rationale: {decision.rationale}")
+
+# Stream governance decisions alongside pipeline events
+async for event in streaming_gov.stream_governance_decisions(trace_id, event_stream):
+    # Events include original pipeline events plus governance_decision events
+    if event["event"] == "governance_decision":
+        print(f"Governance signal: {event['decision']['signal']}")
+```
+
+### Decision Logic
+
+1. **Early Denial**: If violation ratio > 0.5 or average score < 0.3, suggests preliminary deny with high confidence.
+2. **Early Escalation**: If critic disagreement (score variance > 0.3) or high uncertainty, suggests escalation.
+3. **Precedent Reinforcement**: High precedent alignment (>0.85) confirms allow; low alignment (<0.3) suggests deny.
+4. **Final Confirmation**: Aggregation stage provides confirmed signals based on complete evidence.
+
+### Benefits to ELEANOR
+
+1. **Faster Feedback**: Users receive governance signals earlier in the pipeline, improving perceived responsiveness.
+2. **Early Problem Detection**: Strong violations or high uncertainty are detected immediately, allowing for faster escalation.
+3. **Progressive Refinement**: Confidence increases as more evidence accumulates, providing transparent decision evolution.
+4. **WebSocket Integration**: Perfect for real-time applications requiring incremental governance updates.
+5. **Better UX**: Users can see governance decisions forming in real-time rather than waiting for final result.
+
+### Integration
+
+When `enable_streaming_governance` is enabled:
+- A `StreamingGovernance` instance is attached to the engine as `engine.streaming_governance`
+- Can be integrated with WebSocket streaming endpoints
+- Decisions are automatically evaluated at each pipeline stage
+
+### WebSocket Integration
+
+The streaming governance integrates seamlessly with the existing WebSocket streaming endpoint (`/ws/deliberate`), providing `governance_decision` events alongside other pipeline events.
+
+---
+
+## 10. Adaptive Critic Weighting with Meta-Learning
+
+**File**: `engine/aggregator/adaptive_weighting.py`  
+**Feature Flag**: `enable_adaptive_critic_weighting`  
+**Status**: ✅ **IMPLEMENTED**  
+**Priority**: Tier 2 - High Innovation  
+**Complexity**: High
+
+### What It Does
+
+Adaptive Critic Weighting uses meta-learning to automatically optimize the weights assigned to different critics based on their historical performance. It learns from human feedback, decision quality metrics, and precedent alignment to continuously improve the relative importance of each critic in the aggregation process.
+
+### Key Features
+
+1. **Online Learning**: Continuously learns from feedback without requiring retraining:
+   - Records feedback from each decision
+   - Updates performance metrics in real-time
+   - Adjusts weights based on accuracy, precision, recall
+
+2. **Performance Metrics Tracking**: Tracks comprehensive metrics per critic:
+   - Prediction accuracy (correct predictions / total)
+   - Precision (true positives / (true positives + false positives))
+   - Recall (true positives / (true positives + false negatives))
+   - F1 score (harmonic mean of precision and recall)
+   - False positive and false negative counts
+   - Human override frequency
+   - Precedent alignment scores
+
+3. **Multi-Factor Weight Adjustment**: Adjusts weights based on:
+   - Historical accuracy of critic predictions
+   - Agreement with human reviewer decisions
+   - Precedent alignment performance
+   - Frequency of human overrides (lower is better)
+
+4. **Exploration vs Exploitation**: Uses controlled exploration to discover optimal weights:
+   - Exploration rate parameter (default 5%)
+   - Occasional random adjustments to avoid local optima
+   - Gradual convergence to optimal weights
+
+5. **Temporal Decay**: Reduces influence of old observations:
+   - Decay factor (default 0.95) for older metrics
+   - Ensures system adapts to changing patterns
+   - Prevents being locked into outdated weight configurations
+
+6. **Weight Bounds**: Enforces minimum and maximum weight limits:
+   - Minimum weight: 0.1 (prevents complete exclusion)
+   - Maximum weight: 2.0 (prevents over-weighting)
+   - Ensures balanced critic participation
+
+### How It Works
+
+```python
+from engine.aggregator.adaptive_weighting import AdaptiveCriticWeighting
+
+# Initialize adaptive weighting (typically done automatically)
+adaptive_weighting = AdaptiveCriticWeighting(
+    learning_rate=0.1,        # How quickly to adjust weights
+    exploration_rate=0.05,    # Exploration vs exploitation balance
+    decay_factor=0.95,        # Temporal decay for old observations
+    min_weight=0.1,           # Minimum weight for any critic
+    max_weight=2.0,           # Maximum weight for any critic
+    min_samples=10            # Minimum samples before adjusting weights
+)
+
+# Get current weights
+weights = adaptive_weighting.get_weights(["rights", "fairness", "autonomy"])
+# Returns: {"rights": 1.2, "fairness": 0.9, "autonomy": 1.1}
+
+# Apply weights to critic scores
+weighted_scores = adaptive_weighting.get_weighted_scores({
+    "rights": {"score": 0.8, "severity": 2.5},
+    "fairness": {"score": 0.6, "severity": 1.5}
+})
+# Returns: {"rights": 0.96, "fairness": 0.54}
+
+# Record feedback after a decision
+adaptive_weighting.record_feedback(
+    trace_id="trace_123",
+    critic_results={
+        "rights": {"score": 0.8, "severity": 2.5, "violations": [...]},
+        "fairness": {"score": 0.6, "severity": 1.5, "violations": []}
+    },
+    final_decision="deny",
+    human_review_decision="deny",  # Human confirmed
+    human_corrected=False,
+    precedent_alignment={"alignment_score": 0.85}
+)
+
+# Periodically update weights (typically done after accumulating feedback)
+updates = adaptive_weighting.update_weights()
+for update in updates:
+    print(f"{update.critic_name}: {update.old_weight:.3f} -> {update.new_weight:.3f}")
+
+# Get performance report
+report = adaptive_weighting.get_performance_report()
+print(f"Rights critic accuracy: {report['critic_metrics']['rights']['accuracy']:.2%}")
+```
+
+### Learning Algorithm
+
+1. **Performance Score Calculation**:
+   ```
+   performance_score = (accuracy × 0.4) + (f1_score × 0.3) + 
+                       (normalized_alignment × 0.2) + 
+                       (override_avoidance × 0.1)
+   ```
+
+2. **Weight Adjustment**:
+   - **High performers** (score > 0.7): Increase weight toward max_weight
+   - **Low performers** (score < 0.4): Decrease weight toward min_weight
+   - **Moderate performers**: Adjust toward target based on performance
+
+3. **Update Frequency**: Weights are updated after sufficient samples (default: 10 evaluations per critic)
+
+### Benefits to ELEANOR
+
+1. **Automatic Optimization**: No manual tuning required - system learns optimal weights automatically.
+2. **Adaptation to Context**: Weights adapt to your specific use case and decision patterns.
+3. **Improved Accuracy**: Better weighting leads to more accurate final decisions over time.
+4. **Human Alignment**: Learns from human feedback to align with human judgment.
+5. **Reduced Manual Tuning**: Eliminates need for manual weight configuration and maintenance.
+6. **Auditability**: Complete history of weight updates with reasons for changes.
+
+### Integration
+
+When `enable_adaptive_critic_weighting` is enabled:
+- An `AdaptiveCriticWeighting` instance is attached to the engine as `engine.adaptive_weighting`
+- The aggregator can use weighted scores via `get_weighted_scores()`
+- Feedback is automatically recorded if human review decisions are available
+- Weights are updated periodically (can be triggered after batches of decisions)
+
+### Performance Report Example
+
+```json
+{
+  "current_weights": {
+    "rights": 1.35,
+    "fairness": 0.92,
+    "autonomy": 1.08,
+    "truth": 0.87
+  },
+  "critic_metrics": {
+    "rights": {
+      "weight": 1.35,
+      "total_evaluations": 1250,
+      "accuracy": 0.87,
+      "precision": 0.91,
+      "recall": 0.83,
+      "f1_score": 0.87,
+      "human_override_count": 45,
+      "precedent_alignment_score": 0.82
+    }
+  },
+  "summary": {
+    "total_feedback_samples": 5000,
+    "total_weight_updates": 12,
+    "critics_tracked": 9
+  }
+}
+```
+
+---
+
 **Last Updated**: January 8, 2025  
-**Implementation Status**: ✅ **CORE FEATURES COMPLETE AND INTEGRATED**
+**Implementation Status**: ✅ **ALL FEATURES COMPLETE AND INTEGRATED**
