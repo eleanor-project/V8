@@ -1,0 +1,34 @@
+# ELEANOR Router Configuration (Traffic Light)
+# Notes:
+# - Router decides whether to invoke ELEANOR governance (GREEN/AMBER/RED).
+# - Router does not "judge" content; it routes based on risk, precedent coverage, and uncertainty proxies/telemetry.
+# - Sanctity rule: human reviewers never override runtime decisions; they author future precedent only.
+
+version: 1
+
+thresholds:
+  coverage:
+    high_risk_green_min: 0.75
+    medium_risk_green_min: 0.65
+    low_risk_green_min: 0.55
+
+  divergence:
+    high_uncertainty_min: 0.35
+    medium_uncertainty_min: 0.20
+
+routing:
+  # If true, any explicit policy-violation signal forces RED immediately.
+  hard_red_on_policy_violation: true
+
+  # If true, "no precedent found" in high-risk domains routes AMBER by default.
+  amber_on_no_precedent_high_risk: true
+
+  # Conservative bias: when high-risk and ambiguous, prefer escalation.
+  conservative_high_risk_bias: true
+
+outputs:
+  # Whether to include precedent IDs in user-facing responses (the model can mention them).
+  include_precedent_ids: true
+
+  # Whether to include overlay refs (UDHR/UNESCO/OrgPolicy) in user-facing responses.
+  include_overlay_refs: true
