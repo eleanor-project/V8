@@ -124,6 +124,10 @@ const SimpleConsole = () => {
     return routerEvt?.data?.model_info || finalData?.model_info || null;
   }, [events, finalData]);
 
+  const governanceDecisions = useMemo(() => {
+    return events.filter((e) => e.event === "governance_decision");
+  }, [events]);
+
   const timeline = useMemo(
     () => events.map((e, idx) => `${idx + 1}. ${e.event || "event"}`).join(" • "),
     [events],
@@ -193,6 +197,68 @@ const SimpleConsole = () => {
 
         {!showRaw && (
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+            {governanceDecisions.length > 0 && (
+              <div style={{ marginBottom: 16, padding: 12, backgroundColor: "#f8f9fa", borderRadius: 4 }}>
+                <h4 style={{ marginTop: 0, marginBottom: 8 }}>Streaming Governance Decisions</h4>
+                {governanceDecisions.map((gd, idx) => {
+                  const decision = gd.decision || gd.data?.decision;
+                  if (!decision) return null;
+                  const signal = decision.signal || decision.signal;
+                  const confidence = decision.confidence || 0;
+                  const stage = decision.stage || "unknown";
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        marginBottom: 8,
+                        padding: 8,
+                        border: "1px solid #ddd",
+                        borderRadius: 4,
+                        backgroundColor: "white",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>
+                            {signal?.replace("_", " ").toUpperCase() || "UNKNOWN"}
+                          </div>
+                          <div className="small" style={{ color: "#666" }}>
+                            Stage: {stage} • Confidence: {(confidence * 100).toFixed(1)}%
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            padding: "4px 8px",
+                            borderRadius: 4,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            backgroundColor:
+                              signal?.includes("ALLOW") || signal?.includes("allow")
+                                ? "#d4edda"
+                                : signal?.includes("DENY") || signal?.includes("deny")
+                                ? "#f8d7da"
+                                : "#fff3cd",
+                            color:
+                              signal?.includes("ALLOW") || signal?.includes("allow")
+                                ? "#155724"
+                                : signal?.includes("DENY") || signal?.includes("deny")
+                                ? "#721c24"
+                                : "#856404",
+                          }}
+                        >
+                          {signal || "PENDING"}
+                        </div>
+                      </div>
+                      {decision.rationale && (
+                        <div className="small" style={{ marginTop: 4, color: "#666" }}>
+                          {decision.rationale}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <div className="metric">
               <div className="label">Assessment</div>
               <div className="value">{finalData?.final_decision || "—"}</div>
@@ -460,6 +526,375 @@ const FeatureFlagsPanel = () => {
   );
 };
 
+const TemporalEvolutionPanel = () => {
+  const [analytics, setAnalytics] = useState(null);
+  const [caseId, setCaseId] = useState("");
+  const [driftInfo, setDriftInfo] = useState(null);
+  const [recommendations, setRecommendations] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const loadAnalytics = async (cid = null) => {
+    setLoading(true);
+    try {
+      const url = cid ? `/admin/precedent-evolution/analytics?case_id=${cid}` : "/admin/precedent-evolution/analytics";
+      const data = await fetchJson(url);
+      setAnalytics(data);
+    } catch (err) {
+      setAnalytics({ error: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadDrift = async () => {
+    if (!caseId) return;
+    setLoading(true);
+    try {
+      const data = await fetchJson(`/admin/precedent-evolution/${caseId}/drift`);
+      setDriftInfo(data);
+    } catch (err) {
+      setDriftInfo({ error: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadRecommendations = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchJson("/admin/precedent-evolution/recommendations?min_versions=3");
+      setRecommendations(data);
+    } catch (err) {
+      setRecommendations({ error: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAnalytics();
+  }, []);
+
+  return (
+    <div className="grid two">
+      <div className="panel">
+        <h3>Temporal Evolution Analytics</h3>
+        <div className="row" style={{ marginBottom: 8 }}>
+          <button onClick={() => loadAnalytics()} disabled={loading}>
+            Refresh
+          </button>
+          <input
+            placeholder="Case ID (optional)"
+            value={caseId}
+            onChange={(e) => setCaseId(e.target.value)}
+            style={{ flex: 1, padding: "6px 8px" }}
+          />
+          <button onClick={() => loadAnalytics(caseId)} disabled={loading || !caseId}>
+            Load Case
+          </button>
+        </div>
+        {analytics && (
+          <div>
+            {analytics.error ? (
+              <div className="small" style={{ color: "red" }}>Error: {analytics.error}</div>
+            ) : (
+              <div>
+                {analytics.case_id ? (
+                  <div>
+                    <div className="metric">
+                      <div className="label">Case ID</div>
+                      <div className="value">{analytics.case_id}</div>
+                    </div>
+                    <div className="metric">
+                      <div className="label">Lifecycle State</div>
+                      <div className="value">{analytics.lifecycle_state}</div>
+                    </div>
+                    <div className="metric">
+                      <div className="label">Version Count</div>
+                      <div className="value">{analytics.version_count}</div>
+                    </div>
+                    {analytics.drift_metrics && (
+                      <div className="metric">
+                        <div className="label">Drift Score</div>
+                        <div className="value">{analytics.drift_metrics.drift_score?.toFixed(3) || "N/A"}</div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <div className="metric">
+                      <div className="label">Total Precedents</div>
+                      <div className="value">{analytics.total_precedents || 0}</div>
+                    </div>
+                    <div className="metric">
+                      <div className="label">Average Versions</div>
+                      <div className="value">{analytics.average_versions_per_precedent?.toFixed(2) || 0}</div>
+                    </div>
+                    {analytics.lifecycle_distribution && (
+                      <div>
+                        <h4>Lifecycle Distribution</h4>
+                        <pre>{pretty(analytics.lifecycle_distribution)}</pre>
+                      </div>
+                    )}
+                    {analytics.drift_distribution && (
+                      <div>
+                        <h4>Drift Distribution</h4>
+                        <pre>{pretty(analytics.drift_distribution)}</pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        <h4>Drift Detection</h4>
+        <div className="row" style={{ marginBottom: 8 }}>
+          <input
+            placeholder="Enter case ID"
+            value={caseId}
+            onChange={(e) => setCaseId(e.target.value)}
+            style={{ flex: 1, padding: "6px 8px" }}
+          />
+          <button onClick={loadDrift} disabled={loading || !caseId}>
+            Detect Drift
+          </button>
+        </div>
+        {driftInfo && (
+          <pre style={{ fontSize: 12, maxHeight: 200, overflow: "auto" }}>
+            {pretty(driftInfo)}
+          </pre>
+        )}
+        <h4>Deprecation Recommendations</h4>
+        <button onClick={loadRecommendations} disabled={loading} style={{ marginBottom: 8 }}>
+          Get Recommendations
+        </button>
+        {recommendations && (
+          <div style={{ maxHeight: 300, overflow: "auto" }}>
+            {recommendations.error ? (
+              <div className="small" style={{ color: "red" }}>Error: {recommendations.error}</div>
+            ) : (
+              <div>
+                <div className="small">Found {recommendations.count || 0} recommendations</div>
+                {recommendations.recommendations?.map((rec, idx) => (
+                  <div key={idx} style={{ marginTop: 8, padding: 8, border: "1px solid #ddd", borderRadius: 4 }}>
+                    <div style={{ fontWeight: 500 }}>Case: {rec.case_id}</div>
+                    <div className="small">Reason: {rec.reason}</div>
+                    <div className="small">Drift Score: {rec.drift_metrics?.drift_score?.toFixed(3)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="panel">
+        <h3>Evolution Details</h3>
+        {analytics && analytics.latest_version && (
+          <div>
+            <h4>Latest Version</h4>
+            <pre style={{ fontSize: 12, maxHeight: 400, overflow: "auto" }}>
+              {pretty(analytics.latest_version)}
+            </pre>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const AdaptiveWeightingPanel = () => {
+  const [performance, setPerformance] = useState(null);
+  const [weights, setWeights] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [updating, setUpdating] = useState(false);
+
+  const loadPerformance = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchJson("/admin/adaptive-weighting/performance");
+      setPerformance(data);
+    } catch (err) {
+      setPerformance({ error: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadWeights = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchJson("/admin/adaptive-weighting/weights");
+      setWeights(data);
+    } catch (err) {
+      setWeights({ error: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateWeights = async () => {
+    setUpdating(true);
+    try {
+      const data = await fetchJson("/admin/adaptive-weighting/update", { method: "POST" });
+      alert(`Updated ${data.updates_count || 0} weights`);
+      await loadWeights();
+      await loadPerformance();
+    } catch (err) {
+      alert(`Failed to update weights: ${err.message}`);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const resetWeights = async () => {
+    if (!confirm("Reset all weights to uniform (1.0)? This cannot be undone.")) return;
+    setUpdating(true);
+    try {
+      await fetchJson("/admin/adaptive-weighting/reset", { method: "POST" });
+      alert("Weights reset successfully");
+      await loadWeights();
+      await loadPerformance();
+    } catch (err) {
+      alert(`Failed to reset weights: ${err.message}`);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  useEffect(() => {
+    loadWeights();
+    loadPerformance();
+  }, []);
+
+  return (
+    <div className="grid two">
+      <div className="panel">
+        <h3>Critic Weights</h3>
+        <div className="row" style={{ marginBottom: 8 }}>
+          <button onClick={loadWeights} disabled={loading}>
+            Refresh
+          </button>
+          <button onClick={updateWeights} disabled={updating || loading}>
+            {updating ? "Updating..." : "Update Weights"}
+          </button>
+          <button onClick={resetWeights} disabled={updating || loading} style={{ backgroundColor: "#dc3545" }}>
+            Reset
+          </button>
+        </div>
+        {weights && (
+          <div>
+            {weights.error ? (
+              <div className="small" style={{ color: "red" }}>Error: {weights.error}</div>
+            ) : (
+              <div>
+                {weights.weights && Object.entries(weights.weights).map(([name, weight]) => (
+                  <div key={name} style={{ marginBottom: 8, padding: 8, border: "1px solid #ddd", borderRadius: 4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontWeight: 500 }}>{name}</span>
+                      <span style={{ fontSize: 18, fontWeight: 600 }}>{weight.toFixed(3)}</span>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 4,
+                        height: 8,
+                        backgroundColor: "#e0e0e0",
+                        borderRadius: 4,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: "100%",
+                          width: `${(weight / 2.0) * 100}%`,
+                          backgroundColor: weight > 1.2 ? "#28a745" : weight < 0.8 ? "#dc3545" : "#ffc107",
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="panel">
+        <h3>Performance Metrics</h3>
+        <button onClick={loadPerformance} disabled={loading} style={{ marginBottom: 8 }}>
+          Refresh
+        </button>
+        {performance && (
+          <div>
+            {performance.error ? (
+              <div className="small" style={{ color: "red" }}>Error: {performance.error}</div>
+            ) : (
+              <div>
+                {performance.summary && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div className="metric">
+                      <div className="label">Total Feedback Samples</div>
+                      <div className="value">{performance.summary.total_feedback_samples || 0}</div>
+                    </div>
+                    <div className="metric">
+                      <div className="label">Weight Updates</div>
+                      <div className="value">{performance.summary.total_weight_updates || 0}</div>
+                    </div>
+                    <div className="metric">
+                      <div className="label">Critics Tracked</div>
+                      <div className="value">{performance.summary.critics_tracked || 0}</div>
+                    </div>
+                  </div>
+                )}
+                {performance.critic_metrics && (
+                  <div>
+                    <h4>Critic Performance</h4>
+                    <div style={{ maxHeight: 400, overflow: "auto" }}>
+                      {Object.entries(performance.critic_metrics).map(([name, metrics]) => (
+                        <div
+                          key={name}
+                          style={{ marginBottom: 12, padding: 12, border: "1px solid #ddd", borderRadius: 4 }}
+                        >
+                          <div style={{ fontWeight: 600, marginBottom: 8 }}>{name}</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 12 }}>
+                            <div>
+                              <div className="small">Weight</div>
+                              <div>{metrics.weight?.toFixed(3)}</div>
+                            </div>
+                            <div>
+                              <div className="small">Accuracy</div>
+                              <div>{(metrics.accuracy * 100).toFixed(1)}%</div>
+                            </div>
+                            <div>
+                              <div className="small">F1 Score</div>
+                              <div>{metrics.f1_score?.toFixed(3)}</div>
+                            </div>
+                            <div>
+                              <div className="small">Evaluations</div>
+                              <div>{metrics.total_evaluations || 0}</div>
+                            </div>
+                            <div>
+                              <div className="small">False Positives</div>
+                              <div>{metrics.false_positives || 0}</div>
+                            </div>
+                            <div>
+                              <div className="small">False Negatives</div>
+                              <div>{metrics.false_negatives || 0}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const AdminPanel = () => {
   const [bindings, setBindings] = useState({});
   const [routerHealth, setRouterHealth] = useState(null);
@@ -474,6 +909,7 @@ const AdminPanel = () => {
     apiKey: "",
   });
   const [savingAdapter, setSavingAdapter] = useState(false);
+  const [advancedTab, setAdvancedTab] = useState("evolution");
 
   const loadBindings = async () => {
     try {
@@ -624,6 +1060,38 @@ const AdminPanel = () => {
       </div>
       <div style={{ marginTop: 20 }}>
         <FeatureFlagsPanel />
+      </div>
+      <div style={{ marginTop: 20 }}>
+        <div className="row" style={{ marginBottom: 12, gap: 8 }}>
+          <button
+            onClick={() => setAdvancedTab("evolution")}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: advancedTab === "evolution" ? "#007bff" : "#6c757d",
+              color: "white",
+              border: "none",
+              borderRadius: 4,
+              cursor: "pointer",
+            }}
+          >
+            Temporal Evolution
+          </button>
+          <button
+            onClick={() => setAdvancedTab("weighting")}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: advancedTab === "weighting" ? "#007bff" : "#6c757d",
+              color: "white",
+              border: "none",
+              borderRadius: 4,
+              cursor: "pointer",
+            }}
+          >
+            Adaptive Weighting
+          </button>
+        </div>
+        {advancedTab === "evolution" && <TemporalEvolutionPanel />}
+        {advancedTab === "weighting" && <AdaptiveWeightingPanel />}
       </div>
     </div>
   );
