@@ -72,7 +72,7 @@ class ModelRegistry:
     - Default fallback
     """
 
-    def __init__(self, default_model_id: str = "claude-sonnet-4.5"):
+    def __init__(self, default_model_id: str = "claude-3-5-sonnet-20241022"):
         """
         Initialize registry with default model.
 
@@ -92,9 +92,9 @@ class ModelRegistry:
 
         # Tier -> model mappings
         self.tier_models: Dict[ModelTier, str] = {
-            ModelTier.PREMIUM: "claude-opus-4.5",
-            ModelTier.STANDARD: "claude-sonnet-4.5",
-            ModelTier.ECONOMY: "claude-haiku-4.0",
+            ModelTier.PREMIUM: "claude-3-opus-20240229",
+            ModelTier.STANDARD: "claude-3-5-sonnet-20241022",
+            ModelTier.ECONOMY: "claude-3-haiku-20240307",
         }
 
         # Routing strategies
@@ -111,40 +111,54 @@ class ModelRegistry:
     def _init_default_configs(self):
         """Initialize default model configurations."""
         self.model_configs = {
-            "claude-opus-4.5": ModelConfig(
-                model_id="claude-opus-4-5-20251101",
+            "claude-3-opus-20240229": ModelConfig(
+                model_id="claude-3-opus-20240229",
                 provider="anthropic",
                 tier=ModelTier.PREMIUM,
                 temperature=0.1,
                 cost_per_1k_tokens=0.015,
             ),
-            "claude-sonnet-4.5": ModelConfig(
-                model_id="claude-sonnet-4-5-20250929",
+            "claude-3-5-sonnet-20241022": ModelConfig(
+                model_id="claude-3-5-sonnet-20241022",
                 provider="anthropic",
                 tier=ModelTier.STANDARD,
                 temperature=0.1,
                 cost_per_1k_tokens=0.003,
             ),
-            "claude-haiku-4.0": ModelConfig(
-                model_id="claude-haiku-4-0-20250101",
+            "claude-3-haiku-20240307": ModelConfig(
+                model_id="claude-3-haiku-20240307",
                 provider="anthropic",
                 tier=ModelTier.ECONOMY,
                 temperature=0.1,
                 cost_per_1k_tokens=0.0008,
             ),
-            "gpt-4": ModelConfig(
-                model_id="gpt-4-turbo",
+            "gpt-4.1": ModelConfig(
+                model_id="gpt-4.1",
                 provider="openai",
                 tier=ModelTier.PREMIUM,
                 temperature=0.1,
                 cost_per_1k_tokens=0.01,
             ),
-            "gpt-3.5-turbo": ModelConfig(
-                model_id="gpt-3.5-turbo",
+            "gpt-4o": ModelConfig(
+                model_id="gpt-4o",
+                provider="openai",
+                tier=ModelTier.STANDARD,
+                temperature=0.1,
+                cost_per_1k_tokens=0.005,
+            ),
+            "gpt-4o-mini": ModelConfig(
+                model_id="gpt-4o-mini",
                 provider="openai",
                 tier=ModelTier.ECONOMY,
                 temperature=0.1,
                 cost_per_1k_tokens=0.0015,
+            ),
+            "grok-2-latest": ModelConfig(
+                model_id="grok-2-latest",
+                provider="xai",
+                tier=ModelTier.STANDARD,
+                temperature=0.1,
+                cost_per_1k_tokens=0.006,
             ),
         }
 
