@@ -9,6 +9,7 @@ import logging
 from typing import Dict, Any, Optional
 
 from engine.security.sanitizer import CredentialSanitizer
+from engine.security.ledger import get_ledger_writer
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class SecureAuditLogger:
         self._logger_override = logger
         self.logger_name = logger_name
         self.sanitizer = sanitizer or CredentialSanitizer()
+        self._ledger_error_logged = False
 
     def _get_logger(self) -> logging.Logger:
         if self._logger_override:
@@ -55,6 +57,20 @@ class SecureAuditLogger:
         except Exception:
             return payload
 
+    def _append_ledger(self, event: str, payload: Dict[str, Any]) -> None:
+        try:
+            writer = get_ledger_writer()
+            writer.append(event, payload)
+        except Exception as exc:
+            if not self._ledger_error_logged:
+                self._ledger_error_logged = True
+                try:
+                    self._get_logger().warning(
+                        "audit_ledger_append_failed", extra={"error": str(exc)}
+                    )
+                except Exception:
+                    pass
+
     def log(self, event: str, extra: Optional[Dict[str, Any]] = None) -> None:
         """Generic audit log entry."""
         sanitized = self._sanitize(extra or {})
@@ -62,6 +78,7 @@ class SecureAuditLogger:
             self._get_logger().info(event, extra=sanitized)
         except Exception:
             pass
+        self._append_ledger(event, sanitized)
 
     def log_audit_event(self, event: str, details: Optional[Dict[str, Any]] = None) -> None:
         sanitized = self._sanitize({"details": details or {}})
@@ -69,6 +86,7 @@ class SecureAuditLogger:
             self._get_logger().info(event, extra=sanitized)
         except Exception:
             pass
+        self._append_ledger(event, sanitized)
 
     def log_access(
         self,
@@ -86,10 +104,12 @@ class SecureAuditLogger:
             "allowed": allowed,
             "details": details or {},
         }
+        sanitized = self._sanitize({"details": payload})
         try:
-            self._get_logger().info("access_log", extra=self._sanitize({"details": payload}))
+            self._get_logger().info("access_log", extra=sanitized)
         except Exception:
             pass
+        self._append_ledger("access_log", sanitized)
 
     def log_secret_access(
         self,
@@ -105,10 +125,12 @@ class SecureAuditLogger:
             "success": success,
             **(details or {}),
         }
+        sanitized = self._sanitize({"details": payload})
         try:
-            self._get_logger().info("secret_access_log", extra=self._sanitize({"details": payload}))
+            self._get_logger().info("secret_access_log", extra=sanitized)
         except Exception:
             pass
+        self._append_ledger("secret_access_log", sanitized)
 
 
 _audit_logger = SecureAuditLogger()

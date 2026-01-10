@@ -284,6 +284,29 @@ audit.log_configuration_change(
 )
 ```
 
+**Audit Ledger (tamper-evident)**
+
+```bash
+ELEANOR_LEDGER_BACKEND=stone_tablet_ledger
+ELEANOR_LEDGER_PATH=/app/audit/stone_tablet_ledger.jsonl
+# Required when backend=s3_object_lock
+ELEANOR_LEDGER_S3_BUCKET=your-ledger-bucket
+ELEANOR_LEDGER_S3_REGION=us-east-1
+ELEANOR_LEDGER_S3_RETENTION_DAYS=3650
+ELEANOR_LEDGER_S3_OBJECT_LOCK_MODE=COMPLIANCE
+ELEANOR_LEDGER_S3_KMS_KEY_ID=arn:aws:kms:us-east-1:123456789012:key/abcd-1234
+# Recommended for multi-writer correctness
+ELEANOR_LEDGER_DDB_TABLE=eleanor-stone-tablet-ledger-index
+ELEANOR_LEDGER_DDB_REGION=us-east-1
+ELEANOR_LEDGER_DDB_LEDGER_ID=default
+# Optional S3 inventory verification
+ELEANOR_LEDGER_S3_INVENTORY_ENABLED=false
+ELEANOR_LEDGER_S3_INVENTORY_BUCKET=your-inventory-bucket
+ELEANOR_LEDGER_S3_INVENTORY_PREFIX=inventory/ledger
+```
+
+Supported backends: `stone_tablet_ledger` | `s3_object_lock` | `postgres_append_only` | `qldb` | `disabled`
+
 ---
 
 ## Integration with Engine
