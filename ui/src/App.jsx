@@ -340,6 +340,126 @@ const TracePanel = () => {
   );
 };
 
+const FeatureFlagsPanel = () => {
+  const [flags, setFlags] = useState({
+    explainable_governance: false,
+    semantic_cache: false,
+    intelligent_model_selection: false,
+    anomaly_detection: false,
+    streaming_governance: false,
+    adaptive_critic_weighting: false,
+    temporal_precedent_evolution: false,
+    reflection: true,
+    drift_check: true,
+    precedent_analysis: true,
+  });
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const loadFlags = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchJson("/admin/feature-flags");
+      setFlags(data);
+    } catch (err) {
+      alert(`Failed to load feature flags: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveFlags = async () => {
+    setSaving(true);
+    try {
+      const data = await fetchJson("/admin/feature-flags", {
+        method: "POST",
+        body: JSON.stringify(flags),
+      });
+      setFlags(data);
+      alert("Feature flags updated successfully!");
+    } catch (err) {
+      alert(`Failed to save feature flags: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleFlag = (key) => {
+    setFlags((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  useEffect(() => {
+    loadFlags();
+  }, []);
+
+  const featureDescriptions = {
+    explainable_governance: "Explainable Governance: Provides detailed explanations of governance decisions with causal reasoning",
+    semantic_cache: "Semantic Cache: Cache based on semantic similarity (3-5x better hit rates)",
+    intelligent_model_selection: "Intelligent Model Selection: Automatically select optimal models for cost/latency/quality",
+    anomaly_detection: "Anomaly Detection: Proactively detect unusual system behavior using ML",
+    streaming_governance: "Streaming Governance: Real-time governance decisions via WebSocket",
+    adaptive_critic_weighting: "Adaptive Critic Weighting: Learn optimal critic weights from historical decisions",
+    temporal_precedent_evolution: "Temporal Precedent Evolution: Track precedent lifecycle and detect drift",
+    reflection: "Reflection: Enable reflection and uncertainty analysis",
+    drift_check: "Drift Check: Enable drift detection",
+    precedent_analysis: "Precedent Analysis: Enable precedent-based reasoning",
+  };
+
+  return (
+    <div className="panel">
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h3 style={{ margin: 0 }}>Feature Flags</h3>
+        <div className="row" style={{ gap: 8 }}>
+          <button onClick={loadFlags} disabled={loading || saving} style={{ padding: "6px 12px" }}>
+            {loading ? "Loading..." : "Refresh"}
+          </button>
+          <button onClick={saveFlags} disabled={loading || saving} style={{ padding: "6px 12px" }}>
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+        </div>
+      </div>
+      <p className="small" style={{ marginBottom: 16 }}>
+        Enable or disable optional features. Changes take effect immediately but require server restart for persistence.
+      </p>
+      <div style={{ display: "grid", gap: 12 }}>
+        {Object.entries(flags).map(([key, value]) => (
+          <div key={key} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: 12, border: "1px solid #ddd", borderRadius: 4 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flex: 1 }}>
+              <input
+                type="checkbox"
+                checked={value}
+                onChange={() => toggleFlag(key)}
+                disabled={loading || saving}
+                style={{ width: 18, height: 18, cursor: "pointer" }}
+              />
+              <div>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>
+                  {key.split("_").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")}
+                </div>
+                <div className="small" style={{ color: "#666" }}>
+                  {featureDescriptions[key] || "Feature description not available"}
+                </div>
+              </div>
+            </label>
+            <div
+              style={{
+                padding: "4px 8px",
+                borderRadius: 4,
+                fontSize: 12,
+                fontWeight: 500,
+                backgroundColor: value ? "#d4edda" : "#f8d7da",
+                color: value ? "#155724" : "#721c24",
+              }}
+            >
+              {value ? "ON" : "OFF"}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const AdminPanel = () => {
   const [bindings, setBindings] = useState({});
   const [routerHealth, setRouterHealth] = useState(null);
@@ -412,9 +532,10 @@ const AdminPanel = () => {
   }, []);
 
   return (
-    <div className="grid two">
-      <div className="panel">
-        <h3>Critic Bindings</h3>
+    <div>
+      <div className="grid two">
+        <div className="panel">
+          <h3>Critic Bindings</h3>
         <div className="row">
           <select
             value={newBinding.critic}
@@ -499,6 +620,10 @@ const AdminPanel = () => {
           <button onClick={loadRouterHealth}>Refresh</button>
         </div>
         <pre>{routerHealth ? pretty(routerHealth) : "—"}</pre>
+      </div>
+      </div>
+      <div style={{ marginTop: 20 }}>
+        <FeatureFlagsPanel />
       </div>
     </div>
   );
