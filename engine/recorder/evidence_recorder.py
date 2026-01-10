@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 from .db_sink import EvidenceDBSink
 from engine.security.sanitizer import CredentialSanitizer
 
+logger = logging.getLogger(__name__)
+
 # Enhanced observability
 try:
     from engine.events.event_bus import get_event_bus, EventType
@@ -81,7 +83,10 @@ class EvidenceRecorder:
             try:
                 buffer_size = int(env_override)
             except ValueError:
-                pass
+                logger.warning(
+                    f"Invalid ELEANOR_EVIDENCE_BUFFER_SIZE environment variable value: '{env_override}'. "
+                    f"Using default buffer size: {buffer_size or 10_000}"
+                )
 
         self.buffer_size = buffer_size or 10_000
         self.buffer: List[EvidenceRecord] = []
