@@ -270,6 +270,11 @@ echo "✅ API key validation complete"
   - **Setting:** `REPLAY_LOG_PATH=/app/audit/replay_log.jsonl`
   - **Verify:** Same directory as evidence path
 
+- [ ] **Audit ledger is configured**
+  - **Setting:** `ELEANOR_LEDGER_BACKEND=stone_tablet_ledger`
+  - **Setting:** `ELEANOR_LEDGER_PATH=/app/audit/stone_tablet_ledger.jsonl`
+  - **Verify:** Ledger file is writable and included in retention policy
+
 - [ ] **Audit log rotation is configured** (for production)
   - **Recommendation:** Use logrotate or similar to prevent unbounded growth
   - **Example:** Rotate daily, keep 30 days

@@ -373,6 +373,64 @@ kubectl logs -n eleanor-v8 -l app=eleanor-v8 | grep -i "secret.*refresh"
 
 ---
 
+### Audit Ledger Index (DynamoDB)
+
+**Purpose**: Provide ordered, multi-writer-safe indexing for the S3 Object Lock audit ledger.
+
+**IAM (least privilege)**:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "LedgerDynamoDBAccess",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:DescribeTable",
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:Query",
+        "dynamodb:UpdateItem"
+      ],
+      "Resource": "arn:aws:dynamodb:us-east-1:ACCOUNT_ID:table/eleanor-stone-tablet-ledger-index"
+    }
+  ]
+}
+```
+
+**Procedure**:
+```bash
+export ELEANOR_LEDGER_DDB_TABLE=eleanor-stone-tablet-ledger-index
+export ELEANOR_LEDGER_DDB_REGION=us-east-1
+export ELEANOR_LEDGER_DDB_LEDGER_ID=default
+
+python3 scripts/create_ledger_ddb_table.py --wait --init-meta
+```
+
+**Verify**:
+```bash
+aws dynamodb describe-table --table-name "$ELEANOR_LEDGER_DDB_TABLE" --region "$ELEANOR_LEDGER_DDB_REGION"
+
+aws dynamodb get-item \
+  --table-name "$ELEANOR_LEDGER_DDB_TABLE" \
+  --region "$ELEANOR_LEDGER_DDB_REGION" \
+  --key '{"ledger_id":{"S":"default"},"seq":{"S":"META"}}'
+```
+
+**Schema (required)**:
+- **PK**: `ledger_id` (string)
+- **SK**: `seq` (string)
+
+**Item conventions**:
+- `seq="META"` stores `seq_counter` and `last_hash`.
+- `seq="SEQ#000000000000000001"` stores per-record index + `s3_key`.
+
+**Pipeline note**:
+- Run `python3 scripts/create_ledger_ddb_table.py --wait --init-meta` once per environment.
+- Grant the runtime role the IAM policy above for the ledger table.
+
+---
+
 ### Database Maintenance
 
 **Procedure**:

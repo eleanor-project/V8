@@ -698,6 +698,22 @@ ELEANOR V8's constitutional governance requires immutable audit trails:
 # .env
 EVIDENCE_PATH=/app/audit/evidence.jsonl
 REPLAY_LOG_PATH=/app/audit/replay_log.jsonl
+ELEANOR_LEDGER_BACKEND=stone_tablet_ledger
+ELEANOR_LEDGER_PATH=/app/audit/stone_tablet_ledger.jsonl
+# Required when backend=s3_object_lock
+ELEANOR_LEDGER_S3_BUCKET=your-ledger-bucket
+ELEANOR_LEDGER_S3_REGION=us-east-1
+ELEANOR_LEDGER_S3_RETENTION_DAYS=3650
+ELEANOR_LEDGER_S3_OBJECT_LOCK_MODE=COMPLIANCE
+ELEANOR_LEDGER_S3_KMS_KEY_ID=arn:aws:kms:us-east-1:123456789012:key/abcd-1234
+# Recommended for multi-writer correctness
+ELEANOR_LEDGER_DDB_TABLE=eleanor-stone-tablet-ledger-index
+ELEANOR_LEDGER_DDB_REGION=us-east-1
+ELEANOR_LEDGER_DDB_LEDGER_ID=default
+# Optional S3 inventory verification
+ELEANOR_LEDGER_S3_INVENTORY_ENABLED=false
+ELEANOR_LEDGER_S3_INVENTORY_BUCKET=your-inventory-bucket
+ELEANOR_LEDGER_S3_INVENTORY_PREFIX=inventory/ledger
 ```
 
 **Log Rotation:**
@@ -725,7 +741,8 @@ REPLAY_LOG_PATH=/app/audit/replay_log.jsonl
 - [ ] Audit logs are backed up off-site (S3, GCS, Azure Blob)
 - [ ] Audit log retention meets regulatory requirements (e.g., 7 years for GDPR)
 - [ ] Audit logs are immutable (write-once, read-many)
-- [ ] Cryptographic signatures for audit log integrity (optional, recommended)
+- [ ] Ledger backend is set (`stone_tablet_ledger` or `s3_object_lock`)
+- [ ] Hash-chained integrity (ledger) and optional signatures are enabled
 
 ### Regulatory Considerations
 
