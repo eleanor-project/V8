@@ -2371,6 +2371,7 @@ async def update_feature_flags(flags: FeatureFlagsUpdate):
     try:
         from engine.config.settings import get_settings, reload_settings
         import os
+        from engine.security.audit import audit_log
         
         # Update environment variables (persists across restarts if .env file exists)
         env_updates = {}
@@ -2408,7 +2409,11 @@ async def update_feature_flags(flags: FeatureFlagsUpdate):
             "feature_flags_updated",
             extra={"flags": {k: v for k, v in flags.model_dump().items() if v is not None}}
         )
-        
+        audit_log(
+            "feature_flags_updated",
+            extra={"flags": {k: v for k, v in flags.model_dump().items() if v is not None}},
+        )
+
         return FeatureFlagsResponse(
             explainable_governance=settings.enable_explainable_governance,
             semantic_cache=settings.enable_semantic_cache,

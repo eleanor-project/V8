@@ -41,6 +41,7 @@ from engine.runtime.models import (  # noqa: F401
     EngineModelInfo,
     EngineResult,
 )
+from engine.validation import validate_input  # compatibility for tests/monkeypatching
 from engine.utils.dependency_tracking import record_dependency_failure
 from governance.review_packets import build_review_packet
 from governance.review_triggers import Case

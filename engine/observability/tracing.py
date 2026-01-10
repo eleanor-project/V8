@@ -5,6 +5,7 @@ ELEANOR V8 — Enhanced Distributed Tracing
 Custom spans and trace context management for better observability.
 """
 
+import inspect
 import logging
 from typing import Optional, Dict, Any, Callable
 from functools import wraps
@@ -238,12 +239,18 @@ async def run_router_with_trace(
     **kwargs,
 ) -> Any:
     """Run router selection with tracing."""
+    def _call_router():
+        return router_func(text, context, *args, **kwargs)
+
+    async def _maybe_await(value: Any) -> Any:
+        return await value if inspect.isawaitable(value) else value
+
     if not OTEL_AVAILABLE:
-        return await router_func(text, context, *args, **kwargs)
+        return await _maybe_await(_call_router())
     
     tracer = get_tracer(__name__)
     if not tracer:
-        return await router_func(text, context, *args, **kwargs)
+        return await _maybe_await(_call_router())
     
     with tracer.start_as_current_span(
         "router.select_model",
@@ -253,7 +260,8 @@ async def run_router_with_trace(
         },
     ) as span:
         try:
-            result = await router_func(text, context, *args, **kwargs)
+            raw_result = _call_router()
+            result = await _maybe_await(raw_result)
             
             # Add result attributes
             if isinstance(result, dict):

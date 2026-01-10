@@ -17,6 +17,7 @@ from engine.resilience.degradation import DegradationStrategy
 from engine.runtime.models import EngineModelInfo
 from engine.schemas.pipeline_types import CriticResult, CriticResultsMap, PrecedentAlignmentResult, UncertaintyResult
 from engine.utils.circuit_breaker import CircuitBreakerOpen
+from engine.runtime.critics import _process_batch_with_engine
 
 
 async def run_stream_engine(
@@ -190,8 +191,11 @@ async def run_stream_engine(
             )
             for name, critic_ref in critic_items
         ]
-        results = await engine.critic_batcher.process_batch(batch_items, engine=engine)
-        for critic_name, res in results.items():
+        results = await _process_batch_with_engine(engine.critic_batcher, batch_items, engine)
+        result_items = results.items() if isinstance(results, dict) else zip(
+            (name for name, _ in critic_items), results
+        )
+        for critic_name, res in result_items:
             if isinstance(res, CriticEvaluationError):
                 crit_error = res
                 engine._emit_error(

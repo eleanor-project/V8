@@ -238,13 +238,16 @@ class EvidenceRecorder:
 
         # DB sink (batch writes for performance)
         async with self._db_lock:
-            self._db_pending.append(record)
-            if len(self._db_pending) >= self._db_batch_size:
-                # Flush batch
-                batch = list(self._db_pending)
-                self._db_pending.clear()
-                # Write batch asynchronously (don't await to avoid blocking)
-                asyncio.create_task(self._write_db_batch(batch))
+            if self.db_sink and not hasattr(self.db_sink, "write_batch"):
+                await self._write_db(record)
+            else:
+                self._db_pending.append(record)
+                if len(self._db_pending) >= self._db_batch_size:
+                    # Flush batch
+                    batch = list(self._db_pending)
+                    self._db_pending.clear()
+                    # Write batch asynchronously (don't await to avoid blocking)
+                    asyncio.create_task(self._write_db_batch(batch))
         
         # Publish evidence recorded event
         if EVENT_BUS_AVAILABLE and get_event_bus and EventType is not None:
@@ -307,5 +310,10 @@ class EvidenceRecorder:
         # Flush any pending DB writes
         async with self._db_lock:
             if self._db_pending:
-                await self._write_db_batch(list(self._db_pending))
+                pending = list(self._db_pending)
                 self._db_pending.clear()
+                if self.db_sink and hasattr(self.db_sink, "write_batch"):
+                    await self._write_db_batch(pending)
+                else:
+                    for rec in pending:
+                        await self._write_db(rec)
