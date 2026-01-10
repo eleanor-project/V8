@@ -3,7 +3,7 @@ Governance metrics export.
 Safe for dashboards and audits.
 """
 
-from replay_store import load_human_reviews
+from engine.replay_store import load_human_reviews
 
 
 def review_metrics(case_id: str):

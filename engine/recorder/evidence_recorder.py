@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from .db_sink import EvidenceDBSink
 from engine.security.sanitizer import CredentialSanitizer
@@ -55,6 +55,7 @@ class EvidenceRecord(BaseModel):
     precedent_candidates: List[str] = Field(default_factory=list)
 
     raw_text: Optional[str] = None
+    model_config = ConfigDict(protected_namespaces=())
 
 
 # ---------------------------------------------------------
@@ -292,8 +293,10 @@ class EvidenceRecorder:
                 return
             pending = list(self._pending)
             self._pending.clear()
-        for record in pending:
-            await self._write_jsonl(record)
+        text = "".join(rec.model_dump_json() + "\n" for rec in pending)
+        async with self._lock:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self._append_file, self.jsonl_path, text)
 
     async def close(self) -> None:
         """Shutdown recorder and flush remaining evidence."""
