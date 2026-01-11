@@ -9,7 +9,7 @@ Enables proactive problem detection before issues escalate.
 import logging
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import statistics
 
@@ -41,7 +41,7 @@ class Anomaly:
     current_value: float
     expected_range: Tuple[float, float]
     description: str
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     recommendations: List[str] = field(default_factory=list)
 
 

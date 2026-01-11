@@ -505,11 +505,11 @@ def create_session(
     """
     import uuid
     session_id = str(uuid.uuid4())
-    expires_at = datetime.utcnow() + timedelta(seconds=ttl_seconds)
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
     
     _sessions[session_id] = {
         "user_id": user_id,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "expires_at": expires_at.isoformat(),
         "data": session_data or {},
     }
@@ -538,7 +538,7 @@ def get_session(session_id: str) -> Optional[Dict[str, Any]]:
     session = _sessions[session_id]
     expires_at = datetime.fromisoformat(session["expires_at"])
     
-    if datetime.utcnow() > expires_at:
+    if datetime.now(timezone.utc) > expires_at:
         del _sessions[session_id]
         return None
     
@@ -573,7 +573,7 @@ def _cleanup_expired_sessions() -> None:
         return
     
     _last_cleanup = current_time
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expired = []
     
     for session_id, session in _sessions.items():

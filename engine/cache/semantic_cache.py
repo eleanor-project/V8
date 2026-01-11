@@ -11,7 +11,7 @@ import hashlib
 import math
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -201,7 +201,7 @@ class SemanticCache:
             if query_hash in self._cache:
                 entry = self._cache[query_hash]
                 entry.hit_count += 1
-                entry.last_accessed = datetime.utcnow()
+                entry.last_accessed = datetime.now(timezone.utc)
                 self.stats["hits"] += 1
                 self.stats["exact_hits"] += 1
                 return (entry.result, 1.0)
@@ -228,7 +228,7 @@ class SemanticCache:
         
         if best_match:
             best_match.hit_count += 1
-            best_match.last_accessed = datetime.utcnow()
+            best_match.last_accessed = datetime.now(timezone.utc)
             self.stats["hits"] += 1
             self.stats["semantic_hits"] += 1
             return (best_match.result, best_similarity)
@@ -253,9 +253,9 @@ class SemanticCache:
             query_text=query,
             query_embedding=query_embedding or [],
             result=result,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             hit_count=0,
-            last_accessed=datetime.utcnow(),
+            last_accessed=datetime.now(timezone.utc),
             metadata=metadata or {}
         )
         
