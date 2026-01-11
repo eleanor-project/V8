@@ -19,6 +19,8 @@ ADMIN_ROLE = os.getenv("ADMIN_ROLE", "admin")
 
 from api.rest.admin_router import router as admin_small_router
 router.include_router(admin_small_router)
+from api.rest.admin_config import router as admin_config_router
+router.include_router(admin_config_router)
 
 
 @router.get("/write-enabled")

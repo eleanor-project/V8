@@ -408,6 +408,25 @@ The system will warn about:
 
 These warnings should be addressed before production deployment.
 
+## Strong Preview (Config Proposals)
+
+Administrative config proposals require a preview before apply. Apply requests must
+include the `X-Preview-Artifact-Hash` header that matches the latest preview artifact.
+
+Key toggles and continuity hints:
+
+```bash
+# Admin write gate (apply requires this)
+ELEANOR_ENABLE_ADMIN_WRITE=false
+
+# Precedent auto-ratify gate (apply blocks precedent lifecycle changes unless true)
+ELEANOR_ENABLE_PRECEDENT_AUTO_RATIFY=false
+
+# Optional continuity hints for preview/apply validation
+ELEANOR_OPA_POLICY_BUNDLE_HASH=sha256:...
+ELEANOR_PRECEDENT_INDEX_HASH=sha256:...
+```
+
 ## See Also
 
 - [Secrets Management](secrets-management.md)

@@ -440,6 +440,8 @@ try:
     app.include_router(governance_router)
     app.include_router(deliberation_router)
     app.include_router(audit_router)
+    from api.rest.routes.config_proposals import router as config_proposals_router
+    app.include_router(config_proposals_router)
     app.include_router(admin_router)
     app.include_router(explainable_router)
     logger.info("Human review API endpoints registered")
