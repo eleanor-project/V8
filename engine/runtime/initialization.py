@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import uuid
 from typing import Any, Callable, Dict, Optional, cast
 
@@ -38,6 +39,43 @@ from engine.utils.circuit_breaker import CircuitBreakerRegistry
 from engine.utils.dependency_tracking import record_dependency_failure
 
 logger = logging.getLogger("engine.engine")
+
+
+def _truthy(value: str) -> bool:
+    return value.strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def _resolve_environment(settings: Optional[Any]) -> str:
+    if settings and getattr(settings, "environment", None):
+        return str(settings.environment).lower()
+    return os.getenv("ELEANOR_ENVIRONMENT") or os.getenv("ELEANOR_ENV") or "development"
+
+
+def _default_adapter_allowed(environment: str) -> bool:
+    raw = os.getenv("ELEANOR_ALLOW_DEFAULT_ADAPTER", "")
+    if raw:
+        return _truthy(raw)
+    return environment not in ("production", "prod")
+
+
+def _enforce_router_adapter_safety(router: Any, *, environment: str) -> None:
+    adapters = getattr(router, "adapters", None)
+    if not isinstance(adapters, dict):
+        return
+    adapter_names = [name for name in adapters.keys() if name]
+    if not adapter_names:
+        raise RuntimeError("Router initialized with no adapters")
+    if set(adapter_names) == {"default"}:
+        if _default_adapter_allowed(environment):
+            logger.warning(
+                "router_default_adapter_only",
+                extra={"environment": environment},
+            )
+            return
+        raise RuntimeError(
+            "Router initialized with only the default adapter. "
+            "Set ELEANOR_ALLOW_DEFAULT_ADAPTER=true to override."
+        )
 
 
 def initialize_engine(
@@ -259,6 +297,8 @@ def initialize_engine(
     )
 
     engine.router = cast(RouterProtocol, deps.router)
+    environment = _resolve_environment(settings)
+    _enforce_router_adapter_safety(engine.router, environment=environment)
     # Finish wiring cache warmer now that router/router_cache are ready
     if getattr(engine, "cache_warmer", None):
         engine.cache_warmer.router = engine.router

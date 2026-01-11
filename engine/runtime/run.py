@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from typing import Any, Dict, List, Optional, cast
 
 from engine.exceptions import (
@@ -20,6 +21,8 @@ from engine.schemas.pipeline_types import (
 )
 from engine.utils.circuit_breaker import CircuitBreakerOpen
 
+logger = logging.getLogger("engine.engine")
+
 # Enhanced observability
 try:
     from engine.observability.business_metrics import (
@@ -37,6 +40,95 @@ except ImportError:
     get_event_bus = None
     DecisionMadeEvent = None
     EventType = None
+
+
+def _coerce_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _collect_precedent_values(critic_results: Dict[str, Any]) -> List[str]:
+    values = []
+    for critic_name, critic_data in critic_results.items():
+        if isinstance(critic_data, dict):
+            value = critic_data.get("value")
+            if value:
+                values.append(str(value))
+                continue
+        values.append(str(critic_name))
+    deduped = []
+    seen = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
+
+
+def _track_precedent_evolution(
+    *,
+    engine: Any,
+    trace_id: str,
+    context: Dict[str, Any],
+    aggregated: Dict[str, Any],
+    critic_results: Dict[str, Any],
+    model_name: str,
+    precedent_data: Optional[Dict[str, Any]],
+) -> None:
+    tracker = getattr(engine, "temporal_evolution_tracker", None)
+    if not tracker:
+        return
+
+    case_id = context.get("case_id") or context.get("precedent_case_id") or trace_id
+    decision = aggregated.get("decision") or "allow"
+    aggregate_score = _coerce_float(aggregated.get("score"))
+    rationale_raw = (
+        aggregated.get("final_output")
+        or aggregated.get("summary")
+        or aggregated.get("justification")
+        or ""
+    )
+    rationale = str(rationale_raw)
+    values = _collect_precedent_values(critic_results)
+
+    top_case = (precedent_data or {}).get("top_case") if precedent_data else None
+    top_case_id = None
+    if isinstance(top_case, dict):
+        top_case_id = top_case.get("case_id")
+
+    metadata = {
+        "trace_id": trace_id,
+        "model_name": model_name,
+        "policy_profile": context.get("policy_profile"),
+        "precedent_top_case_id": top_case_id,
+    }
+
+    created_by = (
+        context.get("actor_id")
+        or context.get("user_id")
+        or context.get("user")
+        or context.get("requester")
+    )
+
+    try:
+        tracker.track_precedent_update(
+            case_id=str(case_id),
+            decision=str(decision),
+            aggregate_score=aggregate_score,
+            values=values,
+            rationale=rationale,
+            critic_outputs=critic_results,
+            metadata=metadata,
+            created_by=str(created_by) if created_by is not None else None,
+        )
+    except Exception as exc:
+        logger.warning(
+            "precedent_evolution_track_failed",
+            extra={"trace_id": trace_id, "error": str(exc)},
+        )
 
 
 async def run_engine(
@@ -320,6 +412,16 @@ async def run_engine(
             trace_id=trace_id,
             context=context,
         )
+
+    _track_precedent_evolution(
+        engine=engine,
+        trace_id=trace_id,
+        context=context,
+        aggregated=cast(Dict[str, Any], aggregated or {}),
+        critic_results=critic_results,
+        model_name=engine_model_info.model_name,
+        precedent_data=cast(Optional[Dict[str, Any]], precedent_data),
+    )
 
     pipeline_end = asyncio.get_event_loop().time()
     timings["total_pipeline_ms"] = (pipeline_end - pipeline_start) * 1000
