@@ -18,6 +18,7 @@ from engine.runtime.models import EngineModelInfo
 from engine.schemas.pipeline_types import CriticResult, CriticResultsMap, PrecedentAlignmentResult, UncertaintyResult
 from engine.utils.circuit_breaker import CircuitBreakerOpen
 from engine.runtime.critics import _process_batch_with_engine
+from engine.runtime.run import _track_precedent_evolution
 
 
 async def run_stream_engine(
@@ -459,6 +460,16 @@ async def run_stream_engine(
             trace_id=trace_id,
             context=context,
         )
+
+    _track_precedent_evolution(
+        engine=engine,
+        trace_id=trace_id,
+        context=context,
+        aggregated=cast(Dict[str, Any], aggregated or {}),
+        critic_results=critic_results,
+        model_name=engine_model_info.model_name,
+        precedent_data=cast(Optional[Dict[str, Any]], precedent_data),
+    )
     final_output = aggregated.get("final_output", "") if isinstance(aggregated, dict) else ""
     if not final_output:
         final_output = model_response

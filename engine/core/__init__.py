@@ -21,9 +21,9 @@ from engine.uncertainty.uncertainty import UncertaintyEngineV8
 from engine.precedent.alignment import PrecedentAlignmentEngineV8
 from engine.precedent.retrieval import PrecedentRetrievalV8
 from engine.precedent.embeddings import bootstrap_embedding_registry
-from engine.precedent.stores import (
+from engine.precedent.store import (
     WeaviatePrecedentStore,
-    PGVectorPrecedentStore,
+    PgVectorStore,
 )
 from engine.recorder.evidence_recorder import EvidenceRecorder
 from engine.detectors.engine import DetectorEngineV8
@@ -183,8 +183,9 @@ def _build_precedent_layer(
             table = os.getenv("PG_TABLE", "precedent")
             if conn:
                 try:
-                    store = PGVectorPrecedentStore(
-                        conn_string=conn, table_name=table, embed_fn=embed_fn
+                    store = PgVectorStore(
+                        connection_string=conn,
+                        table_name=table,
                     )
                 except Exception:
                     store = None
