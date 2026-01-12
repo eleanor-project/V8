@@ -51,7 +51,11 @@ async def preview_config_proposal(
     if payload.mode == "full_replay":
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="full_replay preview is not implemented yet. Use policy_only for now.",
+            detail={
+                "error": "FULL_REPLAY_NOT_IMPLEMENTED",
+                "message": "full_replay preview is not implemented yet.",
+                "details": {"supported_modes": ["policy_only"]},
+            },
         )
 
     start = time.monotonic()
@@ -87,6 +91,14 @@ async def apply_config_proposal(
     _write_enabled: None = Depends(require_admin_write_enabled),
     preview_hash: Optional[str] = Header(default=None, alias="X-Preview-Artifact-Hash"),
 ):
+    if preview_hash and payload.artifact_hash and preview_hash != payload.artifact_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "INVALID_PREVIEW_ARTIFACT",
+                "message": "Preview artifact hash mismatch between header and body.",
+            },
+        )
     artifact_hash = preview_hash or payload.artifact_hash
     if not artifact_hash:
         raise HTTPException(
