@@ -20,6 +20,8 @@ from engine.logging_config import get_logger
 from engine.runtime.config import EngineConfig
 from engine.security.ledger import LedgerRecord, get_ledger_reader, get_ledger_writer
 from engine.version import ELEANOR_VERSION
+from api.rest.services.deliberation_utils import normalize_engine_result
+from engine.core import build_eleanor_engine_v8
 
 logger = get_logger(__name__)
 
@@ -77,6 +79,126 @@ def _deep_merge(base: Dict[str, Any], changes: Dict[str, Any]) -> Dict[str, Any]
         else:
             merged[key] = value
     return merged
+
+
+def _parse_duration(raw: Optional[str]) -> Optional[int]:
+    if not raw:
+        return None
+    raw = raw.strip().lower()
+    if not raw:
+        return None
+    unit = raw[-1]
+    if unit not in ("s", "m", "h", "d"):
+        return None
+    try:
+        value = int(raw[:-1])
+    except ValueError:
+        return None
+    multipliers = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    return value * multipliers[unit]
+
+
+def _timestamp_to_epoch(value: Any) -> Optional[float]:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            candidate = value
+            if candidate.endswith("Z"):
+                candidate = candidate.replace("Z", "+00:00")
+            return datetime.fromisoformat(candidate).timestamp()
+        except ValueError:
+            return None
+    return None
+
+
+def _load_replay_records(path: str) -> List[Dict[str, Any]]:
+    records: List[Dict[str, Any]] = []
+    if not path:
+        return records
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(record, dict):
+                    records.append(record)
+    except FileNotFoundError:
+        return []
+    return records
+
+
+def _select_replay_window(
+    records: List[Dict[str, Any]],
+    window: Dict[str, Any],
+    limits: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    window_type = (window or {}).get("type") or "time"
+    max_traces = limits.get("max_traces") if isinstance(limits, dict) else None
+    selected = records
+
+    if window_type == "count":
+        limit = window.get("limit") if isinstance(window, dict) else None
+        limit = limit or max_traces
+        if isinstance(limit, int) and limit > 0:
+            selected = selected[-limit:]
+    else:
+        duration = _parse_duration(window.get("duration") if isinstance(window, dict) else None)
+        if duration is None:
+            duration = 4 * 3600
+        cutoff = datetime.now(timezone.utc).timestamp() - duration
+        filtered: List[Dict[str, Any]] = []
+        for record in selected:
+            ts = _timestamp_to_epoch(record.get("timestamp"))
+            if ts is None or ts >= cutoff:
+                filtered.append(record)
+        selected = filtered
+        if isinstance(max_traces, int) and max_traces > 0 and len(selected) > max_traces:
+            selected = selected[-max_traces:]
+
+    return selected
+
+
+def _decision_label(raw: Optional[str]) -> str:
+    value = (raw or "allow").lower()
+    mapping = {
+        "allow": "ALLOW",
+        "constrained_allow": "ALLOW_WITH_CONSTRAINTS",
+        "deny": "DENY",
+        "escalate": "ESCALATE",
+        "abstain": "ABSTAIN",
+    }
+    return mapping.get(value, value.upper())
+
+
+def _extract_score(result: Dict[str, Any]) -> Optional[float]:
+    aggregated = result.get("aggregator_output") or {}
+    for key in ("final_score", "score", "aggregate_score"):
+        value = aggregated.get(key)
+        if value is not None:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def build_preview_engine(
+    *,
+    settings: EleanorSettings,
+    constitutional_config: Optional[Dict[str, Any]],
+    evidence_path: Optional[str],
+) -> Any:
+    return build_eleanor_engine_v8(
+        constitutional_config=constitutional_config,
+        evidence_path=evidence_path,
+        settings_override=settings,
+    )
 
 
 def _diff_dict(
@@ -360,6 +482,174 @@ def build_preview_artifact(
 
     artifact["artifact_hash"] = _artifact_hash(artifact)
     return artifact
+
+
+async def run_full_replay_preview(
+    *,
+    proposal_id: str,
+    proposal: Dict[str, Any],
+    window: Dict[str, Any],
+    limits: Dict[str, Any],
+    engine: Any,
+) -> Dict[str, Any]:
+    settings = ConfigManager().settings
+    replay_path = settings.replay_log_path
+    records = _load_replay_records(replay_path)
+    selected = _select_replay_window(records, window, limits)
+
+    artifact = build_preview_artifact(
+        proposal_id=proposal_id,
+        proposal=proposal,
+        mode="full_replay",
+        window=window,
+        limits=limits,
+        engine=engine,
+    )
+    base_reason_codes = artifact.get("reason_codes") or []
+
+    if not selected:
+        artifact["warnings"].append("REPLAY_EMPTY: No replay traces found for preview.")
+        return artifact
+
+    candidate_settings, _ = compute_candidate_settings(proposal=proposal)
+    candidate_engine = build_preview_engine(
+        settings=candidate_settings,
+        constitutional_config=None,
+        evidence_path=settings.evidence.jsonl_path,
+    )
+
+    if hasattr(candidate_engine, "__aenter__"):
+        await candidate_engine.__aenter__()
+    elif hasattr(candidate_engine, "_setup_resources"):
+        await candidate_engine._setup_resources()
+
+    changed_traces: List[Dict[str, Any]] = []
+    net_effect = {
+        "allow_to_deny": 0,
+        "deny_to_allow": 0,
+        "allow_to_review": 0,
+        "review_to_allow": 0,
+        "review_to_deny": 0,
+    }
+    warnings: List[str] = []
+
+    try:
+        for record in selected:
+            input_text = record.get("input") or ""
+            context = record.get("context") or {}
+            trace_id = record.get("trace_id") or record.get("request_id") or uuid4().hex
+
+            try:
+                baseline_result = await engine.run(
+                    input_text,
+                    context=context,
+                    trace_id=trace_id,
+                    detail_level=3,
+                )
+                baseline_norm = normalize_engine_result(
+                    baseline_result, input_text, trace_id, context
+                )
+            except Exception as exc:
+                warnings.append("REPLAY_TRACE_ERROR: baseline_run_failed")
+                logger.warning(
+                    "preview_baseline_run_failed",
+                    extra={"trace_id": trace_id, "error": str(exc)},
+                )
+                continue
+
+            try:
+                candidate_result = await candidate_engine.run(
+                    input_text,
+                    context=context,
+                    trace_id=trace_id,
+                    detail_level=3,
+                )
+                candidate_norm = normalize_engine_result(
+                    candidate_result, input_text, trace_id, context
+                )
+            except Exception as exc:
+                warnings.append("REPLAY_TRACE_ERROR: candidate_run_failed")
+                logger.warning(
+                    "preview_candidate_run_failed",
+                    extra={"trace_id": trace_id, "error": str(exc)},
+                )
+                continue
+
+            baseline_decision = _decision_label(
+                (baseline_norm.get("aggregator_output") or {}).get("decision")
+            )
+            candidate_decision = _decision_label(
+                (candidate_norm.get("aggregator_output") or {}).get("decision")
+            )
+
+            if baseline_decision != candidate_decision:
+                baseline_score = _extract_score(baseline_norm)
+                candidate_score = _extract_score(candidate_norm)
+                delta_score = 1.0
+                if baseline_score is not None and candidate_score is not None:
+                    delta_score = abs(candidate_score - baseline_score)
+
+                changed_traces.append(
+                    {
+                        "trace_id": trace_id,
+                        "request_type": "decision",
+                        "subject_type": "replay_trace",
+                        "baseline_outcome": baseline_decision,
+                        "candidate_outcome": candidate_decision,
+                        "delta_score": delta_score,
+                        "primary_reason_codes": [
+                            *base_reason_codes,
+                            "HEURISTIC_ATTRIBUTION",
+                        ],
+                        "why_changed": {
+                            "attribution_kind": "heuristic",
+                            "summary": "Outcome changed under candidate configuration.",
+                            "evidence_refs": [],
+                        },
+                        "diff_snippet": {
+                            "baseline_score": baseline_score,
+                            "candidate_score": candidate_score,
+                        },
+                    }
+                )
+
+                if baseline_decision == "ALLOW" and candidate_decision == "DENY":
+                    net_effect["allow_to_deny"] += 1
+                elif baseline_decision == "DENY" and candidate_decision == "ALLOW":
+                    net_effect["deny_to_allow"] += 1
+                elif baseline_decision == "ALLOW" and candidate_decision == "ESCALATE":
+                    net_effect["allow_to_review"] += 1
+                elif baseline_decision == "ESCALATE" and candidate_decision == "ALLOW":
+                    net_effect["review_to_allow"] += 1
+                elif baseline_decision == "ESCALATE" and candidate_decision == "DENY":
+                    net_effect["review_to_deny"] += 1
+
+        changed_traces.sort(key=lambda item: item.get("delta_score", 0), reverse=True)
+        max_changed = limits.get("max_changed_traces") if isinstance(limits, dict) else None
+        if isinstance(max_changed, int) and max_changed > 0:
+            changed_traces = changed_traces[:max_changed]
+
+        artifact["warnings"].extend(sorted(set(warnings)))
+        artifact["metrics"]["trace_count"] = len(selected)
+        artifact["metrics"]["changed_trace_count"] = len(changed_traces)
+        artifact["outcome_summary"] = {
+            "trace_count": len(selected),
+            "changed_trace_count": len(changed_traces),
+            "net_effect": net_effect,
+        }
+        artifact["top_changed_traces"] = changed_traces
+        return artifact
+    finally:
+        if hasattr(candidate_engine, "shutdown"):
+            try:
+                await candidate_engine.shutdown()
+            except Exception as exc:
+                logger.warning("preview_candidate_shutdown_failed", extra={"error": str(exc)})
+        elif hasattr(candidate_engine, "__aexit__"):
+            try:
+                await candidate_engine.__aexit__(None, None, None)
+            except Exception as exc:
+                logger.warning("preview_candidate_exit_failed", extra={"error": str(exc)})
 
 
 def store_preview_artifact(

@@ -223,6 +223,7 @@ def build_eleanor_engine_v8(
     opa_callback=None,
     evidence_path: Optional[str] = None,
     critic_models: Optional[Dict[str, Any]] = None,
+    settings_override: Optional["EleanorSettings"] = None,
 ) -> Any:
     """
     Build a fully operational async engine instance.
@@ -231,25 +232,38 @@ def build_eleanor_engine_v8(
     local development can run with minimal configuration.
     """
 
-    settings = None
+    settings = settings_override
     environment = os.getenv("ELEANOR_ENVIRONMENT") or os.getenv("ELEANOR_ENV") or "development"
     cache_ttl = 300
     secret_provider = None
 
-    try:
-        from engine.config import ConfigManager
+    if settings is None:
+        try:
+            from engine.config import ConfigManager
 
-        settings = ConfigManager().settings
+            settings = ConfigManager().settings
+            environment = settings.environment
+            cache_ttl = settings.security.secrets_cache_ttl
+            secret_provider = build_secret_provider_from_settings(settings)
+        except Exception as exc:
+            if environment == "production":
+                raise
+            logger.warning(
+                "Secret provider setup failed; falling back to environment provider",
+                extra={"error": str(exc)},
+            )
+    else:
         environment = settings.environment
         cache_ttl = settings.security.secrets_cache_ttl
-        secret_provider = build_secret_provider_from_settings(settings)
-    except Exception as exc:
-        if environment == "production":
-            raise
-        logger.warning(
-            "Secret provider setup failed; falling back to environment provider",
-            extra={"error": str(exc)},
-        )
+        try:
+            secret_provider = build_secret_provider_from_settings(settings)
+        except Exception as exc:
+            if environment == "production":
+                raise
+            logger.warning(
+                "Secret provider setup failed; falling back to environment provider",
+                extra={"error": str(exc)},
+            )
 
     if secret_provider is None:
         if environment == "production":
