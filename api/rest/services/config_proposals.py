@@ -9,6 +9,12 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import uuid4
 
 from engine.config import ConfigManager
+from engine.config.overlay import (
+    load_overlay_payload,
+    overlay_hash,
+    resolve_overlay_path,
+    write_overlay_payload,
+)
 from engine.config.settings import EleanorSettings
 from engine.logging_config import get_logger
 from engine.runtime.config import EngineConfig
@@ -109,8 +115,11 @@ def _settings_dict(settings: EleanorSettings) -> Dict[str, Any]:
     return settings.model_dump(mode="json")
 
 
-def _config_fingerprint(settings_dict: Dict[str, Any]) -> str:
-    return _hash_with_prefix(settings_dict)
+def _config_fingerprint(settings_dict: Dict[str, Any], overlay_digest: Optional[str]) -> str:
+    payload = dict(settings_dict)
+    if overlay_digest:
+        payload["config_overlay_hash"] = overlay_digest
+    return _hash_with_prefix(payload)
 
 
 def _collect_continuity_hashes(engine: Any) -> Dict[str, Optional[str]]:
@@ -209,6 +218,16 @@ def _find_latest_event(event: str, proposal_id: str) -> Optional[LedgerRecord]:
     return latest
 
 
+def _find_applied_event(proposal_id: str, artifact_hash: str) -> Optional[LedgerRecord]:
+    latest = _find_latest_event("config_proposal_applied", proposal_id)
+    if latest is None:
+        return None
+    payload = latest.payload or {}
+    if payload.get("artifact_hash") == artifact_hash:
+        return latest
+    return None
+
+
 def submit_proposal(
     *,
     proposal: Dict[str, Any],
@@ -288,6 +307,11 @@ def build_preview_artifact(
     changes = proposal.get("changes") or {}
     candidate_settings = _deep_merge(baseline_settings, changes)
 
+    baseline_overlay = load_overlay_payload()
+    candidate_overlay = _deep_merge(baseline_overlay, changes)
+    baseline_overlay_hash = overlay_hash(baseline_overlay)
+    candidate_overlay_hash = overlay_hash(candidate_overlay)
+
     changed_keys, additions, removals, modifications = _diff_dict(
         baseline_settings, candidate_settings
     )
@@ -300,8 +324,8 @@ def build_preview_artifact(
         "created_at": _utc_timestamp(),
         "environment": _environment(settings),
         "fingerprints": {
-            "baseline": _config_fingerprint(baseline_settings),
-            "candidate": _config_fingerprint(candidate_settings),
+            "baseline": _config_fingerprint(baseline_settings, baseline_overlay_hash),
+            "candidate": _config_fingerprint(candidate_settings, candidate_overlay_hash),
         },
         "preview_mode": mode,
         "window": window,
@@ -466,8 +490,36 @@ def apply_proposal(
             details={"artifact": artifact.get("environment"), "current": current_env},
         )
 
+    baseline_overlay = load_overlay_payload()
+    baseline_overlay_hash = overlay_hash(baseline_overlay)
+
+    existing_apply = _find_applied_event(proposal_id, artifact_hash)
+    if existing_apply:
+        applied_payload = existing_apply.payload or {}
+        current_fingerprint = _config_fingerprint(
+            _settings_dict(settings),
+            baseline_overlay_hash,
+        )
+        return {
+            "proposal_id": proposal_id,
+            "status": "already_applied",
+            "applied_at": applied_payload.get("applied_at") or existing_apply.timestamp,
+            "fingerprints": {
+                "previous": artifact.get("fingerprints", {}).get("baseline"),
+                "current": current_fingerprint,
+            },
+            "ledger": {
+                "event": "config_proposal_applied",
+                "event_id": existing_apply.event_id,
+                "artifact_hash": artifact_hash,
+            },
+        }
+
     baseline_fingerprint = artifact.get("fingerprints", {}).get("baseline")
-    current_fingerprint = _config_fingerprint(_settings_dict(settings))
+    current_fingerprint = _config_fingerprint(
+        _settings_dict(settings),
+        baseline_overlay_hash,
+    )
     if baseline_fingerprint and baseline_fingerprint != current_fingerprint:
         raise PreviewValidationError(
             code="BASELINE_DIVERGED",
@@ -480,8 +532,13 @@ def apply_proposal(
         )
 
     candidate_model, candidate_dict = compute_candidate_settings(proposal=proposal)
+    candidate_overlay = _deep_merge(baseline_overlay, proposal.get("changes") or {})
+    candidate_overlay_hash = overlay_hash(candidate_overlay)
     candidate_fingerprint = artifact.get("fingerprints", {}).get("candidate")
-    if candidate_fingerprint and candidate_fingerprint != _config_fingerprint(candidate_dict):
+    if candidate_fingerprint and candidate_fingerprint != _config_fingerprint(
+        candidate_dict,
+        candidate_overlay_hash,
+    ):
         raise PreviewValidationError(
             code="CANDIDATE_MISMATCH",
             status_code=409,
@@ -510,6 +567,15 @@ def apply_proposal(
                 message="Precedent auto-ratify is disabled.",
             )
 
+    if resolve_overlay_path() is None:
+        raise PreviewValidationError(
+            code="CONFIG_OVERLAY_PATH_REQUIRED",
+            status_code=500,
+            message="Config overlay path is not configured.",
+        )
+
+    write_overlay_payload(candidate_overlay)
+
     apply_candidate_settings(engine=engine, candidate_settings=candidate_model)
 
     payload = {
@@ -534,7 +600,10 @@ def apply_proposal(
         "applied_at": payload["applied_at"],
         "fingerprints": {
             "previous": baseline_fingerprint,
-            "current": _config_fingerprint(_settings_dict(candidate_model)),
+            "current": _config_fingerprint(
+                _settings_dict(candidate_model),
+                candidate_overlay_hash,
+            ),
         },
         "ledger": {
             "event": "config_proposal_applied",

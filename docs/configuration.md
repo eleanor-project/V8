@@ -422,6 +422,9 @@ ELEANOR_ENABLE_ADMIN_WRITE=false
 # Precedent auto-ratify gate (apply blocks precedent lifecycle changes unless true)
 ELEANOR_ENABLE_PRECEDENT_AUTO_RATIFY=false
 
+# Optional overlay path (defaults to <ELEANOR_CONFIG_PATH>.overlay.yaml)
+ELEANOR_CONFIG_OVERLAY_PATH=/etc/eleanor/config.overlay.yaml
+
 # Optional continuity hints for preview/apply validation
 ELEANOR_OPA_POLICY_BUNDLE_HASH=sha256:...
 ELEANOR_PRECEDENT_INDEX_HASH=sha256:...
