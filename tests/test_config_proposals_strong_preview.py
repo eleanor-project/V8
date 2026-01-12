@@ -1,6 +1,8 @@
+import asyncio
 import types
 
 import pytest
+import json
 import yaml
 
 from api.rest.services import config_proposals as proposals
@@ -234,3 +236,47 @@ def test_apply_persists_overlay_and_is_idempotent(monkeypatch, tmp_path):
     reader = ledger_module.get_ledger_reader(path=str(tmp_path / "ledger.jsonl"))
     applied_records = [r for r in reader.read_all() if r.event == "config_proposal_applied"]
     assert len(applied_records) == 1
+
+
+def test_full_replay_preview_counts_changes(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("{}", encoding="utf-8")
+    replay_path = tmp_path / "replay.jsonl"
+    monkeypatch.setenv("ELEANOR_REPLAY_LOG_PATH", str(replay_path))
+    _setup_env(monkeypatch, tmp_path, config_path=config_path, overlay_path=tmp_path / "overlay.yaml")
+
+    entries = [
+        {"trace_id": "t1", "input": "good", "context": {}, "timestamp": 1},
+        {"trace_id": "t2", "input": "bad", "context": {}, "timestamp": 2},
+    ]
+    with replay_path.open("w", encoding="utf-8") as handle:
+        for record in entries:
+            handle.write(json.dumps(record) + "\n")
+
+    submission = _submit_proposal({"enable_reflection": False})
+
+    class StubEngine:
+        async def run(self, input_text, context=None, trace_id=None, detail_level=3):
+            decision = "allow" if "good" in input_text else "deny"
+            return {"trace_id": trace_id, "aggregator_output": {"decision": decision}}
+
+    class StubCandidateEngine(StubEngine):
+        async def run(self, input_text, context=None, trace_id=None, detail_level=3):
+            decision = "deny" if "good" in input_text else "deny"
+            return {"trace_id": trace_id, "aggregator_output": {"decision": decision}}
+
+    monkeypatch.setattr(proposals, "build_preview_engine", lambda **_: StubCandidateEngine())
+
+    artifact = asyncio.run(
+        proposals.run_full_replay_preview(
+            proposal_id=submission["proposal_id"],
+            proposal={"changes": {"enable_reflection": False}},
+            window={"type": "count", "limit": 2},
+            limits={"max_changed_traces": 5},
+            engine=StubEngine(),
+        )
+    )
+
+    assert artifact["metrics"]["trace_count"] == 2
+    assert artifact["metrics"]["changed_trace_count"] == 1
+    assert artifact["top_changed_traces"][0]["trace_id"] == "t1"

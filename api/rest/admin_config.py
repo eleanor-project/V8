@@ -21,6 +21,7 @@ from api.rest.services.config_proposals import (
     build_preview_artifact,
     get_proposal,
     list_proposals,
+    run_full_replay_preview,
     store_preview_artifact,
 )
 from engine.config import ConfigManager
@@ -48,16 +49,6 @@ async def preview_config_proposal(
     user: str = Depends(require_authenticated_user),
     engine=Depends(get_engine),
 ):
-    if payload.mode == "full_replay":
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail={
-                "error": "FULL_REPLAY_NOT_IMPLEMENTED",
-                "message": "full_replay preview is not implemented yet.",
-                "details": {"supported_modes": ["policy_only"]},
-            },
-        )
-
     start = time.monotonic()
     window = payload.window.model_dump(mode="json") if payload.window else {"type": "time", "duration": "4h"}
     limits = payload.limits.model_dump(mode="json") if payload.limits else {}
@@ -67,14 +58,23 @@ async def preview_config_proposal(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Proposal not found",
         )
-    artifact = build_preview_artifact(
-        proposal_id=proposal_id,
-        proposal=proposal,
-        mode=payload.mode,
-        window=window,
-        limits=limits,
-        engine=engine,
-    )
+    if payload.mode == "full_replay":
+        artifact = await run_full_replay_preview(
+            proposal_id=proposal_id,
+            proposal=proposal,
+            window=window,
+            limits=limits,
+            engine=engine,
+        )
+    else:
+        artifact = build_preview_artifact(
+            proposal_id=proposal_id,
+            proposal=proposal,
+            mode=payload.mode,
+            window=window,
+            limits=limits,
+            engine=engine,
+        )
     artifact["metrics"]["preview_duration_ms"] = int((time.monotonic() - start) * 1000)
 
     store_preview_artifact(proposal_id=proposal_id, artifact=artifact, actor=user)
