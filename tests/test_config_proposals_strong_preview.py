@@ -280,3 +280,21 @@ def test_full_replay_preview_counts_changes(monkeypatch, tmp_path):
     assert artifact["metrics"]["trace_count"] == 2
     assert artifact["metrics"]["changed_trace_count"] == 1
     assert artifact["top_changed_traces"][0]["trace_id"] == "t1"
+
+
+def test_replay_stratified_sampling(monkeypatch, tmp_path):
+    _setup_env(monkeypatch, tmp_path)
+    records = [
+        {"trace_id": "a1", "response": {"final_decision": "aligned"}},
+        {"trace_id": "a2", "response": {"final_decision": "aligned"}},
+        {"trace_id": "d1", "response": {"final_decision": "misaligned"}},
+        {"trace_id": "d2", "response": {"final_decision": "misaligned"}},
+    ]
+    selected = proposals._select_replay_window(
+        records,
+        window={"type": "count", "limit": 4},
+        limits={"max_traces": 2, "sample_strategy": "stratified"},
+    )
+    labels = {proposals._extract_replay_decision(item) for item in selected}
+    assert "ALLOW" in labels
+    assert "DENY" in labels
