@@ -10,16 +10,22 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: eleanor_v8
+    restart: unless-stopped
     env_file:
       - ./.env
     environment:
+      ELEANOR_ENVIRONMENT: "${ELEANOR_ENVIRONMENT:-development}"
       PRECEDENT_BACKEND: "${PRECEDENT_BACKEND:-weaviate}"   # weaviate | pgvector
       OPENAI_KEY: "${OPENAI_KEY}"
       ANTHROPIC_KEY: "${ANTHROPIC_KEY}"
       XAI_KEY: "${XAI_KEY}"
+      OLLAMA_HOST: "${OLLAMA_HOST:-http://host.docker.internal:11434}"
+      OLLAMA_MODELS: "${OLLAMA_MODELS:-llama3.1:8b,eleanor-rights:latest,eleanor-fairness:latest,eleanor-truth:latest,eleanor-risk:latest,eleanor-pragmatics:latest}"
+      CRITIC_MODEL_BINDINGS: "${CRITIC_MODEL_BINDINGS:-{\"rights\":\"ollama-eleanor-rights:latest\",\"fairness\":\"ollama-eleanor-fairness:latest\",\"truth\":\"ollama-eleanor-truth:latest\",\"risk\":\"ollama-eleanor-risk:latest\",\"operations\":\"ollama-eleanor-pragmatics:latest\",\"autonomy\":\"ollama-llama3.1:8b\"}}"
       OPA_URL: "http://opa:8181"
       OPA_POLICY_PATH: "v1/data/eleanor/decision"
       PG_CONN_STRING: "postgresql://postgres:postgres@pgvector:5432/eleanor"
+      ELEANOR_ENABLE_ADMIN_WRITE: "${ELEANOR_ENABLE_ADMIN_WRITE:-true}"
       ENABLE_PROMETHEUS_MIDDLEWARE: "${ENABLE_PROMETHEUS_MIDDLEWARE:-1}"
       ENABLE_OTEL: "${ENABLE_OTEL:-0}"
     depends_on:
@@ -28,6 +34,8 @@ services:
       - pgvector
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./audit:/app/audit
 
@@ -37,13 +45,14 @@ services:
   opa:
     image: openpolicyagent/opa:latest
     container_name: opa
+    restart: unless-stopped
     command:
       - "run"
       - "--server"
       - "--addr=0.0.0.0:8181"
       - "/policies"
     volumes:
-      - ../opa/policies:/policies:ro
+      - ./opa/policies:/policies:ro
     ports:
       - "8181:8181"
 
@@ -53,6 +62,7 @@ services:
   weaviate:
     image: semitechnologies/weaviate:latest
     container_name: weaviate
+    restart: unless-stopped
     environment:
       QUERY_DEFAULTS_LIMIT: 25
       # ⚠️ PRODUCTION: Disable anonymous access and configure API key authentication
@@ -60,7 +70,7 @@ services:
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
       PERSISTENCE_DATA_PATH: "./data"
     ports:
-      - "8080:8080"
+      - "8081:8080"
     volumes:
       - ./weaviate_data:/data
 
@@ -70,6 +80,7 @@ services:
   pgvector:
     image: ankane/pgvector
     container_name: pgvector
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"  # Use env var or default
@@ -85,6 +96,7 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
+    restart: unless-stopped
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
@@ -101,6 +113,7 @@ services:
   dependency-exporter:
     image: eleanor/dependency-exporter:latest
     container_name: dependency-exporter
+    restart: unless-stopped
     environment:
       DEP_EXPORT_ADMIN_ENDPOINT: "http://eleanor:8000/admin/dependencies"
       DEP_EXPORT_LISTEN_ADDR: "0.0.0.0"
@@ -117,9 +130,13 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
+    restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
       GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning
     ports:

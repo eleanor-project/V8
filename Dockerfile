@@ -2,6 +2,14 @@
 # ELEANOR V8 — Unified Engine Dockerfile
 # ==============================
 
+FROM node:20-alpine AS ui-builder
+
+WORKDIR /ui
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci --silent
+COPY ui/ ./
+RUN npm run build
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -14,12 +22,16 @@ RUN apt-get update && apt-get install -y build-essential wget curl git && \
 COPY ./engine ./engine
 COPY ./api ./api
 COPY ./governance ./governance
-COPY ./tests ./tests
+COPY ./precedent ./precedent
+COPY ./config ./config
 COPY ./pyproject.toml ./
 COPY ./README.md ./
 
+# UI assets
+COPY --from=ui-builder /ui/dist ./ui/dist
+
 # Install Python deps
-RUN pip install --upgrade pip && pip install -e .
+RUN pip install --upgrade pip && pip install -e ".[api,vector,observability]"
 
 # Expose API port
 EXPOSE 8000

@@ -186,12 +186,18 @@ class LlamaHFAdapter(BaseLLMAdapter):
 class OllamaAdapter(BaseLLMAdapter):
     """Adapter for running local models via Ollama HTTP endpoints."""
 
-    def __init__(self, model: str = "llama3"):
+    def __init__(self, model: str = "llama3", base_url: Optional[str] = None):
         self.model = model
+        self.base_url = (
+            base_url
+            or os.getenv("OLLAMA_HOST")
+            or os.getenv("OLLAMA_URL")
+            or "http://localhost:11434"
+        )
 
     async def __call__(self, prompt: str) -> str:
         data: Any = await _post_json(
-            "http://localhost:11434/api/generate",
+            f"{self.base_url.rstrip('/')}/api/generate",
             {"model": self.model, "prompt": prompt, "stream": False},
         )
         return str(data.get("response", "")).strip()

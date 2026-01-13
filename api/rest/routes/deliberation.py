@@ -115,10 +115,12 @@ async def deliberate(
         )
 
     try:
-        validated_context = validator.validate_dict(
-            payload.context.model_dump(mode="json") if payload.context else {},
-            field_name="context",
+        context_payload = (
+            payload.context.model_dump(mode="json")
+            if hasattr(payload.context, "model_dump")
+            else (payload.context or {})
         )
+        validated_context = validator.validate_dict(context_payload, field_name="context")
     except ValueError as validation_error:
         logger.warning(
             "context_validation_failed",
@@ -128,6 +130,19 @@ async def deliberate(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Context validation failed: {str(validation_error)}",
         )
+
+    policy_profile = payload.policy_profile or "default"
+    proposed_action_payload = (
+        payload.proposed_action.model_dump(mode="json")
+        if payload.proposed_action
+        else {"type": "deliberate", "params": {}}
+    )
+    evidence_inputs_payload = (
+        payload.evidence_inputs.model_dump(mode="json") if payload.evidence_inputs else {}
+    )
+    model_metadata_payload = (
+        payload.model_metadata.model_dump(mode="json") if payload.model_metadata else {}
+    )
 
     try:
         run_fn = getattr(engine, "run", None)
@@ -161,11 +176,11 @@ async def deliberate(
             "trace_id": normalized["trace_id"],
             "timestamp": time.time(),
             "schema_version": GOVERNANCE_SCHEMA_VERSION,
-            "policy_profile": payload.policy_profile,
-            "proposed_action": payload.proposed_action.model_dump(mode="json"),
+            "policy_profile": policy_profile,
+            "proposed_action": proposed_action_payload,
             "context": validated_context,
-            "evidence_inputs": payload.evidence_inputs.model_dump(mode="json") if payload.evidence_inputs else {},
-            "model_metadata": payload.model_metadata.model_dump(mode="json") if payload.model_metadata else {},
+            "evidence_inputs": evidence_inputs_payload,
+            "model_metadata": model_metadata_payload,
             "fingerprint": fingerprint,
             "fingerprint_components": fingerprint_components,
         }
