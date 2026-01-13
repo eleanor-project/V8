@@ -76,6 +76,7 @@ except ImportError:
 # Engine bootstrap
 from api.bootstrap import (
     build_engine,
+    evaluate_opa,
     load_constitutional_config,
 )
 from api.replay_store import ReplayStore

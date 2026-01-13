@@ -35,6 +35,18 @@ class DeliberationRequest(BaseModel):
         default_factory=dict, description="Optional context for the deliberation"
     )
     trace_id: Optional[str] = Field(None, description="Optional trace ID for correlation")
+    policy_profile: Optional[str] = Field(
+        None, description="Optional policy profile identifier for governance"
+    )
+    proposed_action: Optional["ProposedAction"] = Field(
+        None, description="Optional proposed action for governance evaluation"
+    )
+    evidence_inputs: Optional["EvidenceInputs"] = Field(
+        None, description="Optional evidence inputs referenced by the caller"
+    )
+    model_metadata: Optional["ModelMetadata"] = Field(
+        None, description="Optional model metadata for auditability"
+    )
     human_action: Optional[HumanAction] = Field(
         None, description="Optional human action to satisfy escalation gate"
     )

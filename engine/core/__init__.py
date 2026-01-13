@@ -324,7 +324,7 @@ def build_eleanor_engine_v8(
             return gpu_device_name
         return None
 
-    adapters = router_adapters or {}
+    adapters = router_adapters or None
     if llm_fn and not adapters:
         adapters = {"primary": _wrap_llm_adapter(llm_fn)}
         router_policy = router_policy or {"primary": "primary", "fallback_order": []}
