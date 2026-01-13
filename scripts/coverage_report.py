@@ -4,13 +4,12 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Dict, List, Any
 
 
-def run_coverage_analysis() -> Dict[str, Any]:
-    """Run pytest with coverage and return results."""
-    print("Running test suite with coverage analysis...")
-    
+def run_coverage() -> Dict[str, Any]:
+    """Run pytest with coverage and return data."""
+    print("Running coverage analysis...")
     result = subprocess.run(
         [
             "pytest",
@@ -19,7 +18,6 @@ def run_coverage_analysis() -> Dict[str, Any]:
             "--cov=api",
             "--cov-report=json:coverage.json",
             "--cov-report=term-missing",
-            "--cov-report=html:htmlcov",
             "-v"
         ],
         capture_output=True,
@@ -27,102 +25,96 @@ def run_coverage_analysis() -> Dict[str, Any]:
     )
     
     print(result.stdout)
-    if result.stderr:
-        print(result.stderr, file=sys.stderr)
     
-    # Load coverage data
-    with open("coverage.json") as f:
-        return json.load(f)
+    try:
+        with open("coverage.json") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print("ERROR: coverage.json not found. Tests may have failed.")
+        sys.exit(1)
 
 
-def analyze_coverage_gaps(data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Identify files below 95% coverage threshold."""
-    threshold = 95.0
+def analyze_coverage(data: Dict[str, Any], threshold: float = 95.0) -> List[Dict[str, Any]]:
+    """Analyze coverage data and identify gaps."""
     below_threshold = []
     
-    for file_path, metrics in data["files"].items():
-        # Skip test files and __init__ files
-        if "test_" in file_path or "__init__.py" in file_path:
-            continue
+    for filepath, metrics in data.get("files", {}).items():
+        summary = metrics.get("summary", {})
+        coverage_pct = summary.get("percent_covered", 0)
         
-        coverage_pct = metrics["summary"]["percent_covered"]
         if coverage_pct < threshold:
             below_threshold.append({
-                "file": file_path,
+                "file": filepath,
                 "coverage": coverage_pct,
-                "missing_lines": len(metrics["missing_lines"]),
-                "missing_branches": metrics["summary"].get("missing_branches", 0),
-                "total_statements": metrics["summary"]["num_statements"]
+                "missing_lines": len(metrics.get("missing_lines", [])),
+                "excluded_lines": len(metrics.get("excluded_lines", [])),
+                "num_statements": summary.get("num_statements", 0),
+                "num_covered": summary.get("covered_lines", 0)
             })
     
     return sorted(below_threshold, key=lambda x: x["coverage"])
 
 
-def generate_report(data: Dict[str, Any], gaps: List[Dict[str, Any]]) -> bool:
-    """Generate detailed coverage report."""
-    total_coverage = data["totals"]["percent_covered"]
-    
-    print("\n" + "="*70)
-    print("ELEANOR V8 TEST COVERAGE REPORT")
-    print("="*70)
+def generate_report(below_threshold: List[Dict[str, Any]], total_coverage: float):
+    """Generate formatted coverage report."""
+    print("\n" + "="*80)
+    print(f"COVERAGE REPORT - Target: 95%")
+    print("="*80)
     print(f"\nOverall Coverage: {total_coverage:.2f}%")
-    print(f"Target: 95.00%")
-    print(f"Gap: {max(0, 95.0 - total_coverage):.2f}%")
     
-    if total_coverage >= 95.0:
-        print("\n✅ Coverage target achieved!")
-    else:
-        print("\n❌ Coverage below target")
+    if not below_threshold:
+        print("\n✅ All files meet the 95% coverage threshold!")
+        return True
     
-    if gaps:
-        print(f"\n{len(gaps)} files below 95% coverage:\n")
-        
-        # Group by severity
-        critical = [g for g in gaps if g["coverage"] < 70]
-        high = [g for g in gaps if 70 <= g["coverage"] < 85]
-        medium = [g for g in gaps if 85 <= g["coverage"] < 95]
-        
-        if critical:
-            print("🔴 CRITICAL (<70%):")
-            for item in critical:
-                print(f"  {item['file']}: {item['coverage']:.1f}% "
-                      f"({item['missing_lines']} lines, {item['missing_branches']} branches)")
-        
-        if high:
-            print("\n🟠 HIGH (70-85%):")
-            for item in high:
-                print(f"  {item['file']}: {item['coverage']:.1f}% "
-                      f"({item['missing_lines']} lines, {item['missing_branches']} branches)")
-        
-        if medium:
-            print("\n🟡 MEDIUM (85-95%):")
-            for item in medium:
-                print(f"  {item['file']}: {item['coverage']:.1f}% "
-                      f"({item['missing_lines']} lines, {item['missing_branches']} branches)")
-    else:
-        print("\n✅ All files above 95% coverage!")
+    print(f"\n❌ {len(below_threshold)} files below 95% coverage threshold:\n")
     
-    print("\n" + "="*70)
-    print(f"HTML report generated: htmlcov/index.html")
-    print("="*70 + "\n")
+    for item in below_threshold:
+        print(f"📄 {item['file']}")
+        print(f"   Coverage: {item['coverage']:.1f}%")
+        print(f"   Missing Lines: {item['missing_lines']}")
+        print(f"   Statements: {item['num_covered']}/{item['num_statements']}")
+        print()
     
-    return total_coverage >= 95.0
+    # Priority files that need immediate attention
+    critical_files = [
+        "engine/engine.py",
+        "engine/validation.py",
+        "engine/security/audit.py",
+        "engine/resource_manager.py"
+    ]
+    
+    critical_gaps = [item for item in below_threshold 
+                     if any(cf in item['file'] for cf in critical_files)]
+    
+    if critical_gaps:
+        print("\n⚠️  CRITICAL FILES BELOW THRESHOLD:")
+        for item in critical_gaps:
+            print(f"   - {item['file']}: {item['coverage']:.1f}%")
+    
+    return False
 
 
 def main():
-    """Main entry point."""
-    try:
-        data = run_coverage_analysis()
-        gaps = analyze_coverage_gaps(data)
-        success = generate_report(data, gaps)
-        
-        sys.exit(0 if success else 1)
+    """Main execution."""
+    print("ELEANOR V8 - Test Coverage Analysis")
+    print("="*80 + "\n")
     
-    except FileNotFoundError:
-        print("Error: coverage.json not found. Did pytest run successfully?")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error: {e}")
+    # Run coverage
+    data = run_coverage()
+    
+    # Analyze results
+    total_coverage = data.get("totals", {}).get("percent_covered", 0)
+    below_threshold = analyze_coverage(data, threshold=95.0)
+    
+    # Generate report
+    success = generate_report(below_threshold, total_coverage)
+    
+    # Exit with appropriate code
+    if success or total_coverage >= 95.0:
+        print("\n✅ Coverage target achieved!")
+        sys.exit(0)
+    else:
+        print(f"\n❌ Coverage ({total_coverage:.2f}%) below 95% target")
         sys.exit(1)
 
 
