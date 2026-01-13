@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import random
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -161,6 +162,28 @@ def _select_replay_window(
         if isinstance(max_traces, int) and max_traces > 0 and len(selected) > max_traces:
             selected = selected[-max_traces:]
 
+    sample_strategy = None
+    if isinstance(limits, dict):
+        sample_strategy = limits.get("sample_strategy")
+    strategy = str(sample_strategy or "recent").lower()
+    if max_traces and len(selected) > max_traces:
+        seed = os.getenv("ELEANOR_PREVIEW_SAMPLE_SEED")
+        seed_value = None
+        if seed:
+            try:
+                seed_value = int(seed)
+            except ValueError:
+                seed_value = None
+
+        if strategy == "random":
+            indices = _sample_indices_random(list(range(len(selected))), max_traces, seed=seed_value)
+            selected = [selected[i] for i in indices]
+        elif strategy == "stratified":
+            indices = _sample_indices_stratified(selected, max_traces, seed=seed_value)
+            selected = [selected[i] for i in indices]
+        else:
+            selected = selected[-max_traces:]
+
     return selected
 
 
@@ -176,6 +199,26 @@ def _decision_label(raw: Optional[str]) -> str:
     return mapping.get(value, value.upper())
 
 
+def _normalize_final_decision(raw: Optional[str]) -> str:
+    value = (raw or "").lower()
+    mapping = {
+        "aligned": "ALLOW",
+        "aligned_with_constraints": "ALLOW_WITH_CONSTRAINTS",
+        "misaligned": "DENY",
+        "requires_human_review": "ESCALATE",
+    }
+    return mapping.get(value, _decision_label(value))
+
+
+def _extract_replay_decision(record: Dict[str, Any]) -> str:
+    response = record.get("response") or {}
+    if isinstance(response, dict):
+        final_decision = response.get("final_decision")
+        if final_decision:
+            return _normalize_final_decision(str(final_decision))
+    return _normalize_final_decision(str(record.get("decision") or ""))
+
+
 def _extract_score(result: Dict[str, Any]) -> Optional[float]:
     aggregated = result.get("aggregator_output") or {}
     for key in ("final_score", "score", "aggregate_score"):
@@ -186,6 +229,69 @@ def _extract_score(result: Dict[str, Any]) -> Optional[float]:
             except (TypeError, ValueError):
                 return None
     return None
+
+
+def _sample_indices_random(
+    indices: List[int],
+    max_traces: int,
+    *,
+    seed: Optional[int] = None,
+) -> List[int]:
+    rng = random.Random(seed)
+    if max_traces >= len(indices):
+        return indices
+    chosen = rng.sample(indices, max_traces)
+    return sorted(chosen)
+
+
+def _sample_indices_stratified(
+    records: List[Dict[str, Any]],
+    max_traces: int,
+    *,
+    seed: Optional[int] = None,
+) -> List[int]:
+    rng = random.Random(seed)
+    buckets: Dict[str, List[int]] = {}
+    for idx, record in enumerate(records):
+        label = _extract_replay_decision(record)
+        buckets.setdefault(label, []).append(idx)
+
+    if not buckets or max_traces <= 0:
+        return []
+
+    bucket_keys = sorted(buckets.keys())
+    bucket_count = len(bucket_keys)
+    if max_traces < bucket_count:
+        chosen_buckets = bucket_keys[:max_traces]
+    else:
+        chosen_buckets = bucket_keys
+
+    total = sum(len(buckets[key]) for key in chosen_buckets)
+    allocations: Dict[str, int] = {}
+    remaining = max_traces
+    for key in chosen_buckets:
+        share = int(max_traces * (len(buckets[key]) / max(total, 1)))
+        share = max(1, share) if max_traces >= len(chosen_buckets) else 1
+        share = min(share, len(buckets[key]))
+        allocations[key] = share
+        remaining -= share
+
+    while remaining > 0:
+        for key in chosen_buckets:
+            if remaining <= 0:
+                break
+            if allocations[key] < len(buckets[key]):
+                allocations[key] += 1
+                remaining -= 1
+
+    selected: List[int] = []
+    for key in chosen_buckets:
+        idxs = buckets[key]
+        if allocations[key] >= len(idxs):
+            selected.extend(idxs)
+        else:
+            selected.extend(rng.sample(idxs, allocations[key]))
+    return sorted(selected)
 
 
 def build_preview_engine(
