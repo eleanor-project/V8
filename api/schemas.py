@@ -315,6 +315,7 @@ class PreviewWindow(BaseModel):
 class PreviewLimits(BaseModel):
     max_traces: Optional[int] = Field(default=None, ge=1)
     max_changed_traces: Optional[int] = Field(default=None, ge=1)
+    sample_strategy: Optional[Literal["recent", "random", "stratified"]] = None
 
 
 class ConfigProposalPreviewRequest(BaseModel):
