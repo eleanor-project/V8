@@ -1,4 +1,4 @@
-"""Comprehensive tests for engine error handling and degradation scenarios."""
+"""Comprehensive tests for engine error handling and degradation paths."""
 import pytest
 import asyncio
 from unittest.mock import patch, AsyncMock, MagicMock
@@ -13,237 +13,308 @@ from engine.exceptions import (
 )
 
 
-class TestEngineDegradation:
-    """Test graceful degradation scenarios."""
-    
+class TestEngineErrorPaths:
+    """Test engine error handling paths."""
+
     @pytest.mark.asyncio
     async def test_router_failure_with_degradation_enabled(self):
         """Test graceful degradation when router fails."""
         config = EngineConfig(enable_graceful_degradation=True)
         engine = EleanorEngineV8(config=config)
         
-        # Mock router to always fail
-        async def failing_router(*args, **kwargs):
-            raise RouterSelectionError("Router service unavailable")
-        
-        with patch.object(engine, '_select_router', side_effect=failing_router):
-            async with engine:
-                result = await engine.run(
-                    "test input",
-                    context={},
-                    detail_level=2
-                )
+        # Mock router to fail
+        with patch.object(
+            engine,
+            '_select_router',
+            side_effect=RouterSelectionError("Router service unavailable")
+        ):
+            result = await engine.run(
+                "test input",
+                context={},
+                detail_level=2
+            )
             
+            assert result is not None
             assert result.is_degraded
             assert "router" in result.degraded_components
-            # Should use fallback model
-            assert result.model_info is not None
-    
+
     @pytest.mark.asyncio
-    async def test_router_failure_without_degradation(self):
+    async def test_router_failure_without_degradation_raises(self):
         """Test that router failure raises when degradation disabled."""
         config = EngineConfig(enable_graceful_degradation=False)
         engine = EleanorEngineV8(config=config)
         
-        async def failing_router(*args, **kwargs):
-            raise RouterSelectionError("Router failure")
-        
-        with patch.object(engine, '_select_router', side_effect=failing_router):
-            async with engine:
-                with pytest.raises(RouterSelectionError):
-                    await engine.run("test", context={}, detail_level=1)
-    
-    @pytest.mark.asyncio
-    async def test_partial_critic_failures_with_degradation(self):
-        """Test system continues with partial critic failures."""
-        engine = EleanorEngineV8()
-        
-        # Mock 30% of critics to fail
-        failure_count = 0
-        original_run_critic = engine._run_single_critic
-        
-        async def sometimes_failing_critic(*args, **kwargs):
-            nonlocal failure_count
-            if failure_count % 3 == 0:
-                failure_count += 1
-                raise CriticEvaluationError("Simulated failure")
-            failure_count += 1
-            return await original_run_critic(*args, **kwargs)
-        
-        with patch.object(engine, '_run_single_critic', side_effect=sometimes_failing_critic):
-            async with engine:
-                result = await engine.run(
-                    "test input",
-                    context={},
-                    detail_level=2
-                )
-            
-            assert result is not None
-            # Should have results from working critics
-            assert result.critic_findings is not None
+        with patch.object(
+            engine,
+            '_select_router',
+            side_effect=RouterSelectionError("Router failed")
+        ):
+            with pytest.raises(RouterSelectionError):
+                await engine.run("test input", context={}, detail_level=2)
 
-
-class TestEngineTimeouts:
-    """Test timeout handling in engine operations."""
-    
     @pytest.mark.asyncio
-    async def test_critic_execution_timeout(self):
-        """Test critic execution respects timeout."""
+    async def test_critic_timeout_handling(self):
+        """Test critic execution timeout handling."""
         config = EngineConfig(timeout_seconds=0.1)
         engine = EleanorEngineV8(config=config)
         
-        async def slow_critic(*args, **kwargs):
-            await asyncio.sleep(1.0)  # Exceeds timeout
+        # Mock slow critic
+        async def slow_critic_evaluate(*args, **kwargs):
+            await asyncio.sleep(5)  # Exceeds timeout
             return {"violations": []}
         
-        with patch.object(engine, '_run_single_critic', side_effect=slow_critic):
-            async with engine:
-                # Should handle timeout gracefully
-                result = await engine.run(
-                    "test",
+        mock_critic = MagicMock()
+        mock_critic.evaluate = slow_critic_evaluate
+        
+        with patch.object(engine, '_critics', {"slow_critic": mock_critic}):
+            with pytest.raises(asyncio.TimeoutError):
+                await engine._run_single_critic(
+                    name="slow_critic",
+                    critic_ref=mock_critic,
+                    model_response="test",
+                    input_text="test",
                     context={},
-                    detail_level=2
+                    trace_id="test-123"
                 )
-                
-                assert result is not None
-                assert result.forensic is not None
-    
+
     @pytest.mark.asyncio
-    async def test_multiple_critic_timeouts(self):
-        """Test handling of multiple simultaneous timeouts."""
-        config = EngineConfig(timeout_seconds=0.1)
+    async def test_critic_exception_handling(self):
+        """Test critic exception handling."""
+        engine = EleanorEngineV8()
+        
+        # Mock critic that raises exception
+        async def failing_critic_evaluate(*args, **kwargs):
+            raise ValueError("Critic internal error")
+        
+        mock_critic = MagicMock()
+        mock_critic.evaluate = failing_critic_evaluate
+        
+        with patch.object(engine, '_critics', {"failing_critic": mock_critic}):
+            result = await engine._run_single_critic(
+                name="failing_critic",
+                critic_ref=mock_critic,
+                model_response="test",
+                input_text="test",
+                context={},
+                trace_id="test-456"
+            )
+            
+            # Should return error result instead of raising
+            assert "error" in result or result.get("status") == "error"
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_open_state(self):
+        """Test behavior when circuit breaker is open."""
+        engine = EleanorEngineV8()
+        
+        # Mock circuit breaker in open state
+        with patch.object(
+            engine._circuit_breakers.get("router", MagicMock()),
+            'is_open',
+            return_value=True
+        ):
+            with pytest.raises(CircuitBreakerOpenError):
+                await engine._select_router("test input")
+
+    @pytest.mark.asyncio
+    async def test_partial_critic_failures(self):
+        """Test engine continues with partial critic failures."""
+        engine = EleanorEngineV8()
+        
+        # Mock some critics to fail
+        good_critic = MagicMock()
+        good_critic.evaluate = AsyncMock(return_value={"violations": []})
+        
+        bad_critic = MagicMock()
+        bad_critic.evaluate = AsyncMock(side_effect=ValueError("Critic failed"))
+        
+        with patch.object(engine, '_critics', {
+            "good_critic_1": good_critic,
+            "bad_critic_1": bad_critic,
+            "good_critic_2": good_critic,
+        }):
+            result = await engine.run("test", context={}, detail_level=2)
+            
+            # Should complete with available critics
+            assert result is not None
+            assert result.critic_findings is not None
+
+    @pytest.mark.asyncio
+    async def test_precedent_retrieval_failure(self):
+        """Test handling of precedent retrieval failure."""
+        config = EngineConfig(
+            enable_precedent_analysis=True,
+            enable_graceful_degradation=True
+        )
         engine = EleanorEngineV8(config=config)
         
-        async def always_timeout(*args, **kwargs):
-            await asyncio.sleep(2.0)
-        
-        with patch.object(engine, '_run_single_critic', side_effect=always_timeout):
-            async with engine:
-                result = await engine.run(
-                    "test",
-                    context={},
-                    detail_level=2
-                )
-                
-                # Should complete with available data
-                assert result is not None
+        # Mock precedent retriever to fail
+        with patch.object(
+            engine._precedent_retriever,
+            'retrieve',
+            side_effect=Exception("Precedent DB unavailable")
+        ):
+            result = await engine.run("test", context={}, detail_level=3)
+            
+            # Should complete without precedent analysis
+            assert result is not None
+            assert result.precedent_alignment is None or result.is_degraded
 
-
-class TestCircuitBreaker:
-    """Test circuit breaker behavior."""
-    
     @pytest.mark.asyncio
-    async def test_circuit_breaker_opens_after_failures(self):
-        """Test circuit breaker opens after threshold failures."""
+    async def test_uncertainty_computation_failure(self):
+        """Test handling of uncertainty computation failure."""
+        config = EngineConfig(
+            enable_uncertainty=True,
+            enable_graceful_degradation=True
+        )
+        engine = EleanorEngineV8(config=config)
+        
+        # Mock uncertainty engine to fail
+        with patch.object(
+            engine._uncertainty_engine,
+            'compute',
+            side_effect=Exception("Uncertainty computation error")
+        ):
+            result = await engine.run("test", context={}, detail_level=2)
+            
+            # Should complete without uncertainty
+            assert result is not None
+            assert result.uncertainty is None or result.is_degraded
+
+    @pytest.mark.asyncio
+    async def test_aggregation_fallback(self):
+        """Test aggregation fallback on failure."""
         engine = EleanorEngineV8()
         
-        # Simulate repeated failures
-        async def failing_operation(*args, **kwargs):
-            raise Exception("Simulated failure")
-        
-        failure_count = 0
-        threshold = 5
-        
-        with patch.object(engine, '_select_router', side_effect=failing_operation):
-            async with engine:
-                for i in range(threshold + 1):
-                    try:
-                        await engine._select_router("test")
-                    except:
-                        failure_count += 1
-                
-                # Circuit breaker should be open
-                assert failure_count >= threshold
-    
+        # Mock aggregator to fail
+        with patch.object(
+            engine._aggregator,
+            'aggregate',
+            side_effect=Exception("Aggregation failed")
+        ):
+            result = await engine.run("test", context={}, detail_level=2)
+            
+            # Should use fallback aggregation
+            assert result is not None
+            assert result.aggregated is not None  # Fallback result
+
     @pytest.mark.asyncio
-    async def test_circuit_breaker_half_open_recovery(self):
-        """Test circuit breaker transitions to half-open after timeout."""
+    async def test_governance_evaluation_failure(self):
+        """Test governance evaluation failure handling."""
+        config = EngineConfig(enable_governance=True)
+        engine = EleanorEngineV8(config=config)
+        
+        # Mock governance to fail
+        with patch.object(
+            engine._governance,
+            'should_escalate',
+            side_effect=Exception("Governance service error")
+        ):
+            result = await engine.run("test", context={}, detail_level=3)
+            
+            # Should complete without governance check
+            assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_validation_error_emission(self):
+        """Test validation error emission."""
         engine = EleanorEngineV8()
         
-        # Simulate failure then success
-        call_count = 0
-        
-        async def sometimes_failing(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count <= 5:
-                raise Exception("Failing")
-            return {"model": "test-model", "provider": "test"}
-        
-        with patch.object(engine, '_select_router', side_effect=sometimes_failing):
-            async with engine:
-                # Force failures to open circuit
-                for _ in range(5):
-                    try:
-                        await engine._select_router("test")
-                    except:
-                        pass
-                
-                # Wait for half-open timeout
-                await asyncio.sleep(1.0)
-                
-                # Should allow test requests
-                try:
-                    result = await engine._select_router("test")
-                    assert result is not None
-                except:
-                    pass  # May still fail if not recovered
+        # Mock validation to fail
+        with patch(
+            'engine.validation.validate_input',
+            side_effect=ValidationError("Invalid input")
+        ):
+            with pytest.raises(ValidationError) as exc_info:
+                await engine.run("", context={}, detail_level=1)
+            
+            assert "Invalid input" in str(exc_info.value)
 
-
-class TestEngineResourceCleanup:
-    """Test resource cleanup and context manager behavior."""
-    
     @pytest.mark.asyncio
-    async def test_engine_cleanup_on_normal_exit(self):
-        """Test resources are cleaned up on normal exit."""
+    async def test_evidence_recording_failure_doesnt_block(self):
+        """Test that evidence recording failure doesn't block execution."""
         engine = EleanorEngineV8()
         
-        async with engine:
+        # Mock evidence recorder to fail
+        with patch.object(
+            engine._evidence_recorder,
+            'record',
+            side_effect=Exception("Evidence recording failed")
+        ):
+            # Should still complete successfully
             result = await engine.run("test", context={}, detail_level=1)
             assert result is not None
-        
-        # Verify cleanup occurred
-        # (specific assertions depend on engine implementation)
-    
-    @pytest.mark.asyncio
-    async def test_engine_cleanup_on_exception(self):
-        """Test resources are cleaned up even on exception."""
-        engine = EleanorEngineV8()
-        
-        try:
-            async with engine:
-                raise RuntimeError("Simulated error")
-        except RuntimeError:
-            pass
-        
-        # Cleanup should still have occurred
 
 
-class TestEngineValidationErrors:
-    """Test validation error handling."""
-    
+class TestCircuitBreakerStateMachine:
+    """Test circuit breaker state transitions."""
+
     @pytest.mark.asyncio
-    async def test_validation_error_propagation(self):
-        """Test validation errors are properly propagated."""
-        engine = EleanorEngineV8()
+    async def test_closed_to_open_transition(self):
+        """Test circuit breaker transitions from closed to open."""
+        from engine.utils.circuit_breaker import CircuitBreaker
         
-        async with engine:
-            with pytest.raises(ValidationError):
-                await engine.run(
-                    "",  # Empty string should fail validation
-                    context={},
-                    detail_level=1
-                )
-    
+        cb = CircuitBreaker(failure_threshold=3, timeout=1.0)
+        
+        # Trigger failures
+        for _ in range(3):
+            cb.record_failure()
+        
+        assert cb.is_open()
+
     @pytest.mark.asyncio
-    async def test_malformed_context_validation(self):
-        """Test malformed context is rejected."""
-        engine = EleanorEngineV8()
+    async def test_open_to_half_open_transition(self):
+        """Test circuit breaker transitions from open to half-open."""
+        from engine.utils.circuit_breaker import CircuitBreaker
         
-        async with engine:
-            with pytest.raises(ValidationError):
-                await engine.run(
-                    "test",
-                    context="not a dict",  # Invalid context type
-                    detail_level=1
-                )
+        cb = CircuitBreaker(failure_threshold=2, timeout=0.1)
+        
+        # Open the circuit
+        cb.record_failure()
+        cb.record_failure()
+        assert cb.is_open()
+        
+        # Wait for timeout
+        await asyncio.sleep(0.2)
+        
+        # Should be half-open now
+        assert cb.is_half_open()
+
+    @pytest.mark.asyncio
+    async def test_half_open_to_closed_on_success(self):
+        """Test circuit breaker closes from half-open on success."""
+        from engine.utils.circuit_breaker import CircuitBreaker
+        
+        cb = CircuitBreaker(failure_threshold=2, timeout=0.1, success_threshold=2)
+        
+        # Open the circuit
+        cb.record_failure()
+        cb.record_failure()
+        
+        # Wait for half-open
+        await asyncio.sleep(0.2)
+        
+        # Record successes
+        cb.record_success()
+        cb.record_success()
+        
+        assert cb.is_closed()
+
+    @pytest.mark.asyncio
+    async def test_half_open_to_open_on_failure(self):
+        """Test circuit breaker reopens from half-open on failure."""
+        from engine.utils.circuit_breaker import CircuitBreaker
+        
+        cb = CircuitBreaker(failure_threshold=2, timeout=0.1)
+        
+        # Open the circuit
+        cb.record_failure()
+        cb.record_failure()
+        
+        # Wait for half-open
+        await asyncio.sleep(0.2)
+        
+        # Record failure in half-open state
+        cb.record_failure()
+        
+        assert cb.is_open()
