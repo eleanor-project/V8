@@ -7,11 +7,11 @@ services:
   # ==============================
   eleanor:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     container_name: eleanor_v8
     env_file:
-      - ../.env
+      - ./.env
     environment:
       PRECEDENT_BACKEND: "${PRECEDENT_BACKEND:-weaviate}"   # weaviate | pgvector
       OPENAI_KEY: "${OPENAI_KEY}"
@@ -26,7 +26,6 @@ services:
       - opa
       - weaviate
       - pgvector
-      - prometheus
     ports:
       - "8000:8000"
     volumes:
