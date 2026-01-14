@@ -368,16 +368,26 @@ def initialize_engine(
     # Traffic Light governance hook (external governor).
     # This is an *observer* hook by default: it does not override critic outcomes.
     engine.traffic_light_governance = None
+    traffic_light_enabled = bool(getattr(engine.config, 'enable_traffic_light_governance', True))
     try:
         from engine.integrations.traffic_light_governance import TrafficLightGovernanceHook
+
         engine.traffic_light_governance = TrafficLightGovernanceHook.from_env(
-            enabled=bool(getattr(engine.config, 'enable_traffic_light_governance', True)),
-            router_config_path=str(getattr(engine.config, 'traffic_light_router_config_path', 'governance/router_config.yaml')),
+            enabled=traffic_light_enabled,
+            router_config_path=str(
+                getattr(engine.config, 'traffic_light_router_config_path', 'governance/router_config.yaml')
+            ),
             events_jsonl_path=getattr(engine.config, 'governance_events_jsonl_path', 'governance_events.jsonl'),
             mode='observe',
         )
     except Exception as exc:
-        logger.debug(f"Traffic Light governance hook not initialized: {exc}")
+        if traffic_light_enabled:
+            logger.warning(
+                "Traffic Light governance hook enabled but failed to initialize",
+                extra={"error": str(exc)},
+            )
+        else:
+            logger.debug(f"Traffic Light governance hook not initialized: {exc}")
 
     logger.info(
         "engine_initialized",

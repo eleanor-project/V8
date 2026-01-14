@@ -34,6 +34,18 @@ from engine.security.audit.events import (
 )
 from engine.security.audit.query import AuditQuery, AuditQueryBuilder
 
+import importlib.util
+from pathlib import Path
+
+_module_path = Path(__file__).resolve().parent.parent / "audit.py"
+_spec = importlib.util.spec_from_file_location("engine.security.audit_module", _module_path)
+_audit_module = importlib.util.module_from_spec(_spec)
+if _spec and _spec.loader:
+    _spec.loader.exec_module(_audit_module)
+
+SecureAuditLogger = getattr(_audit_module, "SecureAuditLogger", None)
+audit_log = getattr(_audit_module, "audit_log", lambda event, extra=None: None)
+
 __all__ = [
     # Core
     "AuditEvent",
@@ -54,4 +66,7 @@ __all__ = [
     # Query
     "AuditQuery",
     "AuditQueryBuilder",
+    # Legacy module exports
+    "SecureAuditLogger",
+    "audit_log",
 ]

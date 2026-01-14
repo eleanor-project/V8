@@ -14,10 +14,10 @@ if TYPE_CHECKING:
 from engine.runtime.config import EngineConfig, load_config_from_yaml
 from engine.runtime.critics import (
     process_critic_batch,
-    run_critics_parallel,
     run_single_critic,
     run_single_critic_with_breaker,
 )
+from engine.runtime.critic_infrastructure import run_critics_with_orchestrator
 from engine.runtime.errors import (
     build_aggregation_fallback,
     build_critic_error_result,
@@ -314,14 +314,19 @@ class EngineRuntimeMixin:
         degraded_components: Optional[List[str]] = None,
         evidence_records: Optional[List[Any]] = None,
     ) -> CriticResultsMap:
-        return await run_critics_parallel(
+        # Ensure we always route through OrchestratorV2 (single critic execution path).
+        effective_input_text = context.get("input_text_override") or input_text or ""
+        if not isinstance(effective_input_text, str):
+            effective_input_text = str(effective_input_text)
+
+        return await run_critics_with_orchestrator(
             self,
-            model_response,
-            context,
-            trace_id,
-            input_text,
-            degraded_components,
-            evidence_records,
+            model_response=model_response,
+            input_text=effective_input_text,
+            context=context,
+            trace_id=trace_id,
+            degraded_components=degraded_components,
+            evidence_records=evidence_records,
         )
 
     async def _execute_with_degradation(

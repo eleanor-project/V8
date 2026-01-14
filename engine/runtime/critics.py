@@ -1,4 +1,18 @@
+"""  
+Legacy critic execution pipeline.
+
+NOTE: This module is retained for backward compatibility and targeted testing,
+but the production runtime should execute critics via OrchestratorV2
+(engine.runtime.critic_infrastructure.run_critics_with_orchestrator).
+
+To prevent accidental use in production, run_critics_parallel is guarded by
+ELEANOR_ENFORCE_SINGLE_CRITIC_PIPELINE (default: true). To explicitly allow
+legacy execution (tests/dev only), set ELEANOR_ALLOW_LEGACY_CRITIC_RUNNER=1.
+"""
+
 import asyncio
+import os
+import warnings
 import inspect
 import logging
 from typing import Any, Dict, List, Optional, cast, TYPE_CHECKING
@@ -362,6 +376,23 @@ async def run_critics_parallel(
     degraded_components: Optional[List[str]] = None,
     evidence_records: Optional[List[Any]] = None,
 ) -> CriticResultsMap:
+
+    # --- Legacy guardrail ---
+    enforce = os.getenv("ELEANOR_ENFORCE_SINGLE_CRITIC_PIPELINE", "true").strip().lower() in ("1", "true", "yes", "on")
+    allow = os.getenv("ELEANOR_ALLOW_LEGACY_CRITIC_RUNNER", "").strip().lower() in ("1", "true", "yes", "on")
+    if enforce and not allow:
+        raise RuntimeError(
+            "Legacy critic runner invoked (engine.runtime.critics.run_critics_parallel). "
+            "Production should use OrchestratorV2 via engine.runtime.critic_infrastructure.run_critics_with_orchestrator. "
+            "Set ELEANOR_ALLOW_LEGACY_CRITIC_RUNNER=1 to override (tests/dev only), or set "
+            "ELEANOR_ENFORCE_SINGLE_CRITIC_PIPELINE=false to disable this guard."
+        )
+    warnings.warn(
+        "engine.runtime.critics.run_critics_parallel is legacy; use run_critics_with_orchestrator instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     input_text = context.get("input_text_override") or input_text or ""
     if not isinstance(input_text, str):
         input_text = str(input_text)
