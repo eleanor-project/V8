@@ -159,8 +159,8 @@ class AggregatorV8:
                 "severity": severity,
                 "violations": violations,
                 "justification": justification,
-            "raw": data,
-        }
+                "raw": data,
+            }
 
         return normalized
 

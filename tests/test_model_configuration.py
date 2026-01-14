@@ -32,10 +32,10 @@ class TestModelRegistry:
     def test_assign_model(self):
         """Test explicit model assignment."""
         registry = ModelRegistry()
-        registry.assign_model("rights", "claude-opus-4.5")
+        registry.assign_model("rights", "claude-3-opus-20240229")
 
         assert "rights" in registry.critic_models
-        assert registry.critic_models["rights"] == "claude-opus-4.5"
+        assert registry.critic_models["rights"] == "claude-3-opus-20240229"
 
     def test_assign_tier(self):
         """Test tier-based assignment."""
@@ -48,41 +48,41 @@ class TestModelRegistry:
     def test_get_model_explicit(self):
         """Test getting explicitly assigned model."""
         registry = ModelRegistry()
-        registry.assign_model("rights", "claude-opus-4.5")
+        registry.assign_model("rights", "claude-3-opus-20240229")
 
         model_id = registry.get_model_for_critic("rights")
-        assert model_id == "claude-opus-4.5"
+        assert model_id == "claude-3-opus-20240229"
 
     def test_get_model_tier(self):
         """Test getting model via tier."""
         registry = ModelRegistry()
         registry.assign_tier("fairness", ModelTier.PREMIUM)
-        registry.set_tier_model(ModelTier.PREMIUM, "claude-opus-4.5")
+        registry.set_tier_model(ModelTier.PREMIUM, "claude-3-opus-20240229")
 
         model_id = registry.get_model_for_critic("fairness")
-        assert model_id == "claude-opus-4.5"
+        assert model_id == "claude-3-opus-20240229"
 
     def test_get_model_default(self):
         """Test default fallback."""
-        registry = ModelRegistry(default_model_id="claude-sonnet-4.5")
+        registry = ModelRegistry(default_model_id="claude-3-5-sonnet-20241022")
 
         model_id = registry.get_model_for_critic("unknown_critic")
-        assert model_id == "claude-sonnet-4.5"
+        assert model_id == "claude-3-5-sonnet-20241022"
 
     def test_priority_explicit_over_tier(self):
         """Test that explicit assignment takes priority over tier."""
         registry = ModelRegistry()
-        registry.assign_model("rights", "claude-opus-4.5")
+        registry.assign_model("rights", "claude-3-opus-20240229")
         registry.assign_tier("rights", ModelTier.ECONOMY)
 
         model_id = registry.get_model_for_critic("rights")
-        assert model_id == "claude-opus-4.5"  # Explicit wins
+        assert model_id == "claude-3-opus-20240229"  # Explicit wins
 
     def test_model_config(self):
         """Test model configuration retrieval."""
         registry = ModelRegistry()
 
-        config = registry.get_model_config("claude-opus-4.5")
+        config = registry.get_model_config("claude-3-opus-20240229")
         assert config is not None
         assert isinstance(config, ModelConfig)
         assert config.tier == ModelTier.PREMIUM
@@ -90,7 +90,7 @@ class TestModelRegistry:
     def test_cost_estimation(self):
         """Test cost estimation."""
         registry = ModelRegistry()
-        registry.assign_model("rights", "claude-opus-4.5")
+        registry.assign_model("rights", "claude-3-opus-20240229")
 
         cost = registry.get_cost_estimate("rights", estimated_tokens=1000)
         assert cost > 0
@@ -99,13 +99,13 @@ class TestModelRegistry:
     def test_list_assignments(self):
         """Test listing all assignments."""
         registry = ModelRegistry()
-        registry.assign_model("rights", "claude-opus-4.5")
+        registry.assign_model("rights", "claude-3-opus-20240229")
         registry.assign_tier("fairness", ModelTier.PREMIUM)
 
         assignments = registry.list_assignments()
         assert "rights" in assignments
         assert "fairness" in assignments
-        assert assignments["rights"]["model"] == "claude-opus-4.5"
+        assert assignments["rights"]["model"] == "claude-3-opus-20240229"
 
     def test_custom_routing_strategy(self):
         """Test custom routing strategy."""
@@ -139,7 +139,7 @@ class TestModelRegistry:
     def test_to_dict(self):
         """Test exporting configuration to dict."""
         registry = ModelRegistry()
-        registry.assign_model("rights", "claude-opus-4.5")
+        registry.assign_model("rights", "claude-3-opus-20240229")
         registry.assign_tier("fairness", ModelTier.PREMIUM)
 
         config_dict = registry.to_dict()
@@ -151,7 +151,7 @@ class TestModelRegistry:
     def test_yaml_roundtrip(self, tmp_path):
         """Test saving and loading YAML configuration."""
         registry = ModelRegistry()
-        registry.assign_model("rights", "claude-opus-4.5")
+        registry.assign_model("rights", "claude-3-opus-20240229")
         registry.assign_tier("fairness", ModelTier.PREMIUM)
 
         # Save
@@ -162,7 +162,7 @@ class TestModelRegistry:
         loaded = ModelRegistry.from_yaml(str(yaml_path))
 
         # Verify
-        assert loaded.get_model_for_critic("rights") == "claude-opus-4.5"
+        assert loaded.get_model_for_critic("rights") == "claude-3-opus-20240229"
         assert "fairness" in loaded.critic_tiers
 
 
@@ -182,12 +182,12 @@ class TestBaseCriticV8:
     async def test_registry_model(self):
         """Test critic with registry."""
         registry = ModelRegistry()
-        registry.assign_model("rights", "claude-opus-4.5")
+        registry.assign_model("rights", "claude-3-opus-20240229")
 
         critic = RightsCriticV8(registry=registry)
 
         model_id = critic.get_model()
-        assert model_id == "claude-opus-4.5"
+        assert model_id == "claude-3-opus-20240229"
 
     @pytest.mark.asyncio
     async def test_runtime_override(self):
@@ -290,13 +290,13 @@ class TestIntegration:
     async def test_end_to_end_registry(self):
         """Test end-to-end with registry."""
         registry = ModelRegistry()
-        registry.assign_model("rights", "claude-opus-4.5")
+        registry.assign_model("rights", "claude-3-opus-20240229")
 
         critic = RightsCriticV8(registry=registry)
 
         # Verify model is retrieved from registry
         model_id = critic.get_model()
-        assert model_id == "claude-opus-4.5"
+        assert model_id == "claude-3-opus-20240229"
 
 
 if __name__ == "__main__":

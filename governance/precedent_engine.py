@@ -37,22 +37,35 @@ class PrecedentCandidate:
         }
 
 
-# ---- Retrieval primitives (stubs) ----
+# ---- Retrieval primitives ----
 def vector_similarity(query_text: str, candidate_text: str) -> float:
-    """Stub: replace with real embedding similarity."""
-    return 0.0
+    """Lightweight similarity using sequence matcher (0..1)."""
+    if not query_text or not candidate_text:
+        return 0.0
+    from difflib import SequenceMatcher
+
+    return SequenceMatcher(None, query_text.lower(), candidate_text.lower()).ratio()
 
 
 def bm25_normalized(query_text: str, candidate_text: str) -> float:
-    """Stub: replace with real keyword retrieval."""
-    return 0.0
+    """
+    Approximate BM25-style relevance: token overlap ratio (0..1).
+    Falls back to 0 when either side is empty.
+    """
+    qtoks = {t for t in query_text.lower().split() if t}
+    ctoks = {t for t in candidate_text.lower().split() if t}
+    if not qtoks or not ctoks:
+        return 0.0
+    overlap = len(qtoks & ctoks)
+    return min(1.0, overlap / float(len(qtoks)))
 
 
 def trigger_hits(query_text: str, patterns: List[str]) -> float:
-    """Stub: basic string containment scoring; replace with regex / pattern engine."""
+    """Score based on trigger pattern hits (0..1)."""
     hits = 0
+    normalized = query_text.lower()
     for p in patterns or []:
-        if p and p.lower() in query_text.lower():
+        if p and p.lower() in normalized:
             hits += 1
     if not patterns:
         return 0.0
@@ -140,16 +153,45 @@ def apply_precedence_resolver(candidates: List[PrecedentCandidate], ctx: Request
 
     sorted_list = sorted(candidates, key=key, reverse=True)
 
-    # Normalize to a 0..1 match_score using retrieval_score as a placeholder.
-    if sorted_list:
-        top = max(1e-9, sorted_list[0].retrieval_score)
-        normalized: List[PrecedentCandidate] = []
-        for c in sorted_list:
-            ms = max(0.0, min(1.0, c.retrieval_score / top)) if top > 0 else 0.0
-            normalized.append(PrecedentCandidate(**{**c.__dict__, "final_score": key(c)[-1], "match_score": ms}))
-        return normalized
+    if not sorted_list:
+        return sorted_list
 
-    return sorted_list
+    max_binding = max(binding_rank(c.binding_level) for c in sorted_list) or 1
+    max_specificity = max(scope_specificity(c.scope, ctx) for c in sorted_list) or 1
+    max_version = max(c.version for c in sorted_list) or 1
+    max_conservatism = max(conservatism_rank((c.decision or {}).get("outcome", "permit"), ctx.risk_tier) for c in sorted_list) or 1
+    max_retrieval = max(c.retrieval_score for c in sorted_list) or 1
+
+    def _norm(value: float, max_value: float) -> float:
+        return value / max_value if max_value else 0.0
+
+    weighted: List[PrecedentCandidate] = []
+    for c in sorted_list:
+        b = binding_rank(c.binding_level)
+        s = scope_specificity(c.scope, ctx)
+        r = c.version
+        cons = conservatism_rank((c.decision or {}).get("outcome", "permit"), ctx.risk_tier)
+        retrieval = c.retrieval_score
+
+        composite = (
+            0.35 * _norm(b, max_binding)
+            + 0.25 * _norm(s, max_specificity)
+            + 0.15 * _norm(r, max_version)
+            + 0.10 * _norm(cons, max_conservatism)
+            + 0.15 * _norm(retrieval, max_retrieval)
+        )
+        composite = max(0.0, min(1.0, composite))
+
+        weighted.append(
+            PrecedentCandidate(
+                **{
+                    **c.__dict__,
+                    "final_score": composite,
+                    "match_score": composite,
+                }
+            )
+        )
+    return weighted
 
 
 def match_precedents(

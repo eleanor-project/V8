@@ -5,7 +5,7 @@ echo "🧠 Starting ELEANOR — Ethical Living Engine for Normative Oversight & 
 echo "------------------------------------------------------------"
 
 # ---- CONFIG ----
-export ELEANOR_ENV="${ELEANOR_ENV:-local}"
+export ELEANOR_ENV="${ELEANOR_ENV:-development}"
 export ELEANOR_ENVIRONMENT="${ELEANOR_ENVIRONMENT:-$ELEANOR_ENV}"
 export ELEANOR_LOG_LEVEL=INFO
 export ELEANOR_CONFIG=./config/eleanor.yaml
@@ -18,6 +18,7 @@ export ELEANOR_ENABLE_STREAMING=true
 
 # Vector store flags
 export ELEANOR_PRECEDENT_BACKEND=weaviate
+export PRECEDENT_BACKEND="${PRECEDENT_BACKEND:-$ELEANOR_PRECEDENT_BACKEND}"
 export ELEANOR_ENABLE_PRECEDENT_WRITEBACK=true
 
 # Governance
@@ -43,5 +44,4 @@ echo "🤖 Default Model: $ELEANOR_DEFAULT_MODEL"
 echo ""
 echo "🚀 Launching Eleanor API..."
 
-python3 -m orchestrator.api \
-  --config "$ELEANOR_CONFIG"
+python3 -m api.rest.main

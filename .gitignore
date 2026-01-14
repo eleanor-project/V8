@@ -11,6 +11,7 @@ __pycache__/
 # Build artifacts
 build/
 dist/
+node_modules/
 *.egg-info/
 eleanor_v8.egg-info/
 .eggs/
@@ -33,6 +34,7 @@ MANIFEST
 *.egg-info/
 dist/
 build/
+ui/dist/
 
 # Environment and secrets
 .env
@@ -42,6 +44,11 @@ build/
 *.key
 *.crt
 secrets/
+secrets.yaml
+secrets.yml
+secrets.json
+config/secrets.yaml
+*.secrets.*
 
 # Logs and evidence
 evidence.jsonl
@@ -53,6 +60,7 @@ logs/
 # IDE
 .vscode/
 .idea/
+*.code-workspace
 *.swp
 *.swo
 *~
@@ -72,6 +80,8 @@ coverage.xml
 *.db
 *.sqlite
 *.sqlite3
+pg_data/
+weaviate_data/
 
 # Temporary files
 *.tmp
@@ -87,3 +97,5 @@ docker-compose.override.yml
 prometheus/
 grafana/
 *.zip
+ELEANOR_CODE.md
+export_top_level_md.py

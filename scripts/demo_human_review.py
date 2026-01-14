@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 from governance.review_triggers import ReviewTriggerEvaluator
 from governance.review_packets import build_review_packet
-from replay_store import store_review_packet, store_human_review
+from engine.replay_store import store_review_packet, store_human_review
 from precedent.promotion_guard import assert_promotion_allowed
 from governance.human_review.schemas import (
     HumanReviewRecord,

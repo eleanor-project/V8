@@ -21,9 +21,9 @@ from engine.uncertainty.uncertainty import UncertaintyEngineV8
 from engine.precedent.alignment import PrecedentAlignmentEngineV8
 from engine.precedent.retrieval import PrecedentRetrievalV8
 from engine.precedent.embeddings import bootstrap_embedding_registry
-from engine.precedent.stores import (
+from engine.precedent.store import (
     WeaviatePrecedentStore,
-    PGVectorPrecedentStore,
+    PgVectorStore,
 )
 from engine.recorder.evidence_recorder import EvidenceRecorder
 from engine.detectors.engine import DetectorEngineV8
@@ -183,8 +183,9 @@ def _build_precedent_layer(
             table = os.getenv("PG_TABLE", "precedent")
             if conn:
                 try:
-                    store = PGVectorPrecedentStore(
-                        conn_string=conn, table_name=table, embed_fn=embed_fn
+                    store = PgVectorStore(
+                        connection_string=conn,
+                        table_name=table,
                     )
                 except Exception:
                     store = None
@@ -222,6 +223,7 @@ def build_eleanor_engine_v8(
     opa_callback=None,
     evidence_path: Optional[str] = None,
     critic_models: Optional[Dict[str, Any]] = None,
+    settings_override: Optional["EleanorSettings"] = None,
 ) -> Any:
     """
     Build a fully operational async engine instance.
@@ -230,25 +232,38 @@ def build_eleanor_engine_v8(
     local development can run with minimal configuration.
     """
 
-    settings = None
+    settings = settings_override
     environment = os.getenv("ELEANOR_ENVIRONMENT") or os.getenv("ELEANOR_ENV") or "development"
     cache_ttl = 300
     secret_provider = None
 
-    try:
-        from engine.config import ConfigManager
+    if settings is None:
+        try:
+            from engine.config import ConfigManager
 
-        settings = ConfigManager().settings
+            settings = ConfigManager().settings
+            environment = settings.environment
+            cache_ttl = settings.security.secrets_cache_ttl
+            secret_provider = build_secret_provider_from_settings(settings)
+        except Exception as exc:
+            if environment == "production":
+                raise
+            logger.warning(
+                "Secret provider setup failed; falling back to environment provider",
+                extra={"error": str(exc)},
+            )
+    else:
         environment = settings.environment
         cache_ttl = settings.security.secrets_cache_ttl
-        secret_provider = build_secret_provider_from_settings(settings)
-    except Exception as exc:
-        if environment == "production":
-            raise
-        logger.warning(
-            "Secret provider setup failed; falling back to environment provider",
-            extra={"error": str(exc)},
-        )
+        try:
+            secret_provider = build_secret_provider_from_settings(settings)
+        except Exception as exc:
+            if environment == "production":
+                raise
+            logger.warning(
+                "Secret provider setup failed; falling back to environment provider",
+                extra={"error": str(exc)},
+            )
 
     if secret_provider is None:
         if environment == "production":
@@ -309,7 +324,7 @@ def build_eleanor_engine_v8(
             return gpu_device_name
         return None
 
-    adapters = router_adapters or {}
+    adapters = router_adapters or None
     if llm_fn and not adapters:
         adapters = {"primary": _wrap_llm_adapter(llm_fn)}
         router_policy = router_policy or {"primary": "primary", "fallback_order": []}
@@ -392,6 +407,17 @@ def build_eleanor_engine_v8(
             policy_path=os.getenv("OPA_POLICY_PATH", "v1/data/eleanor/decision"),
         )
         setattr(engine_instance, "opa_callback", opa_client.evaluate)
+    
+    # Integrate optional features based on feature flags
+    try:
+        from engine.core.feature_integration import integrate_optional_features
+        integrate_optional_features(engine_instance, settings)
+    except Exception as exc:
+        logger.warning(
+            "Failed to integrate optional features",
+            extra={"error": str(exc)},
+            exc_info=True
+        )
 
     return engine_instance
 

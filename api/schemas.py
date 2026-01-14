@@ -35,6 +35,18 @@ class DeliberationRequest(BaseModel):
         default_factory=dict, description="Optional context for the deliberation"
     )
     trace_id: Optional[str] = Field(None, description="Optional trace ID for correlation")
+    policy_profile: Optional[str] = Field(
+        None, description="Optional policy profile identifier for governance"
+    )
+    proposed_action: Optional["ProposedAction"] = Field(
+        None, description="Optional proposed action for governance evaluation"
+    )
+    evidence_inputs: Optional["EvidenceInputs"] = Field(
+        None, description="Optional evidence inputs referenced by the caller"
+    )
+    model_metadata: Optional["ModelMetadata"] = Field(
+        None, description="Optional model metadata for auditability"
+    )
     human_action: Optional[HumanAction] = Field(
         None, description="Optional human action to satisfy escalation gate"
     )
@@ -61,7 +73,7 @@ class DeliberationRequest(BaseModel):
             return True
 
         if not check_depth(v):
-            raise ValueError("Context structure is too deeply nested (max depth: 10)")
+            raise ValueError("Context structure is too deeply nested (max depth: 5)")
         return v
 
 
@@ -275,3 +287,68 @@ class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None
     trace_id: Optional[str] = None
+
+
+class ConfigProposalRequest(BaseModel):
+    schema_version: int = 1
+    proposal_type: str
+    title: str
+    changes: Dict[str, Any]
+    notes: Optional[str] = None
+
+
+class ConfigProposalResponse(BaseModel):
+    proposal_id: str
+    status: str
+    submitted_at: str
+
+
+class ConfigProposalSummary(BaseModel):
+    proposal_id: str
+    title: Optional[str] = None
+    status: str
+    submitted_at: Optional[str] = None
+    last_preview: Optional[str] = None
+    last_apply: Optional[str] = None
+
+
+class ConfigProposalListResponse(BaseModel):
+    schema_version: int = 1
+    environment: str
+    items: List[ConfigProposalSummary]
+
+
+class PreviewWindow(BaseModel):
+    type: Literal["time", "count"] = "time"
+    duration: Optional[str] = None
+    limit: Optional[int] = None
+
+
+class PreviewLimits(BaseModel):
+    max_traces: Optional[int] = Field(default=None, ge=1)
+    max_changed_traces: Optional[int] = Field(default=None, ge=1)
+    sample_strategy: Optional[Literal["recent", "random", "stratified"]] = None
+
+
+class ConfigProposalPreviewRequest(BaseModel):
+    schema_version: int = 1
+    mode: Literal["full_replay", "policy_only"] = "policy_only"
+    window: Optional[PreviewWindow] = None
+    limits: Optional[PreviewLimits] = None
+
+
+class ConfigProposalApplyRequest(BaseModel):
+    schema_version: int = 1
+    artifact_id: Optional[str] = None
+    artifact_hash: Optional[str] = None
+    apply_mode: Optional[str] = None
+    expected: Optional[Dict[str, Any]] = None
+
+
+class ConfigProposalApplyResponse(BaseModel):
+    schema_version: int = 1
+    proposal_id: str
+    status: str
+    applied_at: str
+    fingerprints: Dict[str, Any]
+    ledger: Dict[str, Any]

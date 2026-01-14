@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from .db_sink import EvidenceDBSink
 from engine.security.sanitizer import CredentialSanitizer
@@ -55,6 +55,7 @@ class EvidenceRecord(BaseModel):
     precedent_candidates: List[str] = Field(default_factory=list)
 
     raw_text: Optional[str] = None
+    model_config = ConfigDict(protected_namespaces=())
 
 
 # ---------------------------------------------------------
@@ -238,13 +239,16 @@ class EvidenceRecorder:
 
         # DB sink (batch writes for performance)
         async with self._db_lock:
-            self._db_pending.append(record)
-            if len(self._db_pending) >= self._db_batch_size:
-                # Flush batch
-                batch = list(self._db_pending)
-                self._db_pending.clear()
-                # Write batch asynchronously (don't await to avoid blocking)
-                asyncio.create_task(self._write_db_batch(batch))
+            if self.db_sink and not hasattr(self.db_sink, "write_batch"):
+                await self._write_db(record)
+            else:
+                self._db_pending.append(record)
+                if len(self._db_pending) >= self._db_batch_size:
+                    # Flush batch
+                    batch = list(self._db_pending)
+                    self._db_pending.clear()
+                    # Write batch asynchronously (don't await to avoid blocking)
+                    asyncio.create_task(self._write_db_batch(batch))
         
         # Publish evidence recorded event
         if EVENT_BUS_AVAILABLE and get_event_bus and EventType is not None:
@@ -289,8 +293,10 @@ class EvidenceRecorder:
                 return
             pending = list(self._pending)
             self._pending.clear()
-        for record in pending:
-            await self._write_jsonl(record)
+        text = "".join(rec.model_dump_json() + "\n" for rec in pending)
+        async with self._lock:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self._append_file, self.jsonl_path, text)
 
     async def close(self) -> None:
         """Shutdown recorder and flush remaining evidence."""
@@ -307,5 +313,10 @@ class EvidenceRecorder:
         # Flush any pending DB writes
         async with self._db_lock:
             if self._db_pending:
-                await self._write_db_batch(list(self._db_pending))
+                pending = list(self._db_pending)
                 self._db_pending.clear()
+                if self.db_sink and hasattr(self.db_sink, "write_batch"):
+                    await self._write_db_batch(pending)
+                else:
+                    for rec in pending:
+                        await self._write_db(rec)

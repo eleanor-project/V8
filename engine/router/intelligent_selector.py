@@ -7,7 +7,7 @@ Enables 30-50% cost reduction through intelligent routing.
 """
 
 import logging
-from typing import Dict, List, Optional, Any, Literal
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -27,23 +27,23 @@ class ModelProfile:
     """Profile of a model with cost, latency, and quality metrics."""
     model_name: str
     provider: str
-    cost_per_1k_tokens: float  # USD per 1k tokens
-    avg_latency_ms: float  # Average latency in milliseconds
-    quality_score: float  # 0.0 to 1.0, quality rating
+    cost_per_1k_tokens: float
+    avg_latency_ms: float
+    quality_score: float
     max_tokens: int = 4096
     supports_streaming: bool = True
-    availability_score: float = 1.0  # 0.0 to 1.0, current availability
+    availability_score: float = 1.0
 
 
 @dataclass
 class SelectionRequirements:
     """Requirements for model selection."""
-    min_quality: float = 0.0  # Minimum quality score required
-    max_latency_ms: float = float("inf")  # Maximum acceptable latency
-    max_cost_per_1k: float = float("inf")  # Maximum cost per 1k tokens
+    min_quality: float = 0.0
+    max_latency_ms: float = float("inf")
+    max_cost_per_1k: float = float("inf")
     optimization_goal: OptimizationGoal = OptimizationGoal.BALANCED
     prefer_streaming: bool = False
-    context_length: Optional[int] = None  # Required context length
+    context_length: Optional[int] = None
 
 
 @dataclass
@@ -67,12 +67,10 @@ class IntelligentModelSelector:
     - Configurable model profiles
     - Real-time availability tracking
     - Cost and latency estimation
-    - Fallback to quality if requirements cannot be met
     """
     
     def __init__(self):
         """Initialize intelligent model selector."""
-        # Default model profiles (can be updated from config)
         self.model_profiles: Dict[str, ModelProfile] = {
             "gpt-4": ModelProfile(
                 model_name="gpt-4",
@@ -145,38 +143,21 @@ class IntelligentModelSelector:
     def update_model_profile(self, profile: ModelProfile) -> None:
         """Update or add a model profile."""
         self.model_profiles[profile.model_name] = profile
-        logger.debug(f"Updated model profile: {profile.model_name}")
     
     def select_model(
         self,
         requirements: Optional[SelectionRequirements] = None,
         estimated_tokens: Optional[int] = None
     ) -> SelectionResult:
-        """
-        Select optimal model based on requirements.
-        
-        Args:
-            requirements: Selection requirements
-            estimated_tokens: Estimated token count for cost calculation
-            
-        Returns:
-            SelectionResult with selected model and metadata
-        """
+        """Select optimal model based on requirements."""
         if requirements is None:
             requirements = SelectionRequirements()
         
-        # Filter models by requirements
         candidates = self._filter_candidates(requirements)
         
         if not candidates:
-            # No candidates meet requirements, return highest quality
-            logger.warning(
-                "No models meet requirements, falling back to highest quality",
-                extra={"requirements": requirements.__dict__}
-            )
             return self._select_highest_quality()
         
-        # Select based on optimization goal
         if requirements.optimization_goal == OptimizationGoal.COST:
             return self._select_lowest_cost(candidates, requirements, estimated_tokens)
         elif requirements.optimization_goal == OptimizationGoal.LATENCY:
@@ -194,29 +175,18 @@ class IntelligentModelSelector:
         candidates = []
         
         for profile in self.model_profiles.values():
-            # Check quality requirement
             if profile.quality_score < requirements.min_quality:
                 continue
-            
-            # Check latency requirement
             if profile.avg_latency_ms > requirements.max_latency_ms:
                 continue
-            
-            # Check cost requirement
             if profile.cost_per_1k_tokens > requirements.max_cost_per_1k:
                 continue
-            
-            # Check context length requirement
             if requirements.context_length and profile.max_tokens < requirements.context_length:
                 continue
-            
-            # Check streaming requirement
             if requirements.prefer_streaming and not profile.supports_streaming:
                 continue
-            
-            # Check availability
             if profile.availability_score < 0.5:
-                continue  # Skip unavailable models
+                continue
             
             candidates.append(profile)
         
@@ -229,11 +199,10 @@ class IntelligentModelSelector:
         estimated_tokens: Optional[int]
     ) -> SelectionResult:
         """Select model with lowest cost."""
-        # Sort by cost
         candidates.sort(key=lambda p: p.cost_per_1k_tokens)
         
         selected = candidates[0]
-        alternatives = [c.model_name for c in candidates[1:3]]  # Top 3 alternatives
+        alternatives = [c.model_name for c in candidates[1:3]]
         
         estimated_cost = None
         if estimated_tokens:
@@ -255,7 +224,6 @@ class IntelligentModelSelector:
         requirements: SelectionRequirements
     ) -> SelectionResult:
         """Select model with lowest latency."""
-        # Sort by latency
         candidates.sort(key=lambda p: p.avg_latency_ms)
         
         selected = candidates[0]
@@ -278,7 +246,6 @@ class IntelligentModelSelector:
         if candidates is None:
             candidates = list(self.model_profiles.values())
         
-        # Sort by quality (descending)
         candidates.sort(key=lambda p: p.quality_score, reverse=True)
         
         selected = candidates[0]
@@ -300,27 +267,21 @@ class IntelligentModelSelector:
         estimated_tokens: Optional[int]
     ) -> SelectionResult:
         """Select model with best balance of cost, latency, and quality."""
-        # Normalize scores to 0-1 range for comparison
         max_cost = max(c.cost_per_1k_tokens for c in candidates)
         max_latency = max(c.avg_latency_ms for c in candidates)
         min_cost = min(c.cost_per_1k_tokens for c in candidates)
         min_latency = min(c.avg_latency_ms for c in candidates)
         
-        # Calculate composite score (weighted)
-        # Lower cost and latency are better, higher quality is better
         scored_candidates = []
         for profile in candidates:
-            # Normalize cost (inverse, so lower is better)
             cost_score = 1.0 - (
                 (profile.cost_per_1k_tokens - min_cost) / (max_cost - min_cost + 0.001)
             )
             
-            # Normalize latency (inverse, so lower is better)
             latency_score = 1.0 - (
                 (profile.avg_latency_ms - min_latency) / (max_latency - min_latency + 0.001)
             )
             
-            # Composite score: 50% quality, 30% cost, 20% latency
             composite_score = (
                 profile.quality_score * 0.5 +
                 cost_score * 0.3 +
@@ -329,7 +290,6 @@ class IntelligentModelSelector:
             
             scored_candidates.append((profile, composite_score))
         
-        # Sort by composite score (descending)
         scored_candidates.sort(key=lambda x: x[1], reverse=True)
         
         selected, score = scored_candidates[0]
@@ -353,7 +313,6 @@ class IntelligentModelSelector:
         """Update availability score for a model."""
         if model_name in self.model_profiles:
             self.model_profiles[model_name].availability_score = availability_score
-            logger.debug(f"Updated availability for {model_name}: {availability_score}")
     
     def get_model_profiles(self) -> Dict[str, ModelProfile]:
         """Get all model profiles."""
@@ -362,18 +321,14 @@ class IntelligentModelSelector:
     def estimate_cost(self, model_name: str, tokens: int) -> float:
         """Estimate cost for a model and token count."""
         if model_name not in self.model_profiles:
-            logger.warning(f"Unknown model: {model_name}")
             return 0.0
-        
         profile = self.model_profiles[model_name]
         return (profile.cost_per_1k_tokens * tokens) / 1000
     
     def estimate_latency(self, model_name: str) -> float:
         """Estimate latency for a model."""
         if model_name not in self.model_profiles:
-            logger.warning(f"Unknown model: {model_name}")
             return 0.0
-        
         return self.model_profiles[model_name].avg_latency_ms
 
 
