@@ -1,91 +1,195 @@
-from __future__ import annotations
+"""
+Audit query API endpoints.
 
-from typing import Any, Dict, List, Optional
+Provides REST API for querying and exporting audit logs.
+"""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+from datetime import datetime
+from typing import List, Optional
+from fastapi import APIRouter, Query, HTTPException, Response
 from pydantic import BaseModel, Field
 
-from engine.logging_config import get_logger
+from engine.security.ledger_reader import (
+    get_ledger_reader,
+    AuditEventType,
+    AuditSeverity,
+)
 
-from api.middleware.auth import require_authenticated_user
-from api.middleware.rate_limit import check_rate_limit
-from api.rest.deps import get_engine, get_replay_store
-from api.rest.services.audit_utils import fetch_trace, search_traces, replay_trace
+logger = logging.getLogger(__name__)
 
-logger = get_logger(__name__)
-router = APIRouter(tags=["Audit"])
-
-
-class AuditSearchRequest(BaseModel):
-    query: Optional[str] = Field(default=None, description="Search text (trace_id or input substring)")
-    user_id: Optional[str] = Field(default=None, description="Filter by user_id if stored")
-    decision: Optional[str] = Field(default=None, description="Filter by final_decision label")
-    limit: int = Field(default=50, ge=1, le=500)
+router = APIRouter(prefix="/audit", tags=["audit"])
 
 
-class AuditSearchResponse(BaseModel):
-    results: List[Dict[str, Any]]
+class AuditQueryRequest(BaseModel):
+    """Audit query request parameters."""
+    start_time: Optional[datetime] = Field(None, description="Filter events after this time")
+    end_time: Optional[datetime] = Field(None, description="Filter events before this time")
+    event_types: Optional[List[str]] = Field(None, description="Filter by event types")
+    severity: Optional[str] = Field(None, description="Filter by severity level")
+    user: Optional[str] = Field(None, description="Filter by user/accessor")
+    request_id: Optional[str] = Field(None, description="Filter by request ID")
+    resource: Optional[str] = Field(None, description="Filter by resource name")
+    search_text: Optional[str] = Field(None, description="Full-text search")
+    limit: int = Field(100, ge=1, le=1000, description="Maximum results")
+    offset: int = Field(0, ge=0, description="Results offset")
+    sort_desc: bool = Field(True, description="Sort descending (newest first)")
 
 
-@router.get("/trace/{trace_id}")
-async def get_trace(
-    trace_id: str,
-    user: str = Depends(require_authenticated_user),
-    _rate: None = Depends(check_rate_limit),
-    replay_store=Depends(get_replay_store),
-):
-    stored = await fetch_trace(replay_store, trace_id)
-    if not stored:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trace not found")
-
-    owner = stored.get("user_id")
-    if owner and str(owner) != str(user):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this trace")
-
-    return stored
+class AuditQueryResponse(BaseModel):
+    """Audit query response."""
+    events: List[dict]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
 
 
-@router.post("/audit/search", response_model=AuditSearchResponse)
-async def audit_search(
-    payload: AuditSearchRequest,
-    user: str = Depends(require_authenticated_user),
-    _rate: None = Depends(check_rate_limit),
-    replay_store=Depends(get_replay_store),
-):
-    user_id = payload.user_id or user
-    results = await search_traces(
-        replay_store,
-        query=payload.query,
-        user_id=user_id,
-        decision=payload.decision,
-        limit=payload.limit,
-    )
-    return AuditSearchResponse(results=results)
+class AuditStatsResponse(BaseModel):
+    """Audit statistics response."""
+    period_hours: int
+    total_events: int
+    by_type: dict
+    by_severity: dict
+    start_time: str
+    end_time: str
 
 
-@router.post("/replay/{trace_id}")
-async def replay(
-    trace_id: str,
-    user: str = Depends(require_authenticated_user),
-    _rate: None = Depends(check_rate_limit),
-    engine=Depends(get_engine),
-    replay_store=Depends(get_replay_store),
-):
-    stored = await fetch_trace(replay_store, trace_id)
-    if not stored:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trace not found")
-
-    owner = stored.get("user_id")
-    if owner and str(owner) != str(user):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this trace")
-
+@router.post("/query", response_model=AuditQueryResponse)
+async def query_audit_logs(request: AuditQueryRequest) -> AuditQueryResponse:
+    """
+    Query audit logs with filters.
+    
+    Supports filtering by:
+    - Time range (start_time, end_time)
+    - Event types (access_log, secret_access_log, etc.)
+    - Severity level (info, warning, error, critical)
+    - User/accessor
+    - Request ID
+    - Resource name
+    - Full-text search
+    
+    Returns paginated results with total count.
+    """
     try:
-        rerun = await replay_trace(engine, stored)
+        reader = get_ledger_reader()
+        result = reader.query(
+            start_time=request.start_time,
+            end_time=request.end_time,
+            event_types=request.event_types,
+            severity=request.severity,
+            user=request.user,
+            request_id=request.request_id,
+            resource=request.resource,
+            search_text=request.search_text,
+            limit=request.limit,
+            offset=request.offset,
+            sort_desc=request.sort_desc,
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=result["error"])
+        
+        return AuditQueryResponse(**result)
+    except Exception as e:
+        logger.error(f"Audit query failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/event-types", response_model=List[str])
+async def get_event_types() -> List[str]:
+    """
+    Get list of all unique event types in the audit ledger.
+    
+    Useful for populating filter dropdowns in UI.
+    """
+    try:
+        reader = get_ledger_reader()
+        return reader.get_event_types()
+    except Exception as e:
+        logger.error(f"Failed to get event types: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats", response_model=AuditStatsResponse)
+async def get_audit_stats(
+    hours: int = Query(24, ge=1, le=168, description="Number of hours to analyze")
+) -> AuditStatsResponse:
+    """
+    Get audit statistics for recent period.
+    
+    Returns counts by event type and severity for the specified time window.
+    Default is last 24 hours, max is 7 days (168 hours).
+    """
+    try:
+        reader = get_ledger_reader()
+        stats = reader.get_stats(hours=hours)
+        
+        if "error" in stats:
+            raise HTTPException(status_code=500, detail=stats["error"])
+        
+        return AuditStatsResponse(**stats)
+    except Exception as e:
+        logger.error(f"Failed to get stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/export")
+async def export_audit_logs(
+    request: AuditQueryRequest,
+    format: str = Query("json", regex="^(json|csv)$", description="Export format")
+) -> Response:
+    """
+    Export audit logs to JSON or CSV format.
+    
+    Applies the same filters as query endpoint but returns all matching
+    events (up to 10,000) in the specified format.
+    """
+    try:
+        reader = get_ledger_reader()
+        
+        # Override limit for export
+        export_params = request.dict()
+        export_params["limit"] = 10000
+        
+        content = reader.export(format=format, **export_params)
+        
+        # Set content type and filename
+        media_type = "application/json" if format == "json" else "text/csv"
+        filename = f"audit_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.{format}"
+        
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+    except Exception as e:
+        logger.error(f"Export failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/health")
+async def audit_health() -> dict:
+    """
+    Health check endpoint for audit query service.
+    
+    Returns status and basic ledger information.
+    """
+    try:
+        reader = get_ledger_reader()
+        event_types = reader.get_event_types()
+        
         return {
-            "trace_id": trace_id,
-            "replayed": True,
-            "result": rerun,
+            "status": "healthy",
+            "ledger_path": str(reader.ledger_path),
+            "event_types_count": len(event_types),
+            "service": "audit-query",
         }
-    except Exception as exc:
-        logger.error("replay_failed", extra={"trace_id": trace_id, "error": str(exc)})
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Replay failed")
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "service": "audit-query",
+        }
