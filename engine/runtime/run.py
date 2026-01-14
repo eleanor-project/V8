@@ -281,7 +281,11 @@ async def run_engine(
         health_score=cast(Optional[float], model_info.get("health_score")),
     )
 
-    critic_results = await engine._run_critics_parallel(
+    # Run critics using orchestrator with infrastructure integration
+    from engine.runtime.critic_infrastructure import run_critics_with_orchestrator
+    
+    critic_results = await run_critics_with_orchestrator(
+        engine=engine,
         model_response=model_response,
         input_text=text,
         context=context,
