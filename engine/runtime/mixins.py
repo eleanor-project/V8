@@ -219,9 +219,10 @@ class EngineRuntimeMixin:
         )
 
     def _get_circuit_breaker(self, name: str):
-        if not self.circuit_breakers:
+        registry = getattr(self, "_circuit_breakers", None) or self.circuit_breakers
+        if not registry:
             return None
-        return self.circuit_breakers.get_or_create(
+        return registry.get_or_create(
             name,
             failure_threshold=self._breaker_failure_threshold,
             recovery_timeout=self._breaker_recovery_timeout,
@@ -239,11 +240,20 @@ class EngineRuntimeMixin:
     async def _select_model(
         self,
         text: str,
-        context: dict,
+        context: Optional[dict] = None,
         timings: Optional[Dict[str, float]] = None,
         router_diagnostics: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        return await select_model(self, text, context, timings, router_diagnostics)
+        return await select_model(self, text, context or {}, timings, router_diagnostics)
+
+    async def _select_router(
+        self,
+        text: str,
+        context: Optional[dict] = None,
+        timings: Optional[Dict[str, float]] = None,
+        router_diagnostics: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        return await self._select_model(text, context or {}, timings, router_diagnostics)
 
     async def _run_single_critic(
         self,

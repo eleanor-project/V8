@@ -88,7 +88,7 @@ class DetectorEngineV8:
                 # Log but don't crash if a detector fails to load
                 logger.warning(
                     "detector_load_failed",
-                    extra={"module": module_name, "error": str(e)},
+                    extra={"detector_module": module_name, "error": str(e)},
                 )
 
     async def detect_all(self, text: str, context: Dict[str, Any]) -> Dict[str, DetectorSignal]:

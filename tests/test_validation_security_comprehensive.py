@@ -76,8 +76,8 @@ class TestContextValidation:
 
     def test_rejects_deeply_nested_context(self):
         """Test rejection of deeply nested malicious payloads."""
-        deep_context = {"a": {"b": {"c": {"d": {"e": {"f": {"g": {"h": {"i": {}}}}}}}}}
-        
+        deep_context = {"a": {"b": {"c": {"d": {"e": {}}}}}}
+
         with pytest.raises(ValidationError) as exc_info:
             validate_input("test", context=deep_context)
         

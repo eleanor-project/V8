@@ -202,18 +202,15 @@ class CriticExecutionResult:
 @dataclass
 class ExecutionPlan:
     """Pre-computed execution plan with dependency graph."""
-    
-    # Dependency graph (adjacency list)
-    graph: Dict[str, Set[str]] = field(default_factory=lambda: defaultdict(set))
-    
-    # Topological ordering by stage
-    stages: Dict[ExecutionStage, List[str]] = field(default_factory=lambda: defaultdict(list))
-    
-    # Priority ordering within each stage
-    priority_order: Dict[ExecutionStage, List[str]] = field(default_factory=dict)
-    
-    # Critics that can skip (based on policy)
-    conditional_critics: Set[str] = field(default_factory=set)
+    def __init__(self):
+        # Dependency graph (adjacency list)
+        self.graph: Dict[str, Set[str]] = defaultdict(set)
+        # Topological ordering by stage
+        self.stages: Dict[ExecutionStage, List[str]] = defaultdict(list)
+        # Priority ordering within each stage
+        self.priority_order: Dict[ExecutionStage, List[str]] = {}
+        # Critics that can skip (based on policy)
+        self.conditional_critics: Set[str] = set()
     
     def add_dependency(self, critic: str, depends_on: str):
         """Add dependency edge."""
@@ -674,63 +671,50 @@ class ProductionOrchestrator:
             
             stage_start = time.time()
             logger.info(f"Starting stage: {stage.name}")
-            
-            # Get critics ready in this stage
-            ready = self.execution_plan.get_ready_critics(stage, completed)
-            
-            if not ready:
-                continue
-            
-            # Execute critics in priority order
-            tasks = []
-            for critic_name in self.execution_plan.priority_order.get(stage, ready):
-                if critic_name not in ready:
-                    continue
-                
-                critic_config = self.critics[critic_name]
-                
-                # Check execution policy (gating)
-                should_execute, gating_reason = self._should_execute_critic(
-                    critic_config,
-                    input_snapshot,
-                )
-                
-                if not should_execute:
-                    logger.info(f"Critic {critic_name} gated: {gating_reason}")
-                    results[critic_name] = CriticExecutionResult(
-                        critic_name=critic_name,
-                        status=CriticExecutionStatus.GATED,
-                        output=self._failure_template(critic_name, "gated"),
-                        duration_ms=0.0,
-                        stage=stage,
-                        priority=critic_config.priority,
-                        gating_reason=gating_reason,
-                    ).to_dict()
+            while True:
+                ready = self.execution_plan.get_ready_critics(stage, completed)
+                if not ready:
+                    break
+
+                for critic_name in self.execution_plan.priority_order.get(stage, ready):
+                    if critic_name not in ready:
+                        continue
+
+                    critic_config = self.critics[critic_name]
+
+                    # Check execution policy (gating)
+                    should_execute, gating_reason = self._should_execute_critic(
+                        critic_config,
+                        input_snapshot,
+                    )
+
+                    if not should_execute:
+                        logger.info(f"Critic {critic_name} gated: {gating_reason}")
+                        results[critic_name] = CriticExecutionResult(
+                            critic_name=critic_name,
+                            status=CriticExecutionStatus.GATED,
+                            output=self._failure_template(critic_name, "gated"),
+                            duration_ms=0.0,
+                            stage=stage,
+                            priority=critic_config.priority,
+                            gating_reason=gating_reason,
+                        ).to_dict()
+                        completed.add(critic_name)
+
+                        if self.config.fail_on_gated_critics:
+                            raise RuntimeError(f"Critic {critic_name} was gated: {gating_reason}")
+
+                        continue
+
+                    result = await self._execute_with_retry(critic_config, input_snapshot)
+                    results[critic_name] = result.to_dict()
                     completed.add(critic_name)
-                    
-                    if self.config.fail_on_gated_critics:
-                        raise RuntimeError(f"Critic {critic_name} was gated: {gating_reason}")
-                    
-                    continue
-                
-                # Create task
-                task = asyncio.create_task(
-                    self._execute_with_retry(critic_config, input_snapshot),
-                    name=f"critic_{critic_name}"
-                )
-                tasks.append((critic_name, task))
-            
-            # Wait for all critics in this stage
-            for critic_name, task in tasks:
-                result = await task
-                results[critic_name] = result.to_dict()
-                completed.add(critic_name)
-                
-                # Update input snapshot with result for dependent critics
-                input_snapshot.prior_results[critic_name] = result.output
-                
-                # Update metrics
-                self.metrics.record_execution(result)
+
+                    # Update input snapshot with result for dependent critics
+                    input_snapshot.prior_results[critic_name] = result.output
+
+                    # Update metrics
+                    self.metrics.record_execution(result)
             
             stage_duration = (time.time() - stage_start) * 1000
             logger.info(f"Stage {stage.name} completed in {stage_duration:.2f}ms")
@@ -761,24 +745,25 @@ class RateLimiter:
     
     def __init__(self, rate_per_second: float):
         self.rate = rate_per_second
-        self.tokens = rate_per_second
+        self.tokens = 0.0
         self.last_update = time.time()
         self.lock = asyncio.Lock()
     
     async def acquire(self):
         """Acquire a token, waiting if necessary."""
-        async with self.lock:
-            now = time.time()
-            elapsed = now - self.last_update
-            self.tokens = min(self.rate, self.tokens + elapsed * self.rate)
-            self.last_update = now
-            
-            if self.tokens < 1:
-                wait_time = (1 - self.tokens) / self.rate
+        while True:
+            async with self.lock:
+                now = time.time()
+                elapsed = now - self.last_update
+                self.tokens = min(self.rate, self.tokens + elapsed * self.rate)
+                self.last_update = now
+
+                if self.tokens >= 1:
+                    self.tokens -= 1
+                    return
+                wait_time = (1 - self.tokens) / self.rate if self.rate else 0.0
+            if wait_time > 0:
                 await asyncio.sleep(wait_time)
-                self.tokens = 0
-            else:
-                self.tokens -= 1
 
 
 @dataclass

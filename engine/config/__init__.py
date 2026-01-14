@@ -9,11 +9,13 @@ Hierarchical configuration system with clear precedence:
 5. Default values (lowest)
 """
 
-from .settings import EleanorSettings, get_settings
-from .manager import ConfigManager
+from .settings import EleanorSettings, get_settings  # noqa: F401
+from .manager import ConfigManager  # noqa: F401
+from engine.runtime.config import EngineConfig  # noqa: F401
 
 __all__ = [
     "EleanorSettings",
     "get_settings",
     "ConfigManager",
+    "EngineConfig",
 ]

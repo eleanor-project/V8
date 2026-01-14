@@ -108,6 +108,18 @@ class InputValidationError(EleanorV8Exception):
     pass
 
 
+# Backwards-compatible alias for historical ValidationError imports
+class ValidationError(InputValidationError):
+    """Alias for InputValidationError to maintain compatibility with older tests."""
+
+    pass
+
+
+# Compatibility alias for circuit breaker errors
+class CircuitBreakerOpenError(EleanorV8Exception):
+    """Raised when a circuit breaker is open (compatibility wrapper)."""
+
+    pass
 class TimeoutError(EleanorV8Exception):
     """Raised when an operation exceeds configured timeout."""
 

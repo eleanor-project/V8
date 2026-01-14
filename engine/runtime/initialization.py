@@ -275,9 +275,11 @@ def initialize_engine(
         engine.adaptive_limiter = None
 
     engine.circuit_breakers = None
+    engine._circuit_breakers = None
     engine.degradation_enabled = bool(engine.config.enable_graceful_degradation)
     if engine.config.enable_circuit_breakers:
         engine.circuit_breakers = CircuitBreakerRegistry()
+        engine._circuit_breakers = engine.circuit_breakers
     engine._breaker_failure_threshold = engine.config.circuit_breaker_threshold
     engine._breaker_recovery_timeout = engine.config.circuit_breaker_timeout
 

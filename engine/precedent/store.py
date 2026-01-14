@@ -17,10 +17,12 @@ import json
 import os
 import hashlib
 import time
+import types
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, cast
 from dataclasses import dataclass, field, asdict
 import logging
+from importlib import import_module
 
 from engine.utils.dependency_tracking import record_dependency_failure
 
@@ -28,6 +30,10 @@ try:
     import weaviate  # type: ignore[import-not-found]
 except Exception:
     weaviate = None  # type: ignore[assignment]
+
+psycopg2 = None
+RealDictCursor = None
+ThreadedConnectionPool = None
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +97,18 @@ class BasePrecedentStore(ABC):
     def count(self) -> int:
         """Return total number of cases."""
         pass
+
+
+class _Embedder:
+    """Simple helper that wraps an embed function."""
+
+    def __init__(self, embed_fn):
+        if not callable(embed_fn):
+            raise ValueError("embed_fn must be callable")
+        self.embed_fn = embed_fn
+
+    def embed(self, text: str) -> List[float]:
+        return list(self.embed_fn(text))
 
 
 class InMemoryStore(BasePrecedentStore):
@@ -271,7 +289,8 @@ class WeaviatePrecedentStore(BasePrecedentStore):
             raise ImportError("weaviate client not installed. Install with: pip install weaviate-client")
         self.client = client
         self.class_name = class_name
-        self.embed_fn = embed_fn
+        self.embed_fn = embed_fn or (lambda _text: [])
+        self.embedder = _Embedder(self.embed_fn)
 
     def add(self, case: PrecedentCase, embedding: List[float]) -> str:
         payload = {
@@ -300,8 +319,8 @@ class WeaviatePrecedentStore(BasePrecedentStore):
     def search(
         self, query: str, top_k: int = 5, embedding: Optional[List[float]] = None
     ) -> List[Dict[str, Any]]:
-        if embedding is None and self.embed_fn:
-            embedding = self.embed_fn(query)
+        if embedding is None:
+            embedding = self.embedder.embed(query)
         if not embedding:
             logger.warning(
                 "weaviate_search_missing_embedding",
@@ -415,21 +434,46 @@ class PgVectorStore(BasePrecedentStore):
             "POSTGRES_URL", "postgresql://localhost:5432/eleanor"
         )
         self.table_name = table_name
+        self.table = table_name
         self.embedding_dim = embedding_dim
         self.pool_size = pool_size
         self._pool = None
+        try:
+            self.pool = self._create_pool()
+        except Exception as exc:
+            logger.debug("pgvector_pool_init_failed", extra={"error": str(exc)})
+            self.pool = None
         self._initialized = False
+
+    def _create_pool(self):
+        pool_cls = ThreadedConnectionPool
+        try:
+            stores_module = import_module("engine.precedent.stores")
+            pool_cls = getattr(stores_module, "ThreadedConnectionPool", pool_cls)
+        except ImportError:
+            pass
+        if pool_cls is None:
+            return None
+        min_conn = int(os.getenv("PG_POOL_MIN", "1"))
+        return pool_cls(min_conn, self.pool_size, self.connection_string)
 
     def _get_connection(self):
         """Get a database connection."""
+        if self.pool:
+            return self.pool.getconn()
+        module_psycopg2 = psycopg2
         try:
-            import psycopg2  # type: ignore[import-untyped]
-            from psycopg2.extras import RealDictCursor  # type: ignore[import-untyped]
-
-            return psycopg2.connect(self.connection_string, cursor_factory=RealDictCursor)
-        except ImportError as exc:
+            stores_module = import_module("engine.precedent.stores")
+            module_psycopg2 = getattr(stores_module, "psycopg2", module_psycopg2)
+        except ImportError:
+            pass
+        if module_psycopg2 is None or RealDictCursor is None:
+            exc = ImportError("psycopg2 not installed. Run: pip install psycopg2-binary")
             record_dependency_failure("psycopg2", exc)
-            raise ImportError("psycopg2 not installed. Run: pip install psycopg2-binary")
+            raise exc
+        return module_psycopg2.connect(
+            self.connection_string, cursor_factory=RealDictCursor
+        )
 
     def _ensure_table(self, conn):
         """Ensure the precedent table exists."""
@@ -468,7 +512,13 @@ class PgVectorStore(BasePrecedentStore):
             )
 
             conn.commit()
-            self._initialized = True
+        self._initialized = True
+
+    def _release_connection(self, conn):
+        if self.pool:
+            self.pool.putconn(conn)
+        else:
+            conn.close()
 
     def add(self, case: PrecedentCase, embedding: List[float]) -> str:
         """Add a precedent case with embedding."""
@@ -511,7 +561,7 @@ class PgVectorStore(BasePrecedentStore):
                 )
                 conn.commit()
         finally:
-            conn.close()
+            self._release_connection(conn)
 
         return case_id
 
@@ -565,7 +615,7 @@ class PgVectorStore(BasePrecedentStore):
 
                 return results
         finally:
-            conn.close()
+            self._release_connection(conn)
 
     def get(self, case_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific case by ID."""
@@ -594,7 +644,7 @@ class PgVectorStore(BasePrecedentStore):
                     return case
                 return None
         finally:
-            conn.close()
+            self._release_connection(conn)
 
     def delete(self, case_id: str) -> bool:
         """Delete a case by ID."""
@@ -608,7 +658,7 @@ class PgVectorStore(BasePrecedentStore):
                 conn.commit()
                 return deleted
         finally:
-            conn.close()
+            self._release_connection(conn)
 
     def count(self) -> int:
         """Return total number of cases."""
@@ -621,7 +671,7 @@ class PgVectorStore(BasePrecedentStore):
                 row = cur.fetchone()
                 return int(row["cnt"]) if row else 0
         finally:
-            conn.close()
+            self._release_connection(conn)
 
     @staticmethod
     def _generate_id(text: str) -> str:

@@ -11,6 +11,7 @@ import inspect
 import json
 import logging
 from typing import Any, Callable, Dict, Optional
+from types import SimpleNamespace
 
 from engine.factory import DependencyFactory, EngineDependencies
 from engine.protocols import (
@@ -43,6 +44,7 @@ from engine.runtime.models import (  # noqa: F401
 )
 from engine.validation import validate_input  # compatibility for tests/monkeypatching
 from engine.utils.dependency_tracking import record_dependency_failure
+from engine.utils.circuit_breaker import CircuitBreakerRegistry
 from governance.review_packets import build_review_packet
 from governance.review_triggers import Case
 from engine.replay_store import store_review_packet
@@ -171,6 +173,59 @@ class EleanorEngineV8(EngineRuntimeMixin):
             parse_memory_gb=_parse_memory_gb,
             resolve_dependencies=_resolve_dependencies,
         )
+        # Compatibility aliases for legacy tests/utilities
+        self._critics = getattr(self, "critics", {})
+        self._precedent_retriever = getattr(self, "precedent_retriever", None)
+        self._uncertainty_engine = getattr(self, "uncertainty_engine", None)
+        self._aggregator = getattr(self, "aggregator", None)
+        self._circuit_breakers = getattr(self, "circuit_breakers", None)
+        if self.circuit_breakers is None:
+            self.circuit_breakers = CircuitBreakerRegistry()
+        self._circuit_breakers = getattr(self, "circuit_breakers", None)
+        self._evidence_recorder = getattr(self, "recorder", None)
+
+        governance_source = getattr(self, "traffic_light_governance", None)
+        if governance_source is None and hasattr(self, "review_trigger_evaluator"):
+            evaluator = getattr(self, "review_trigger_evaluator")
+
+            class _GovernanceShim:
+                def __init__(self, eval_fn: Callable[[Any], Any]):
+                    self._eval_fn = eval_fn
+
+                def should_escalate(self, case: Any):
+                    return self._eval_fn(case)
+
+            if evaluator is not None and hasattr(evaluator, "evaluate"):
+                governance_source = _GovernanceShim(evaluator.evaluate)
+
+        if governance_source is not None and not hasattr(governance_source, "should_escalate"):
+            underlying = governance_source
+
+            class _GovernanceWrapper:
+                def __init__(self, impl: Any):
+                    self._impl = impl
+
+                def should_escalate(self, case: Any):
+                    apply_fn = getattr(self._impl, "apply", None)
+                    import inspect
+
+                    if callable(apply_fn) and not inspect.iscoroutinefunction(apply_fn):
+                        return apply_fn(
+                            trace_id=getattr(case, "id", None),
+                            text=None,
+                            context=None,
+                            aggregated=None,
+                            precedent_data=None,
+                            uncertainty_data=None,
+                        )  # type: ignore[arg-type]
+                    return {"review_required": False}
+
+            governance_source = _GovernanceWrapper(underlying)
+
+        if governance_source is None:
+            governance_source = SimpleNamespace(should_escalate=lambda *_a, **_k: {"review_required": False})
+
+        self._governance = governance_source
 
     def _run_governance_review_gate(self, case: Case):
         return run_governance_review_gate(

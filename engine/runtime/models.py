@@ -48,6 +48,8 @@ class EngineForensicData(BaseModel):
 class EngineResult(BaseModel):
     output_text: Optional[str] = None
     trace_id: str
+    human_review_required: Optional[bool] = None
+    context: Optional[Dict[str, Any]] = None
     model_info: Optional[EngineModelInfo] = None
     critic_findings: Optional[Dict[str, EngineCriticFinding]] = None
     aggregated: Optional[AggregationOutput] = None

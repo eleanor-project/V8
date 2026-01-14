@@ -12,6 +12,7 @@ from engine.exceptions import (
     PrecedentRetrievalError,
     RouterSelectionError,
     UncertaintyComputationError,
+    ValidationError,
 )
 from engine.resilience.degradation import DegradationStrategy
 from engine.runtime.models import EngineCriticFinding, EngineForensicData, EngineModelInfo, EngineResult
@@ -19,6 +20,7 @@ from engine.schemas.pipeline_types import (
     PrecedentAlignmentResult,
     UncertaintyResult,
 )
+from engine.runtime.governance import apply_governance_flags_to_aggregation
 from engine.utils.circuit_breaker import CircuitBreakerOpen
 
 logger = logging.getLogger("engine.engine")
@@ -30,7 +32,13 @@ try:
         set_degraded_components,
     )
     from engine.observability.correlation import CorrelationContext
-    from engine.events.event_bus import get_event_bus, DecisionMadeEvent, EventType
+    from engine.events.event_bus import (
+        get_event_bus,
+        DecisionMadeEvent,
+        RouterSelectedEvent,
+        Event,
+        EventType,
+    )
     OBSERVABILITY_AVAILABLE = True
 except ImportError:
     OBSERVABILITY_AVAILABLE = False
@@ -157,7 +165,13 @@ async def run_engine(
             context=raw_context,
             trace_id=fallback_trace_id,
         )
-        raise
+        details = getattr(exc, "details", None)
+        raise ValidationError(str(exc), details=details) from exc
+
+    correlation_id: Optional[str] = None
+    if OBSERVABILITY_AVAILABLE and CorrelationContext:
+        correlation_id = CorrelationContext.get_or_generate()
+        context = {**context, "correlation_id": correlation_id}
 
     if engine.gpu_manager and engine.gpu_manager.device:
         context = {
@@ -225,19 +239,35 @@ async def run_engine(
         }
         router_diagnostics.update({"skipped": True, "reason": "model_output_override"})
     else:
+        select_model_fn = getattr(engine, "_select_router", None) or getattr(engine, "_select_model", engine._select_model)
         try:
             breaker = engine._get_circuit_breaker("router")
             if breaker is not None:
                 router_data = cast(
                     Dict[str, Any],
                     await breaker.call(
-                        engine._select_model, text, context, timings, router_diagnostics
+                        select_model_fn, text, context, timings, router_diagnostics
                     ),
                 )
             else:
-                router_data = await engine._select_model(text, context, timings, router_diagnostics)
+                router_data = await select_model_fn(text, context, timings, router_diagnostics)
             model_info = router_data["model_info"]
             model_response = router_data["response_text"]
+            if OBSERVABILITY_AVAILABLE and get_event_bus and EventType is not None:
+                try:
+                    event_bus = get_event_bus()
+                    await event_bus.publish(
+                        RouterSelectedEvent(
+                            event_type=EventType.ROUTER_SELECTED,
+                            trace_id=trace_id,
+                            model_name=str(model_info.get("model_name") or "unknown"),
+                            selection_reason=str(model_info.get("router_selection_reason") or ""),
+                            cost_estimate=model_info.get("cost_estimate"),
+                            data={"correlation_id": correlation_id} if correlation_id else {},
+                        )
+                    )
+                except Exception:
+                    logger.debug("router_event_publish_failed")
         except CircuitBreakerOpen as exc:
             if engine.degradation_enabled:
                 degraded_components.append("router")
@@ -260,6 +290,8 @@ async def run_engine(
             engine._emit_error(exc, stage="router", trace_id=trace_id, context=context)
             if engine.degradation_enabled:
                 degraded_components.append("router")
+            else:
+                raise
             model_info = {
                 "model_name": "router_error",
                 "model_version": None,
@@ -325,6 +357,22 @@ async def run_engine(
             trace_id=trace_id,
             fallback_on_error=lambda exc: None,
         )
+        if precedent_data and OBSERVABILITY_AVAILABLE and get_event_bus and EventType is not None:
+            try:
+                event_bus = get_event_bus()
+                await event_bus.publish(
+                    Event(
+                        event_type=EventType.PRECEDENT_RETRIEVED,
+                        trace_id=trace_id,
+                        data={
+                            "alignment_score": precedent_data.get("alignment_score"),
+                            "support_strength": precedent_data.get("support_strength"),
+                            "correlation_id": correlation_id,
+                        },
+                    )
+                )
+            except Exception:
+                logger.debug("precedent_event_publish_failed")
 
     uncertainty_data = None
     if engine.config.enable_reflection and engine.uncertainty_engine:
@@ -357,6 +405,22 @@ async def run_engine(
             trace_id=trace_id,
             fallback_on_error=lambda exc: None,
         )
+        if uncertainty_data and OBSERVABILITY_AVAILABLE and get_event_bus and EventType is not None:
+            try:
+                event_bus = get_event_bus()
+                await event_bus.publish(
+                    Event(
+                        event_type=EventType.UNCERTAINTY_COMPUTED,
+                        trace_id=trace_id,
+                        data={
+                            "overall_uncertainty": uncertainty_data.get("overall_uncertainty"),
+                            "needs_escalation": uncertainty_data.get("needs_escalation"),
+                            "correlation_id": correlation_id,
+                        },
+                    )
+                )
+            except Exception:
+                logger.debug("uncertainty_event_publish_failed")
 
     try:
         aggregated = await engine._aggregate_results(
@@ -374,6 +438,22 @@ async def run_engine(
             uncertainty_data,
             exc,
         )
+    else:
+        if OBSERVABILITY_AVAILABLE and get_event_bus and EventType is not None:
+            try:
+                event_bus = get_event_bus()
+                await event_bus.publish(
+                    Event(
+                        event_type=EventType.AGGREGATION_COMPLETE,
+                        trace_id=trace_id,
+                        data={
+                            "decision": aggregated.get("decision") if isinstance(aggregated, dict) else None,
+                            "correlation_id": correlation_id,
+                        },
+                    )
+                )
+            except Exception:
+                logger.debug("aggregation_event_publish_failed")
 
     # Traffic Light governance (observer hook) — run()
     governance_meta = None
@@ -402,7 +482,46 @@ async def run_engine(
             precedent_data=precedent_data,
             uncertainty_data=uncertainty_data,
         )
+        legacy_governance = getattr(engine, "_governance", None)
+        if legacy_governance and hasattr(legacy_governance, "should_escalate"):
+            try:
+                legacy_governance.should_escalate(case)
+            except Exception as gov_exc:
+                governance_error = GovernanceEvaluationError(
+                    "Governance review gate failed",
+                    details={"error": str(gov_exc)},
+                )
+                engine._emit_error(
+                    governance_error,
+                    stage="governance",
+                    trace_id=trace_id,
+                    context=context,
+                )
+                legacy_governance = None
+
         engine._run_governance_review_gate(case)
+        if isinstance(aggregated, dict):
+            aggregated = apply_governance_flags_to_aggregation(
+                aggregated,
+                getattr(case, "governance_flags", {}),
+            )
+        if OBSERVABILITY_AVAILABLE and get_event_bus and EventType is not None and getattr(case, "governance_flags", None):
+            try:
+                event_bus = get_event_bus()
+                await event_bus.publish(
+                    Event(
+                        event_type=EventType.ESCALATION_REQUIRED
+                        if case.governance_flags.get("human_review_required")
+                        else EventType.DECISION_MADE,
+                        trace_id=trace_id,
+                        data={
+                            "governance_flags": case.governance_flags,
+                            "correlation_id": correlation_id,
+                        },
+                    )
+                )
+            except Exception:
+                logger.debug("governance_event_publish_failed")
     except GovernanceEvaluationError as review_exc:
         engine._emit_error(review_exc, stage="governance", trace_id=trace_id, context=context)
     except Exception as review_exc:
@@ -457,6 +576,11 @@ async def run_engine(
     base_result = EngineResult(
         trace_id=trace_id,
         output_text=aggregated.get("final_output") or model_response,
+        human_review_required=cast(
+            Optional[bool],
+            aggregated.get("human_review_required") if isinstance(aggregated, dict) else None,
+        ),
+        context=context,
         model_info=engine_model_info,
         critic_findings=critic_findings,
         aggregated=aggregated,
@@ -467,10 +591,39 @@ async def run_engine(
         is_degraded=is_degraded,
     )
 
+    if OBSERVABILITY_AVAILABLE:
+        try:
+            if record_engine_result:
+                payload = base_result.model_dump() if hasattr(base_result, "model_dump") else base_result.dict()
+                record_engine_result(payload)
+
+            event_bus = get_event_bus() if get_event_bus and EventType is not None else None
+            decision = aggregated.get("decision", "unknown") if isinstance(aggregated, dict) else "unknown"
+            confidence = aggregated.get("confidence", 0.0) if isinstance(aggregated, dict) else 0.0
+            escalated = bool(base_result.human_review_required)
+            if event_bus and EventType is not None:
+                event = DecisionMadeEvent(
+                    event_type=EventType.DECISION_MADE,
+                    timestamp=None,
+                    trace_id=trace_id,
+                    data={
+                        "degraded_components": degraded_components,
+                        "correlation_id": correlation_id,
+                    },
+                    decision=decision,
+                    confidence=float(confidence),
+                    escalated=escalated,
+                )
+                await event_bus.publish(event)
+        except Exception:
+            logger.debug("decision_event_publish_failed")
+
     if level == 1:
         return EngineResult(
             trace_id=trace_id,
             output_text=aggregated.get("final_output") or model_response,
+            human_review_required=base_result.human_review_required,
+            context=base_result.context,
             model_info=engine_model_info,
             degraded_components=degraded_components,
             is_degraded=is_degraded,
@@ -495,6 +648,8 @@ async def run_engine(
         result = EngineResult(
             trace_id=base_result.trace_id,
             output_text=base_result.output_text,
+            human_review_required=base_result.human_review_required,
+            context=base_result.context,
             model_info=base_result.model_info,
             critic_findings=base_result.critic_findings,
             aggregated=base_result.aggregated,
@@ -505,34 +660,6 @@ async def run_engine(
             is_degraded=base_result.is_degraded,
             forensic=forensic_data,
         )
-        
-        # Record metrics and publish events
-        if OBSERVABILITY_AVAILABLE:
-            try:
-                result_dict = result.model_dump() if hasattr(result, "model_dump") else result.dict()
-                if record_engine_result:
-                    record_engine_result(result_dict)
-                
-                # Publish decision event
-                if get_event_bus and EventType is not None:
-                    event_bus = get_event_bus()
-                    decision = aggregated.get("decision", "unknown")
-                    confidence = aggregated.get("confidence", 0.0)
-                    escalated = bool(result_dict.get("human_review_required") or 
-                                   any("escalate" in str(v).lower() for v in result_dict.get("critic_findings", {}).values()))
-                    
-                    event = DecisionMadeEvent(
-                        event_type=EventType.DECISION_MADE,
-                        timestamp=None,  # Will be set in __post_init__
-                        trace_id=trace_id,
-                        data={"degraded_components": degraded_components},
-                        decision=decision,
-                        confidence=float(confidence),
-                        escalated=escalated,
-                    )
-                    await event_bus.publish(event)
-            except Exception as exc:
-                logger.debug(f"Failed to record metrics or publish event: {exc}")
         
         return result
 

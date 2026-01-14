@@ -10,11 +10,15 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
+from engine.precedent import store as _store_module
 from engine.precedent.store import PgVectorStore, WeaviatePrecedentStore
 
 logger = logging.getLogger(__name__)
 
 TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+ThreadedConnectionPool = getattr(_store_module, "ThreadedConnectionPool", None)
+psycopg2 = getattr(_store_module, "psycopg2", None)
 
 
 class PGVectorPrecedentStore(PgVectorStore):
@@ -53,4 +57,16 @@ class PGVectorPrecedentStore(PgVectorStore):
         return normalized
 
 
-__all__ = ["PGVectorPrecedentStore", "WeaviatePrecedentStore"]
+class Embedder:
+    """Simple embedding helper that wraps an embed function."""
+
+    def __init__(self, embed_fn):
+        if not callable(embed_fn):
+            raise ValueError("embed_fn must be callable")
+        self.embed_fn = embed_fn
+
+    def embed(self, text: str) -> List[float]:
+        return list(self.embed_fn(text))
+
+
+__all__ = ["PGVectorPrecedentStore", "WeaviatePrecedentStore", "Embedder"]

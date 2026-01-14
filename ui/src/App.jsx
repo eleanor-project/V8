@@ -406,6 +406,161 @@ const TracePanel = () => {
   );
 };
 
+const AuditLedgerPanel = () => {
+  const [filters, setFilters] = useState({
+    query: "",
+    event: "",
+    actorId: "",
+    traceId: "",
+    startTime: "",
+    endTime: "",
+  });
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const update = (key, value) => setFilters((prev) => ({ ...prev, [key]: value }));
+
+  const runQuery = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const qs = new URLSearchParams();
+      if (filters.query) qs.append("query", filters.query);
+      if (filters.event) qs.append("event", filters.event);
+      if (filters.actorId) qs.append("actor_id", filters.actorId);
+      if (filters.traceId) qs.append("trace_id", filters.traceId);
+      if (filters.startTime) qs.append("start_time", filters.startTime);
+      if (filters.endTime) qs.append("end_time", filters.endTime);
+      qs.append("limit", "200");
+      const data = await fetchJson(`/audit/query?${qs.toString()}`);
+      setResults(data.results || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const exportData = async (format = "jsonl") => {
+    try {
+      const qs = new URLSearchParams();
+      if (filters.query) qs.append("query", filters.query);
+      if (filters.event) qs.append("event", filters.event);
+      if (filters.actorId) qs.append("actor_id", filters.actorId);
+      if (filters.traceId) qs.append("trace_id", filters.traceId);
+      if (filters.startTime) qs.append("start_time", filters.startTime);
+      if (filters.endTime) qs.append("end_time", filters.endTime);
+      qs.append("format", format);
+      const res = await fetch(`/audit/export?${qs.toString()}`);
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `audit_export.${format === "csv" ? "csv" : "jsonl"}`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`Export failed: ${err.message}`);
+    }
+  };
+
+  return (
+    <div className="panel">
+      <h3>Audit Ledger Query</h3>
+      <p className="small">
+        Query immutable audit ledger entries with optional filters. Times should be ISO8601 (e.g.
+        2025-05-01T00:00:00Z).
+      </p>
+      <div className="grid two" style={{ gap: 8 }}>
+        <input
+          placeholder="Free-text search"
+          value={filters.query}
+          onChange={(e) => update("query", e.target.value)}
+        />
+        <input
+          placeholder="Event (e.g. secret_access_audit)"
+          value={filters.event}
+          onChange={(e) => update("event", e.target.value)}
+        />
+        <input
+          placeholder="Actor ID"
+          value={filters.actorId}
+          onChange={(e) => update("actorId", e.target.value)}
+        />
+        <input
+          placeholder="Trace ID"
+          value={filters.traceId}
+          onChange={(e) => update("traceId", e.target.value)}
+        />
+        <input
+          placeholder="Start time (ISO)"
+          value={filters.startTime}
+          onChange={(e) => update("startTime", e.target.value)}
+        />
+        <input
+          placeholder="End time (ISO)"
+          value={filters.endTime}
+          onChange={(e) => update("endTime", e.target.value)}
+        />
+      </div>
+      <div className="row" style={{ marginTop: 8, gap: 8 }}>
+        <button onClick={runQuery} disabled={loading}>
+          {loading ? "Searching…" : "Search Ledger"}
+        </button>
+        <button onClick={() => exportData("csv")} disabled={loading}>
+          Export CSV
+        </button>
+        <button onClick={() => exportData("jsonl")} disabled={loading}>
+          Export JSONL
+        </button>
+      </div>
+      {error && (
+        <div className="small" style={{ color: "red", marginTop: 8 }}>
+          {error}
+        </div>
+      )}
+      <div style={{ marginTop: 12 }}>
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 4 }}>
+          <h4 style={{ margin: 0 }}>Results</h4>
+          <div className="small">{results.length} record(s)</div>
+        </div>
+        {results.length === 0 ? (
+          <div className="small">No records found.</div>
+        ) : (
+          <div className="scroll" style={{ maxHeight: 360 }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th style={{ width: "18%" }}>Timestamp</th>
+                  <th style={{ width: "18%" }}>Event</th>
+                  <th style={{ width: "18%" }}>Trace</th>
+                  <th style={{ width: "18%" }}>Actor</th>
+                  <th>Payload</th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((row, idx) => (
+                  <tr key={`${row.event_id || row.record_hash || idx}-${idx}`}>
+                    <td className="small">{row.timestamp || "—"}</td>
+                    <td className="small">{row.event || "—"}</td>
+                    <td className="small">{row.trace_id || "—"}</td>
+                    <td className="small">{row.actor_id || "—"}</td>
+                    <td className="small">{truncate(JSON.stringify(row.payload || {}), 120)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const FeatureFlagsPanel = () => {
   const [flags, setFlags] = useState({
     explainable_governance: false,
@@ -1223,6 +1378,7 @@ const App = () => {
     { id: "simple", label: "Simple Stream" },
     { id: "deliberate", label: "Deliberate" },
     { id: "traces", label: "Traces & Audit" },
+    { id: "audit", label: "Audit Ledger" },
     { id: "admin", label: "Admin" },
     { id: "metrics", label: "Metrics" },
   ];
@@ -1248,6 +1404,7 @@ const App = () => {
         {tab === "deliberate" && <DeliberatePanel />}
         {tab === "simple" && <SimpleConsole />}
         {tab === "traces" && <TracePanel />}
+        {tab === "audit" && <AuditLedgerPanel />}
         {tab === "admin" && <AdminPanel />}
         {tab === "metrics" && <MetricsPanel />}
       </div>

@@ -1,5 +1,6 @@
 import json as _json
 import logging
+from importlib import import_module
 from typing import Any, Dict, Optional
 
 from engine.exceptions import EleanorV8Exception, InputValidationError
@@ -85,13 +86,20 @@ def validate_inputs(
     trace_id: Optional[str],
     detail_level: Optional[int],
 ) -> tuple[str, Dict[str, Any], str, int]:
-    # Prefer engine.engine.validate_input if monkeypatched (tests rely on this)
+    validate_fn = None
     try:
         import engine.engine as engine_module
 
-        validate_fn = getattr(engine_module, "validate_input", validate_input)
+        validate_fn = getattr(engine_module, "validate_input", None)
     except Exception:
-        validate_fn = validate_input
+        validate_fn = None
+
+    if validate_fn is None:
+        try:
+            validation_module = import_module("engine.validation")
+            validate_fn = getattr(validation_module, "validate_input", validate_input)
+        except Exception:
+            validate_fn = validate_input
 
     validated = validate_fn(text, context=context, trace_id=trace_id)
     level = detail_level or engine.config.detail_level

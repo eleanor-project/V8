@@ -20,6 +20,23 @@ from engine.utils.circuit_breaker import CircuitBreakerOpen
 from engine.runtime.critics import _process_batch_with_engine
 from engine.runtime.run import _track_precedent_evolution
 
+try:
+    from engine.observability.correlation import CorrelationContext
+    from engine.events.event_bus import (
+        get_event_bus,
+        RouterSelectedEvent,
+        Event,
+        EventType,
+    )
+    STREAM_OBSERVABILITY_AVAILABLE = True
+except ImportError:
+    STREAM_OBSERVABILITY_AVAILABLE = False
+    CorrelationContext = None  # type: ignore
+    get_event_bus = None  # type: ignore
+    RouterSelectedEvent = None  # type: ignore
+    Event = None  # type: ignore
+    EventType = None  # type: ignore
+
 
 async def run_stream_engine(
     engine: Any,
@@ -48,6 +65,10 @@ async def run_stream_engine(
             trace_id=fallback_trace_id,
         )
         raise
+    correlation_id: Optional[str] = None
+    if STREAM_OBSERVABILITY_AVAILABLE and CorrelationContext:
+        correlation_id = CorrelationContext.get_or_generate()
+        context = {**context, "correlation_id": correlation_id}
     if engine.gpu_manager and engine.gpu_manager.device:
         context = {
             **context,
@@ -101,21 +122,35 @@ async def run_stream_engine(
         }
         router_diagnostics.update({"skipped": True, "reason": "model_output_override"})
     else:
+        select_model_fn = getattr(engine, "_select_router", None) or getattr(engine, "_select_model", engine._select_model)
         try:
             breaker = engine._get_circuit_breaker("router")
             if breaker is not None:
                 router_data = cast(
                     Dict[str, Any],
                     await breaker.call(
-                        engine._select_model, text, context, timings, router_diagnostics
+                        select_model_fn, text, context, timings, router_diagnostics
                     ),
                 )
             else:
-                router_data = await engine._select_model(
-                    text, context, timings, router_diagnostics
-                )
+                router_data = await select_model_fn(text, context, timings, router_diagnostics)
             model_info = router_data["model_info"]
             model_response = router_data["response_text"]
+            if STREAM_OBSERVABILITY_AVAILABLE and get_event_bus and EventType is not None:
+                try:
+                    event_bus = get_event_bus()
+                    await event_bus.publish(
+                        RouterSelectedEvent(
+                            event_type=EventType.ROUTER_SELECTED,
+                            trace_id=trace_id,
+                            model_name=str(model_info.get("model_name") or "unknown"),
+                            selection_reason=str(model_info.get("router_selection_reason") or ""),
+                            cost_estimate=model_info.get("cost_estimate"),
+                            data={"correlation_id": correlation_id} if correlation_id else {},
+                        )
+                    )
+                except Exception:
+                    pass
         except CircuitBreakerOpen as exc:
             if engine.degradation_enabled:
                 degraded_components.append("router")
@@ -344,6 +379,22 @@ async def run_stream_engine(
             "trace_id": trace_id,
             "data": event_payload,
         }
+        if precedent_data and STREAM_OBSERVABILITY_AVAILABLE and get_event_bus and EventType is not None:
+            try:
+                event_bus = get_event_bus()
+                await event_bus.publish(
+                    Event(
+                        event_type=EventType.PRECEDENT_RETRIEVED,
+                        trace_id=trace_id,
+                        data={
+                            "alignment_score": precedent_data.get("alignment_score"),
+                            "support_strength": precedent_data.get("support_strength"),
+                            "correlation_id": correlation_id,
+                        },
+                    )
+                )
+            except Exception:
+                pass
     uncertainty_data = None
     if engine.config.enable_reflection and engine.uncertainty_engine:
 
@@ -383,6 +434,22 @@ async def run_stream_engine(
             "trace_id": trace_id,
             "data": event_payload,
         }
+        if uncertainty_data and STREAM_OBSERVABILITY_AVAILABLE and get_event_bus and EventType is not None:
+            try:
+                event_bus = get_event_bus()
+                await event_bus.publish(
+                    Event(
+                        event_type=EventType.UNCERTAINTY_COMPUTED,
+                        trace_id=trace_id,
+                        data={
+                            "overall_uncertainty": uncertainty_data.get("overall_uncertainty"),
+                            "needs_escalation": uncertainty_data.get("needs_escalation"),
+                            "correlation_id": correlation_id,
+                        },
+                    )
+                )
+            except Exception:
+                pass
     try:
         aggregated = await engine._aggregate_results(
             critic_results,
@@ -399,6 +466,22 @@ async def run_stream_engine(
             uncertainty_data,
             exc,
         )
+    else:
+        if STREAM_OBSERVABILITY_AVAILABLE and get_event_bus and EventType is not None:
+            try:
+                event_bus = get_event_bus()
+                await event_bus.publish(
+                    Event(
+                        event_type=EventType.AGGREGATION_COMPLETE,
+                        trace_id=trace_id,
+                        data={
+                            "decision": aggregated.get("decision") if isinstance(aggregated, dict) else None,
+                            "correlation_id": correlation_id,
+                        },
+                    )
+                )
+            except Exception:
+                pass
     degraded_components = sorted(set(degraded_components))
     is_degraded = bool(degraded_components)
     if is_degraded:
@@ -447,6 +530,28 @@ async def run_stream_engine(
             uncertainty_data=uncertainty_data,
         )
         engine._run_governance_review_gate(case)
+        if isinstance(aggregated, dict):
+            aggregated = {**aggregated, "governance_flags": getattr(case, "governance_flags", {})}
+            if getattr(case, "governance_flags", {}).get("human_review_required"):
+                aggregated["human_review_required"] = True
+                aggregated.setdefault("decision", "requires_human_review")
+        if STREAM_OBSERVABILITY_AVAILABLE and get_event_bus and EventType is not None and getattr(case, "governance_flags", None):
+            try:
+                event_bus = get_event_bus()
+                await event_bus.publish(
+                    Event(
+                        event_type=EventType.ESCALATION_REQUIRED
+                        if case.governance_flags.get("human_review_required")
+                        else EventType.DECISION_MADE,
+                        trace_id=trace_id,
+                        data={
+                            "governance_flags": case.governance_flags,
+                            "correlation_id": correlation_id,
+                        },
+                    )
+                )
+            except Exception:
+                pass
     except GovernanceEvaluationError as review_exc:
         engine._emit_error(review_exc, stage="governance", trace_id=trace_id, context=context)
     except Exception as review_exc:

@@ -153,11 +153,15 @@ async def run_single_critic(
             duration_ms = (end - start) * 1000
             if engine.adaptive_concurrency:
                 engine.adaptive_concurrency.record_latency(duration_ms)
+            # Propagate timeouts directly for callers that expect them
+            if isinstance(exc, asyncio.TimeoutError):
+                raise
             failure_result = engine._build_critic_error_result(
                 critic_name=name,
                 error=exc,
                 duration_ms=duration_ms,
             )
+            record_failed = False
             try:
                 record = await engine.recorder.record(
                     critic=name,
@@ -180,17 +184,24 @@ async def run_single_critic(
                     details={"error": str(record_exc), "critic": name},
                 )
                 engine._emit_error(error, stage="evidence", trace_id=trace_id, critic=name)
+                record_failed = True
 
-            raise CriticEvaluationError(
+            critic_error = CriticEvaluationError(
                 critic_name=name,
                 message=str(exc),
                 trace_id=trace_id,
-                details={
-                    "duration_ms": duration_ms,
-                    "error_type": type(exc).__name__,
-                    "result": failure_result,
-                },
-            ) from exc
+                details={"result": failure_result},
+            )
+            engine._emit_error(
+                critic_error,
+                stage="critic",
+                trace_id=trace_id,
+                critic=name,
+                context=context,
+            )
+            if record_failed or engine.adaptive_concurrency is not None or getattr(engine, "error_monitor", None) is not None:
+                raise critic_error
+            return failure_result
 
         end = asyncio.get_event_loop().time()
 

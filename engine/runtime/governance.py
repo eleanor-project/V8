@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 from governance.review_triggers import Case
+from engine.schemas.escalation import EscalationTier, HumanActionType
 from engine.schemas.pipeline_types import AggregationOutput, CriticResultsMap, PrecedentAlignmentResult, UncertaintyResult
 from engine.exceptions import GovernanceEvaluationError
 
@@ -107,6 +108,56 @@ def build_case_for_review(
         setattr(case_obj, key, value)
 
     return case_obj
+
+
+def apply_governance_flags_to_aggregation(
+    aggregated: Optional[Dict[str, Any]],
+    governance_flags: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    if not isinstance(aggregated, dict):
+        return aggregated
+
+    flags = governance_flags or {}
+    merged = {**aggregated, "governance_flags": flags}
+
+    if not flags.get("human_review_required"):
+        return merged
+
+    merged["human_review_required"] = True
+    merged.setdefault("decision", "requires_human_review")
+    gate = _build_governance_execution_gate(flags)
+    merged["execution_gate"] = gate
+
+    aggregation_result = merged.get("aggregation_result")
+    if isinstance(aggregation_result, dict):
+        aggregation_result = {**aggregation_result, "execution_gate": gate}
+        escalation_summary = aggregation_result.get("escalation_summary")
+        if isinstance(escalation_summary, dict):
+            escalation_summary = {
+                **escalation_summary,
+                "highest_tier": gate["escalation_tier"],
+                "explanation": escalation_summary.get("explanation") or gate["reason"],
+            }
+            aggregation_result["escalation_summary"] = escalation_summary
+        merged["aggregation_result"] = aggregation_result
+
+    return merged
+
+
+def _build_governance_execution_gate(flags: Dict[str, Any]) -> Dict[str, Any]:
+    triggers = flags.get("review_triggers") or []
+    reason = flags.get("review_reason")
+    if triggers:
+        reason = f"Governance review triggered by: {', '.join(str(r) for r in triggers)}"
+    if not reason:
+        reason = "Governance review requires manual oversight."
+
+    return {
+        "gated": True,
+        "required_action": HumanActionType.HUMAN_ACK.value,
+        "reason": reason,
+        "escalation_tier": EscalationTier.TIER_2.value,
+    }
 
 
 def run_governance_review_gate(

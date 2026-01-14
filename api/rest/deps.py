@@ -1,10 +1,13 @@
-from fastapi import Request
+from fastapi import HTTPException, Request, status
 
 
 def get_engine(request: Request):
     engine = getattr(request.app.state, "engine", None)
     if engine is None:
-        raise RuntimeError("Engine not initialized")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Engine not initialized",
+        )
     return engine
 
 

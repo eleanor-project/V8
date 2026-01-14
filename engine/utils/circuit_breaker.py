@@ -82,6 +82,7 @@ class CircuitBreaker:
         failure_threshold: int = 5,
         success_threshold: int = 2,
         recovery_timeout: float = 30.0,
+        timeout: Optional[float] = None,
         half_open_max_calls: int = 3,
         on_state_change: Optional[Callable[[str, CircuitState, CircuitState], None]] = None,
     ):
@@ -89,7 +90,7 @@ class CircuitBreaker:
         self.config = CircuitBreakerConfig(
             failure_threshold=failure_threshold,
             success_threshold=success_threshold,
-            recovery_timeout=recovery_timeout,
+            recovery_timeout=timeout if timeout is not None else recovery_timeout,
             half_open_max_calls=half_open_max_calls,
         )
 
@@ -104,6 +105,26 @@ class CircuitBreaker:
             Callable[[str, CircuitState, CircuitState], None]
         ] = on_state_change
         self.metrics = CircuitBreakerMetrics()
+
+    # Convenience helpers for tests/health checks
+    def is_open(self) -> bool:
+        return self.state == CircuitState.OPEN
+
+    def is_half_open(self) -> bool:
+        return self.state == CircuitState.HALF_OPEN
+
+    def is_closed(self) -> bool:
+        return self.state == CircuitState.CLOSED
+
+    def record_failure(self, error: Optional[Exception] = None) -> None:
+        """Manually record a failure (used in tests)."""
+        self._check_state_transition()
+        self._on_failure(error or Exception("failure"))
+
+    def record_success(self) -> None:
+        """Manually record a success (used in tests)."""
+        self._check_state_transition()
+        self._on_success()
 
     @property
     def state(self) -> CircuitState:
@@ -299,9 +320,9 @@ class CircuitBreakerRegistry:
                 self._breakers[name] = CircuitBreaker(name=name, **kwargs)
             return self._breakers[name]
 
-    def get(self, name: str) -> Optional[CircuitBreaker]:
+    def get(self, name: str, default: Optional[CircuitBreaker] = None) -> Optional[CircuitBreaker]:
         """Get an existing circuit breaker."""
-        return self._breakers.get(name)
+        return self._breakers.get(name, default)
 
     def get_all_status(self) -> Dict[str, Dict[str, Any]]:
         """Get status of all circuit breakers."""

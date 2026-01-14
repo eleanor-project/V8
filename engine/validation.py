@@ -216,6 +216,23 @@ class InputValidator:
                 },
             )
 
+        # Path traversal / filesystem probing guard
+        traversal_patterns = (
+            "../",
+            "..\\",
+            "/etc/passwd",
+            "\\windows\\system32",
+        )
+        lowered = sanitized_text.lower()
+        if any(pat in lowered for pat in traversal_patterns) or re.match(
+            r"^[a-z]:\\\\", sanitized_text, re.IGNORECASE
+        ):
+            raise InputValidationError(
+                "Potential path traversal or filesystem access attempt detected",
+                validation_type="path_traversal",
+                field="text",
+            )
+
         # Injection detection
         if self.config.enable_injection_detection:
             for pattern in self.injection_regexes:

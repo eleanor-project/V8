@@ -85,6 +85,10 @@ from api.rest.metrics import (
     CONTENT_TYPE_LATEST,
     generate_latest,
 )
+from api.rest.services.deliberation_utils import (
+    resolve_execution_decision,
+    apply_execution_gate,
+)
 from engine.security.secrets import (
     EnvironmentSecretProvider,
     build_secret_provider_from_settings,

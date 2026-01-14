@@ -179,3 +179,12 @@ def blocked_decision_fixture(critic_eval_tier2):
         aggregation_result=aggregation,
         human_action=None,
     )
+
+
+# Provide a lightweight benchmark fixture when pytest-benchmark is unavailable
+@pytest.fixture
+def benchmark():
+    def _run(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    return _run
