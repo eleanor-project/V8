@@ -7,6 +7,7 @@ test instances with mocks.
 """
 
 import logging
+import os
 from typing import Any, Dict, Optional
 from dataclasses import dataclass
 
@@ -22,6 +23,10 @@ from engine.protocols import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _truthy(value: str) -> bool:
+    return value.strip().lower() in ("1", "true", "yes", "y", "on")
 
 
 @dataclass
@@ -108,6 +113,19 @@ class DependencyFactory:
             from engine.mocks import MockEvidenceRecorder
 
             return MockEvidenceRecorder()
+
+        mode = (os.getenv("ELEANOR_EVIDENCE_RECORDER_MODE") or "sync").strip().lower()
+        async_enabled = _truthy(os.getenv("ELEANOR_EVIDENCE_ASYNC", ""))
+        if mode in ("async", "aio", "aiofiles") or async_enabled:
+            try:
+                from engine.evidence_recorder_async import AsyncEvidenceRecorder
+
+                return AsyncEvidenceRecorder(jsonl_path=jsonl_path, **kwargs)
+            except Exception as exc:
+                logger.warning(
+                    "async_evidence_recorder_unavailable_falling_back",
+                    extra={"error": str(exc)},
+                )
 
         from engine.recorder.evidence_recorder import EvidenceRecorder
 

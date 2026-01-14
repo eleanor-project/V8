@@ -6,8 +6,11 @@ Proactive cache warming for frequently accessed data.
 """
 
 import asyncio
+import inspect
 import logging
 from typing import List, Optional, Dict, Any
+
+from engine.cache import CacheKey
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +28,16 @@ class CacheWarmer:
         precedent_retriever: Optional[Any] = None,
         embedding_service: Optional[Any] = None,
         cache_manager: Optional[Any] = None,
+        router: Optional[Any] = None,
+        router_cache: Optional[Any] = None,
+        engine: Optional[Any] = None,
     ):
         self.precedent_retriever = precedent_retriever
         self.embedding_service = embedding_service
         self.cache_manager = cache_manager
+        self.router = router
+        self.router_cache = router_cache
+        self.engine = engine
         self._warming_in_progress = False
     
     async def warm_precedent_cache(self, common_queries: List[str]) -> None:
@@ -129,18 +138,54 @@ class CacheWarmer:
         Args:
             common_inputs: List of common input texts
         """
-        if not self.cache_manager:
-            logger.warning("cache_manager_not_available_for_warming")
+        router = self.router or getattr(self.engine, "router", None)
+        router_cache = self.router_cache or getattr(self.engine, "router_cache", None)
+        cache_manager = self.cache_manager or getattr(self.engine, "cache_manager", None)
+
+        if not router:
+            logger.warning("router_not_available_for_warming")
             return
-        
-        logger.info(
-            "warming_router_cache",
-            extra={"input_count": len(common_inputs)},
-        )
-        
-        # Router cache warming would require router instance
-        # This is a placeholder for future implementation
-        logger.debug("router_cache_warming_not_implemented")
+        if not router_cache and not cache_manager:
+            logger.warning("router_cache_not_available_for_warming")
+            return
+
+        logger.info("warming_router_cache", extra={"input_count": len(common_inputs)})
+        semaphore = asyncio.Semaphore(5)
+
+        async def warm_input(text: str) -> None:
+            async with semaphore:
+                context: Dict[str, Any] = {}
+                try:
+                    result = router.route(text=text, context=context)
+                    if inspect.isawaitable(result):
+                        result = await result
+                    selection = {
+                        "model_info": {
+                            "model_name": result.get("model_name"),
+                            "model_version": result.get("model_version"),
+                            "router_selection_reason": result.get("reason"),
+                            "health_score": result.get("health_score"),
+                            "cost_estimate": result.get("cost"),
+                        },
+                        "response_text": result.get("response_text") or "",
+                    }
+                    cache_key = CacheKey.from_data("router", text=text, context=context)
+                    if cache_manager:
+                        await cache_manager.set(cache_key, selection)
+                    if router_cache:
+                        router_cache.set(text, context, selection)
+                    logger.debug(
+                        "router_cache_warmed",
+                        extra={"text_excerpt": text[:50], "model": selection["model_info"]["model_name"]},
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "router_cache_warming_failed",
+                        extra={"text": text[:50], "error": str(exc)},
+                    )
+
+        await asyncio.gather(*[warm_input(text) for text in common_inputs], return_exceptions=True)
+        logger.info("router_cache_warming_complete")
     
     async def warm_all(
         self,

@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from engine.schemas.pipeline_types import (
     AggregationOutput,
@@ -23,6 +23,7 @@ class EngineModelInfo(BaseModel):
     router_selection_reason: Optional[str] = None
     cost_estimate: Optional[Dict[str, Any]] = None
     health_score: Optional[float] = None
+    model_config = ConfigDict(protected_namespaces=())
 
 
 def _default_uncertainty_result() -> UncertaintyResult:

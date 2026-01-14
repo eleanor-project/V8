@@ -85,7 +85,15 @@ def validate_inputs(
     trace_id: Optional[str],
     detail_level: Optional[int],
 ) -> tuple[str, Dict[str, Any], str, int]:
-    validated = validate_input(text, context=context, trace_id=trace_id)
+    # Prefer engine.engine.validate_input if monkeypatched (tests rely on this)
+    try:
+        import engine.engine as engine_module
+
+        validate_fn = getattr(engine_module, "validate_input", validate_input)
+    except Exception:
+        validate_fn = validate_input
+
+    validated = validate_fn(text, context=context, trace_id=trace_id)
     level = detail_level or engine.config.detail_level
     if level not in (1, 2, 3):
         raise InputValidationError(

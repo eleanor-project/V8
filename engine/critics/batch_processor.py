@@ -6,6 +6,7 @@ Batch multiple critic evaluations into single LLM call for performance.
 """
 
 import asyncio
+import inspect
 import json
 import logging
 import time
@@ -55,6 +56,82 @@ class BatchCriticProcessor:
             # Update config with adaptive batch size
             self.config.max_batch_size = self.adaptive_sizer.get_current_batch_size()
 
+    async def process_batch(
+        self,
+        batch_items: List[
+            tuple[
+                str,
+                CriticProtocol,
+                str,
+                str,
+                dict,
+                str,
+                Optional[List[str]],
+                Optional[List[Any]],
+            ]
+        ],
+        engine: Optional[Any] = None,
+    ) -> Dict[str, CriticResult]:
+        """
+        Wrapper used by runtime to batch critic execution.
+
+        Args:
+            batch_items: Tuples of (name, critic, model_response, input_text, context, trace_id, degraded, evidence)
+            engine: Optional engine instance to provide model_adapter
+
+        Returns:
+            Mapping critic_name -> CriticResult
+        """
+        if not batch_items:
+            return {}
+
+        # Rehydrate shared values (all items share the same response/input/context in current pipeline)
+        model_response = batch_items[0][2]
+        input_text = batch_items[0][3]
+        context = batch_items[0][4]
+        critics = {name: critic_ref for name, critic_ref, *_ in batch_items}
+
+        # If disabled, fall back to individual evaluation
+        if not self.config.enabled or len(critics) < self.config.min_batch_size:
+            return await self._evaluate_individually(
+                critics,
+                model_response,
+                input_text,
+                context,
+                getattr(engine, "model_adapter", None),
+            )
+
+        try:
+            adapter = getattr(engine, "model_adapter", None)
+            if adapter is None or not callable(adapter):
+                return await self._evaluate_individually(
+                    critics,
+                    model_response,
+                    input_text,
+                    context,
+                    adapter,
+                )
+            return await self.evaluate_batch(
+                critics,
+                model_response=model_response,
+                input_text=input_text,
+                context=context,
+                model_adapter=adapter,
+            )
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            logger.warning(
+                "batch_process_fallback",
+                extra={"error": str(exc)},
+                exc_info=True,
+            )
+            return await self._evaluate_individually(
+                critics,
+                model_response,
+                input_text,
+                context,
+                getattr(engine, "model_adapter", None),
+            )
+
     def _combine_critic_prompts(
         self,
         critics: List[tuple[str, CriticProtocol]],
@@ -66,8 +143,11 @@ class BatchCriticProcessor:
         prompts = []
         
         for critic_name, critic in critics:
+            critic_instance = critic() if inspect.isclass(critic) else critic
             # Get critic's prompt template
-            prompt = self._get_critic_prompt(critic, model_response, input_text, context)
+            prompt = self._get_critic_prompt(
+                critic_instance, model_response, input_text, context
+            )
             prompts.append(f"## Critic: {critic_name}\n{prompt}")
         
         batch_prompt = f"""Evaluate the following model response using multiple constitutional critics.
@@ -219,10 +299,13 @@ Provide your evaluation in JSON format:
                 )
                 
                 # Single LLM call for batch
-                batch_response = await asyncio.wait_for(
-                    model_adapter(combined_prompt),
-                    timeout=self.config.timeout_seconds,
-                )
+                if inspect.iscoroutinefunction(model_adapter) or inspect.iscoroutinefunction(
+                    getattr(model_adapter, "__call__", None)
+                ):
+                    call = model_adapter(combined_prompt)
+                else:
+                    call = asyncio.to_thread(model_adapter, combined_prompt)
+                batch_response = await asyncio.wait_for(call, timeout=self.config.timeout_seconds)
                 
                 # Parse and split results
                 batch_results = self._parse_batch_response(batch_response, batch)
@@ -274,10 +357,39 @@ Provide your evaluation in JSON format:
     ) -> CriticResultsMap:
         """Fallback: evaluate critics individually."""
         results: Dict[str, CriticResult] = {}
+        adapter = model_adapter
+
+        if adapter is None:
+
+            class _StaticModelResponse:
+                def __init__(self, response: str):
+                    self.response = response
+
+                async def generate(self, prompt: str, context: Optional[Dict[str, Any]] = None):
+                    return self.response
+
+            adapter = _StaticModelResponse(model_response)
+        elif callable(adapter) and not hasattr(adapter, "generate"):
+
+            class _CallableAdapter:
+                def __init__(self, fn):
+                    self.fn = fn
+
+                async def generate(self, prompt: str, context: Optional[Dict[str, Any]] = None):
+                    try:
+                        sig = inspect.signature(self.fn)
+                        use_context = "context" in sig.parameters
+                    except (TypeError, ValueError):
+                        use_context = False
+                    result = self.fn(prompt, context=context) if use_context else self.fn(prompt)
+                    return await result if inspect.isawaitable(result) else result
+
+            adapter = _CallableAdapter(adapter)
         
         for critic_name, critic in critics.items():
+            critic_instance = critic() if inspect.isclass(critic) else critic
             try:
-                result = await critic.evaluate(model_adapter, input_text, context)
+                result = await critic_instance.evaluate(adapter, input_text, context)
                 results[critic_name] = result
             except Exception as exc:
                 logger.error(

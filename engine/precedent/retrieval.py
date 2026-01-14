@@ -21,6 +21,7 @@ Output:
 """
 
 import asyncio
+import os
 from typing import Dict, Any, List, Optional, Callable, Mapping, cast
 import inspect
 
@@ -88,7 +89,22 @@ class PrecedentRetrievalV8:
         score_dist = abs(case_score - curr_avg)
         score_alignment = max(0.0, 1 - score_dist)
 
-        # Combined harmonic-like weighting
+        similarity_raw = case.get("similarity_score")
+        if similarity_raw is None:
+            similarity_raw = case.get("score")
+        try:
+            similarity_score = float(similarity_raw) if similarity_raw is not None else 0.0
+        except (TypeError, ValueError):
+            similarity_score = 0.0
+        similarity_score = max(0.0, min(1.0, similarity_score))
+
+        version = (os.getenv("ELEANOR_PRECEDENT_ALIGNMENT_VERSION") or "v1").strip().lower()
+        if version == "v2":
+            return float(
+                (value_alignment * 0.4) + (score_alignment * 0.3) + (similarity_score * 0.3)
+            )
+
+        # v1: Combined harmonic-like weighting
         return float((value_alignment + score_alignment) / 2)
 
     # ---------------------------------------------------------------
@@ -148,6 +164,7 @@ class PrecedentRetrievalV8:
             "alignment_score": float(top_score),
             "top_case": top_case,
             "query_embedding": query_embedding or [],
+            "alignment_version": (os.getenv("ELEANOR_PRECEDENT_ALIGNMENT_VERSION") or "v1").strip().lower(),
         }
 
     async def retrieve_batch(

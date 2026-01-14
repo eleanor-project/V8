@@ -97,6 +97,46 @@ ELEANOR_EVIDENCE__FAIL_ON_ERROR=false
 ELEANOR_EVIDENCE__SANITIZE_SECRETS=true
 ```
 
+### Audit Ledger (STONE_TABLET_LEDGER)
+
+```bash
+# Ledger backend (default: stone_tablet_ledger)
+ELEANOR_LEDGER_BACKEND=stone_tablet_ledger
+# Legacy alias (optional)
+ELEANOR_LEDGER_IMPL=stone_tablet_ledger
+
+# JSONL ledger path for stone_tablet_ledger backend
+ELEANOR_LEDGER_PATH=logs/stone_tablet_ledger.jsonl
+
+# S3 Object Lock settings (required when backend=s3_object_lock)
+ELEANOR_LEDGER_S3_BUCKET=your-ledger-bucket
+ELEANOR_LEDGER_S3_REGION=us-east-1
+# Optional prefix for ledger objects
+ELEANOR_LEDGER_S3_PREFIX=audit-ledger
+# Optional S3 object lock settings
+ELEANOR_LEDGER_S3_RETENTION_DAYS=3650
+ELEANOR_LEDGER_S3_OBJECT_LOCK_MODE=COMPLIANCE
+# Optional KMS key for SSE-KMS
+ELEANOR_LEDGER_S3_KMS_KEY_ID=arn:aws:kms:us-east-1:123456789012:key/abcd-1234
+# Optional S3-compatible endpoint
+ELEANOR_LEDGER_S3_ENDPOINT_URL=
+
+# DynamoDB ledger index (recommended for multi-writer correctness)
+ELEANOR_LEDGER_DDB_TABLE=eleanor-stone-tablet-ledger-index
+ELEANOR_LEDGER_DDB_REGION=us-east-1
+ELEANOR_LEDGER_DDB_LEDGER_ID=default
+
+# S3 Inventory verifier (optional)
+ELEANOR_LEDGER_S3_INVENTORY_ENABLED=false
+ELEANOR_LEDGER_S3_INVENTORY_BUCKET=your-inventory-bucket
+ELEANOR_LEDGER_S3_INVENTORY_PREFIX=inventory/ledger
+```
+
+**Supported backends:**
+`stone_tablet_ledger` | `s3_object_lock` | `postgres_append_only` | `qldb` | `disabled`
+
+**Aliases:** `file_jsonl`, `jsonl`, `stone_tablet`
+
 ### Performance
 
 ```bash
@@ -367,6 +407,28 @@ The system will warn about:
 - Disabled tracing
 
 These warnings should be addressed before production deployment.
+
+## Strong Preview (Config Proposals)
+
+Administrative config proposals require a preview before apply. Apply requests must
+include the `X-Preview-Artifact-Hash` header that matches the latest preview artifact.
+
+Key toggles and continuity hints:
+
+```bash
+# Admin write gate (apply requires this)
+ELEANOR_ENABLE_ADMIN_WRITE=false
+
+# Precedent auto-ratify gate (apply blocks precedent lifecycle changes unless true)
+ELEANOR_ENABLE_PRECEDENT_AUTO_RATIFY=false
+
+# Optional overlay path (defaults to <ELEANOR_CONFIG_PATH>.overlay.yaml)
+ELEANOR_CONFIG_OVERLAY_PATH=/etc/eleanor/config.overlay.yaml
+
+# Optional continuity hints for preview/apply validation
+ELEANOR_OPA_POLICY_BUNDLE_HASH=sha256:...
+ELEANOR_PRECEDENT_INDEX_HASH=sha256:...
+```
 
 ## See Also
 

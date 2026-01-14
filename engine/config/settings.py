@@ -23,6 +23,8 @@ from pydantic_settings import (  # type: ignore[import-not-found]
 )
 import warnings
 
+from engine.config.overlay import load_overlay_payload
+
 
 def _resolve_environment() -> str:
     return (
@@ -566,6 +568,9 @@ class EleanorSettings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
+        def overlay_settings(_: Optional[BaseSettings] = None) -> Dict[str, Any]:
+            return load_overlay_payload()
+
         def yaml_settings(_: Optional[BaseSettings] = None) -> Dict[str, Any]:
             path = os.getenv("ELEANOR_CONFIG_PATH") or os.getenv("ELEANOR_CONFIG")
             if not path:
@@ -580,6 +585,7 @@ class EleanorSettings(BaseSettings):
             init_settings,
             env_settings,
             dotenv_settings,
+            cast(PydanticBaseSettingsSource, overlay_settings),
             yaml_source,
             file_secret_settings,
         )

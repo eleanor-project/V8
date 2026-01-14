@@ -424,11 +424,38 @@ class CredentialSanitizer:
         (re.compile(pattern, re.IGNORECASE | re.MULTILINE), replacement)
         for pattern, replacement in DEFAULT_PATTERNS
     ]
+    _anomaly_detector = None
+    _anomaly_enabled = ANOMALY_DETECTION_AVAILABLE
+
+    @classmethod
+    def _get_anomaly_detector(cls):
+        if cls._anomaly_detector is None and cls._anomaly_enabled and get_anomaly_detector:
+            try:
+                cls._anomaly_detector = get_anomaly_detector(enable_ml=True)
+            except Exception:
+                logger.debug("credential_anomaly_detector_init_failed", exc_info=True)
+                cls._anomaly_detector = None
+        return cls._anomaly_detector
 
     @classmethod
     def sanitize_text(cls, text: str) -> str:
         if not isinstance(text, str):
             return text
+        detector = cls._get_anomaly_detector()
+        if detector:
+            try:
+                score = detector.analyze(text)
+                if score.score >= 0.7:
+                    logger.warning(
+                        "anomaly_detected_in_credential_sanitization",
+                        extra={
+                            "anomaly_score": round(score.score, 3),
+                            "confidence": round(score.confidence, 3),
+                            "pattern_type": score.pattern_type,
+                        },
+                    )
+            except Exception:
+                logger.debug("credential_anomaly_detection_failed", exc_info=True)
         result = text
         for pattern, replacement in cls._compiled_patterns:
             result = pattern.sub(replacement, result)

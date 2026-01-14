@@ -1,6 +1,17 @@
 """
-ELEANOR V8 — Orchestrator
+ELEANOR V8 — Orchestrator (LEGACY - See orchestrator_v2.py)
 ------------------------------------
+
+⚠️ DEPRECATION NOTICE:
+This is the original orchestrator implementation (V1).
+For production use, see orchestrator_v2.py which provides:
+- Hook-based infrastructure integration
+- Better error handling and observability
+- Structured input/output schemas
+- Full backward compatibility
+
+This V1 implementation remains for reference and potential rollback.
+Current runtime uses orchestrator_v2.py (integrated via critic_infrastructure.py)
 
 The Orchestrator manages the critical execution path:
 

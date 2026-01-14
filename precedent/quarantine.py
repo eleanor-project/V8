@@ -7,7 +7,7 @@ Quarantined cases:
 
 from datetime import datetime
 from typing import Any
-from replay_store import load_human_reviews
+from engine.replay_store import load_human_reviews
 
 
 def is_quarantined(case_id: str) -> bool:
@@ -30,7 +30,7 @@ def list_quarantined_cases() -> list[dict]:
     Returns lightweight metadata for UI / reporting.
     """
     from os import listdir
-    from replay_store import REVIEW_RECORD_DIR
+    from engine.replay_store import REVIEW_RECORD_DIR
     import json
     import os
 

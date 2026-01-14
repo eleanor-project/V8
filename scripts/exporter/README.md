@@ -5,8 +5,8 @@ This folder packages `../dependency_prometheus_exporter.py` so you can run it as
 ## Build
 
 ```bash
-cd scripts/exporter
-docker build -t eleanor/dependency-exporter .
+cd /path/to/v8
+docker build -t eleanor/dependency-exporter -f scripts/exporter/Dockerfile scripts
 ```
 
 ## Run

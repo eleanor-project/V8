@@ -16,23 +16,23 @@ default failures := []
 
 # ---- Inputs (normalize across endpoints) ------------------------------------
 
-critics := input.aggregator.critics {
+critics := input.aggregator.critics if {
     input.aggregator.critics
 } else := input.critics
 
-aggregator := input.aggregator {
+aggregator := input.aggregator if {
     input.aggregator
 } else := {}
 
-uncertainty := input.uncertainty {
+uncertainty := input.uncertainty if {
     input.uncertainty
 } else := {}
 
-precedent := input.precedent {
+precedent := input.precedent if {
     input.precedent
 } else := {}
 
-context := input.context {
+context := input.context if {
     input.context
 } else := {}
 
@@ -50,7 +50,10 @@ escalate_reasons := [r | escalate_reason[r]]
 allow := count(deny_reasons) == 0
 
 # Escalate requires at least one explicit reason.
-escalate := allow && count(escalate_reasons) > 0
+escalate if {
+    allow
+    count(escalate_reasons) > 0
+}
 
 # ---- Deny conditions (hard gate) -------------------------------------------
 
@@ -134,21 +137,21 @@ high_stakes_domains := {
     "education": true,
 }
 
-critic_severity(c) := sev {
+critic_severity(c) := sev if {
     s := object.get(c, "severity", null)
     s != null
     sev := to_number(s)
-} else := sev {
+} else := sev if {
     s := object.get(c, "severity_score", null)
     s != null
     sev := to_number(s)
-} else := sev {
+} else := sev if {
     s := object.get(c, "score", null)
     s != null
     sev := to_number(s)
 } else := 0.0
 
-max_critic_severity := m {
+max_critic_severity := m if {
     vals := [critic_severity(critics[k]) | some k]
     count(vals) > 0
     m := max(vals)

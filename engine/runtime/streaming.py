@@ -17,6 +17,8 @@ from engine.resilience.degradation import DegradationStrategy
 from engine.runtime.models import EngineModelInfo
 from engine.schemas.pipeline_types import CriticResult, CriticResultsMap, PrecedentAlignmentResult, UncertaintyResult
 from engine.utils.circuit_breaker import CircuitBreakerOpen
+from engine.runtime.critics import _process_batch_with_engine
+from engine.runtime.run import _track_precedent_evolution
 
 
 async def run_stream_engine(
@@ -190,8 +192,11 @@ async def run_stream_engine(
             )
             for name, critic_ref in critic_items
         ]
-        results = await engine.critic_batcher.process_batch(batch_items)
-        for (critic_name, _), res in zip(critic_items, results):
+        results = await _process_batch_with_engine(engine.critic_batcher, batch_items, engine)
+        result_items = results.items() if isinstance(results, dict) else zip(
+            (name for name, _ in critic_items), results
+        )
+        for critic_name, res in result_items:
             if isinstance(res, CriticEvaluationError):
                 crit_error = res
                 engine._emit_error(
@@ -201,11 +206,9 @@ async def run_stream_engine(
                     critic=critic_name,
                     context=context,
                 )
-                critic_fallback = (
-                    crit_error.details.get("result")
-                    if isinstance(crit_error.details, dict)
-                    else None
-                )
+                critic_fallback = crit_error.details.get("result") if isinstance(
+                    crit_error.details, dict
+                ) else None
                 res = critic_fallback or engine._build_critic_error_result(critic_name, crit_error)
             elif isinstance(res, Exception):
                 unknown_error = res
@@ -457,6 +460,16 @@ async def run_stream_engine(
             trace_id=trace_id,
             context=context,
         )
+
+    _track_precedent_evolution(
+        engine=engine,
+        trace_id=trace_id,
+        context=context,
+        aggregated=cast(Dict[str, Any], aggregated or {}),
+        critic_results=critic_results,
+        model_name=engine_model_info.model_name,
+        precedent_data=cast(Optional[Dict[str, Any]], precedent_data),
+    )
     final_output = aggregated.get("final_output", "") if isinstance(aggregated, dict) else ""
     if not final_output:
         final_output = model_response

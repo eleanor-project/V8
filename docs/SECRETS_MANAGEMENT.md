@@ -457,7 +457,7 @@ await recorder.record(**safe_evidence)
 
 ## Configuration Reference
 
-### Config File: `config/secrets.yaml`
+### Config File Template: `config/secrets.yaml.example`
 
 ```yaml
 secrets:
@@ -481,6 +481,16 @@ sanitization:
   sanitize_errors: true
   custom_sensitive_keys:
     - "internal_token"
+```
+
+**Usage**
+
+```bash
+# Copy the template locally (do not commit the filled file)
+cp config/secrets.yaml.example config/secrets.yaml
+
+# Populate with your environment/provider settings
+# Keep config/secrets.yaml out of version control (gitignored)
 ```
 
 ### Environment Variables

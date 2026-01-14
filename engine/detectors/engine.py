@@ -1,5 +1,5 @@
 """
-ELEANOR V8 — Detector Engine
+ELEANOR V8 - Detector Engine
 -----------------------------
 
 Orchestrates all detectors in parallel, similar to the Orchestrator for critics.
@@ -12,11 +12,14 @@ This engine:
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional
 import importlib
+import logging
+from typing import Any, Dict, List, Optional
 
 from .base import Detector
 from .signals import DetectorSignal
+
+logger = logging.getLogger(__name__)
 
 
 class DetectorEngineV8:
@@ -83,7 +86,10 @@ class DetectorEngineV8:
                         break
             except Exception as e:
                 # Log but don't crash if a detector fails to load
-                print(f"Warning: Failed to load detector {module_name}: {e}")
+                logger.warning(
+                    "detector_load_failed",
+                    extra={"module": module_name, "error": str(e)},
+                )
 
     async def detect_all(self, text: str, context: Dict[str, Any]) -> Dict[str, DetectorSignal]:
         """

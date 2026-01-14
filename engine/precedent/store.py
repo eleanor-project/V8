@@ -8,7 +8,7 @@ Supports multiple backends for flexibility in deployment.
 Supported Backends:
 1. PgVectorStore - PostgreSQL with pgvector extension
 2. ChromaStore - ChromaDB for local/development use
-3. WeaviateStore - Weaviate cloud or self-hosted
+3. WeaviatePrecedentStore - Weaviate cloud or self-hosted
 4. InMemoryStore - For testing and development
 5. JSONFileStore - Simple file-based storage
 """
@@ -23,6 +23,11 @@ from dataclasses import dataclass, field, asdict
 import logging
 
 from engine.utils.dependency_tracking import record_dependency_failure
+
+try:
+    import weaviate  # type: ignore[import-not-found]
+except Exception:
+    weaviate = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +261,115 @@ class JSONFileStore(BasePrecedentStore):
         return hashlib.sha256((text + timestamp).encode()).hexdigest()[:16]
 
 
+class WeaviatePrecedentStore(BasePrecedentStore):
+    """
+    Weaviate store for precedent cases.
+    """
+
+    def __init__(self, client: Any, class_name: str = "Precedent", embed_fn=None):
+        if weaviate is None:
+            raise ImportError("weaviate client not installed. Install with: pip install weaviate-client")
+        self.client = client
+        self.class_name = class_name
+        self.embed_fn = embed_fn
+
+    def add(self, case: PrecedentCase, embedding: List[float]) -> str:
+        payload = {
+            "text": case.query_text,
+            "metadata": {
+                **(case.metadata or {}),
+                "decision": case.decision,
+                "values": case.values,
+                "aggregate_score": case.aggregate_score,
+                "critic_outputs": case.critic_outputs,
+                "rationale": case.rationale,
+                "timestamp": case.timestamp,
+                "case_id": case.case_id,
+            },
+        }
+        try:
+            return self.client.data_object.create(  # type: ignore[attr-defined]
+                payload,
+                class_name=self.class_name,
+                vector=embedding if embedding else None,
+            )
+        except Exception as exc:
+            logger.warning("weaviate_add_failed", extra={"error": str(exc)})
+            raise
+
+    def search(
+        self, query: str, top_k: int = 5, embedding: Optional[List[float]] = None
+    ) -> List[Dict[str, Any]]:
+        if embedding is None and self.embed_fn:
+            embedding = self.embed_fn(query)
+        if not embedding:
+            logger.warning(
+                "weaviate_search_missing_embedding",
+                extra={"class_name": self.class_name},
+            )
+            return []
+
+        result = (
+            self.client.query.get(self.class_name, ["text", "metadata"])  # type: ignore[attr-defined]
+            .with_near_vector({"vector": embedding})  # type: ignore[attr-defined]
+            .with_limit(top_k)  # type: ignore[attr-defined]
+            .do()
+        )
+        if "data" not in result or "Get" not in result["data"]:
+            return []
+        hits = result["data"]["Get"].get(self.class_name, [])
+        output = []
+        for hit in hits:
+            output.append(
+                {
+                    "text": hit.get("text", ""),
+                    "embedding": embedding or [],
+                    "metadata": hit.get("metadata", {}),
+                }
+            )
+        return output
+
+    def get(self, case_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            result = self.client.data_object.get_by_id(  # type: ignore[attr-defined]
+                case_id, class_name=self.class_name
+            )
+        except Exception as exc:
+            logger.warning("weaviate_get_failed", extra={"error": str(exc)})
+            return None
+        if not result:
+            return None
+        return {
+            "text": result.get("properties", {}).get("text", ""),
+            "metadata": result.get("properties", {}).get("metadata", {}),
+            "embedding": result.get("vector") or [],
+        }
+
+    def delete(self, case_id: str) -> bool:
+        try:
+            self.client.data_object.delete(  # type: ignore[attr-defined]
+                case_id, class_name=self.class_name
+            )
+            return True
+        except Exception as exc:
+            logger.warning("weaviate_delete_failed", extra={"error": str(exc)})
+            return False
+
+    def count(self) -> int:
+        try:
+            result = (
+                self.client.query.aggregate(self.class_name)  # type: ignore[attr-defined]
+                .with_meta_count()
+                .do()
+            )
+            aggregate = result.get("data", {}).get("Aggregate", {}).get(self.class_name, [])
+            if aggregate:
+                return int(aggregate[0].get("meta", {}).get("count", 0))
+        except Exception as exc:
+            logger.warning("weaviate_count_failed", extra={"error": str(exc)})
+        return 0
+
+
 class PgVectorStore(BasePrecedentStore):
     """
     PostgreSQL with pgvector extension for production-grade vector search.
@@ -445,6 +559,8 @@ class PgVectorStore(BasePrecedentStore):
                         json.loads(case["critic_outputs"]) if case["critic_outputs"] else {}
                     )
                     case["metadata"] = json.loads(case["metadata"]) if case["metadata"] else {}
+                    case.setdefault("text", case.get("query_text", ""))
+                    case["embedding"] = embedding or []
                     results.append(case)
 
                 return results
@@ -647,7 +763,7 @@ def create_store(backend: str = "memory", **kwargs) -> BasePrecedentStore:
     Factory function to create a precedent store.
 
     Args:
-        backend: Store backend type ("memory", "json", "pgvector", "chroma")
+        backend: Store backend type ("memory", "json", "pgvector", "chroma", "weaviate")
         **kwargs: Backend-specific configuration
 
     Returns:
@@ -658,6 +774,7 @@ def create_store(backend: str = "memory", **kwargs) -> BasePrecedentStore:
         "json": JSONFileStore,
         "pgvector": PgVectorStore,
         "chroma": ChromaStore,
+        "weaviate": WeaviatePrecedentStore,
     }
 
     if backend not in backends:

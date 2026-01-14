@@ -11,8 +11,12 @@ Provides:
 import asyncio
 import json
 import logging
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from engine.security.sanitizer import CredentialSanitizer
 
 try:
     import aiofiles  # type: ignore[import-untyped]
@@ -137,13 +141,39 @@ class AsyncEvidenceRecorder:
             logger.warning("record_called_after_shutdown")
             return
 
+        record = dict(kwargs)
+        if not record.get("trace_id"):
+            record["trace_id"] = str(uuid.uuid4())
+        if not record.get("timestamp"):
+            record["timestamp"] = (
+                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            )
+
+        for key in ("violation_description", "mitigation", "raw_text"):
+            if record.get(key) is not None:
+                record[key] = CredentialSanitizer.sanitize_text(str(record[key]))
+
+        for key in ("detector_metadata", "context", "uncertainty_flags"):
+            payload = record.get(key)
+            if isinstance(payload, dict):
+                record[key] = CredentialSanitizer.sanitize_dict(payload)
+
+        for key in ("precedent_sources", "precedent_candidates"):
+            values = record.get(key)
+            if isinstance(values, list):
+                record[key] = [
+                    CredentialSanitizer.sanitize_text(str(value)) for value in values
+                ]
+
         should_flush = False
         async with self._lock:
-            self.buffer.append(kwargs)
+            self.buffer.append(record)
             should_flush = len(self.buffer) >= self.buffer_size
 
         if should_flush:
             await self.flush()
+
+        return record
 
     async def flush(self):
         """Flush buffer to disk"""
