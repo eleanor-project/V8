@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class AuditEventType(str, Enum):
     """Audit event type enumeration."""
     ACCESS_LOG = "access_log"
-    SECRET_ACCESS = "secret_access_log"
+    SECRET_ACCESS = "secret_access_log"  # pragma: allowlist secret
     GOVERNANCE_DECISION = "governance_decision"
     CRITIC_EXECUTION = "critic_execution"
     VALIDATION_FAILURE = "validation_failure"
