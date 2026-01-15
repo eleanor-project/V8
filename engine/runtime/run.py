@@ -504,6 +504,7 @@ async def run_engine(
             aggregated = apply_governance_flags_to_aggregation(
                 aggregated,
                 getattr(case, "governance_flags", {}),
+                trace_id=trace_id,
             )
         if OBSERVABILITY_AVAILABLE and get_event_bus and EventType is not None and getattr(case, "governance_flags", None):
             try:

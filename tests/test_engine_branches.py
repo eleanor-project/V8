@@ -524,6 +524,21 @@ def test_case_building_and_governance_gate(monkeypatch):
         engine._run_governance_review_gate(case)
 
 
+def test_governance_flag_logging(monkeypatch):
+    import engine.runtime.governance as governance
+    from engine.runtime.governance import apply_governance_flags_to_aggregation
+
+    aggregated = {"decision": "allow"}
+    flags = {"human_review_required": True, "review_triggers": ["severity_threshold_exceeded"]}
+    calls = []
+    monkeypatch.setattr(governance.logger, "info", lambda msg, extra=None: calls.append((msg, extra)))
+    result = apply_governance_flags_to_aggregation(aggregated, flags, trace_id="trace-logging")
+
+    assert result["governance_flags"] == flags
+    assert "human_review_required" in result
+    assert any(call[0] == "governance_human_review_required" for call in calls)
+
+
 @pytest.mark.asyncio
 async def test_run_skip_router_and_aggregation_fallback():
     engine = build_engine(aggregator=DummyAggregator(should_raise=True))

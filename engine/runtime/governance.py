@@ -5,7 +5,9 @@ from governance.review_triggers import Case
 from engine.schemas.escalation import EscalationTier, HumanActionType
 from engine.schemas.pipeline_types import AggregationOutput, CriticResultsMap, PrecedentAlignmentResult, UncertaintyResult
 from engine.exceptions import GovernanceEvaluationError
+from engine.logging_config import get_logger
 
+logger = get_logger(__name__)
 
 def calculate_critic_disagreement(critic_outputs: CriticResultsMap) -> float:
     severities: List[float] = []
@@ -113,6 +115,8 @@ def build_case_for_review(
 def apply_governance_flags_to_aggregation(
     aggregated: Optional[Dict[str, Any]],
     governance_flags: Optional[Dict[str, Any]],
+    *,
+    trace_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     if not isinstance(aggregated, dict):
         return aggregated
@@ -127,6 +131,15 @@ def apply_governance_flags_to_aggregation(
     merged.setdefault("decision", "requires_human_review")
     gate = _build_governance_execution_gate(flags)
     merged["execution_gate"] = gate
+    logger.info(
+        "governance_human_review_required",
+        extra={
+            "trace_id": trace_id,
+            "governance_flags": flags,
+            "execution_gate_reason": gate["reason"],
+            "escalation_tier": gate["escalation_tier"],
+        },
+    )
 
     aggregation_result = merged.get("aggregation_result")
     if isinstance(aggregation_result, dict):

@@ -15,6 +15,7 @@ from engine.exceptions import (
 )
 from engine.resilience.degradation import DegradationStrategy
 from engine.runtime.models import EngineModelInfo
+from engine.runtime.governance import apply_governance_flags_to_aggregation
 from engine.schemas.pipeline_types import CriticResult, CriticResultsMap, PrecedentAlignmentResult, UncertaintyResult
 from engine.utils.circuit_breaker import CircuitBreakerOpen
 from engine.runtime.critics import _process_batch_with_engine
@@ -531,10 +532,11 @@ async def run_stream_engine(
         )
         engine._run_governance_review_gate(case)
         if isinstance(aggregated, dict):
-            aggregated = {**aggregated, "governance_flags": getattr(case, "governance_flags", {})}
-            if getattr(case, "governance_flags", {}).get("human_review_required"):
-                aggregated["human_review_required"] = True
-                aggregated.setdefault("decision", "requires_human_review")
+            aggregated = apply_governance_flags_to_aggregation(
+                aggregated,
+                getattr(case, "governance_flags", {}),
+                trace_id=trace_id,
+            )
         if STREAM_OBSERVABILITY_AVAILABLE and get_event_bus and EventType is not None and getattr(case, "governance_flags", None):
             try:
                 event_bus = get_event_bus()

@@ -1,18 +1,24 @@
 """
-ELEANOR V8 — Critic Infrastructure Integration
-----------------------------------------------
+ELEANOR V8 — Critic Infrastructure Integration (Production Orchestrator)
+------------------------------------------------------------------------
 
 This module provides the infrastructure layer around critic execution,
 integrating with caching, circuit breakers, evidence recording, events,
 and degradation strategies.
 
-It wraps the orchestrator with all production-ready features while
-keeping the core execution logic clean and testable.
+NOW USES: ProductionOrchestrator with advanced features:
+- Policy-based gating (cost optimization)
+- Staged execution with dependencies
+- Retry strategies
+- Resource management
+- Result validation
+- Priority scheduling
 """
 
 import asyncio
 import inspect
 import logging
+import os
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -23,10 +29,16 @@ from engine.exceptions import CriticEvaluationError, EvidenceRecordingError
 from engine.resilience.degradation import DegradationStrategy
 from engine.schemas.pipeline_types import CriticResult, CriticResultsMap
 from engine.utils.circuit_breaker import CircuitBreakerOpen
-from engine.orchestrator.orchestrator_v2 import (
-    OrchestratorV2,
+
+# Import Production Orchestrator
+from engine.orchestrator.orchestrator_production import (
+    ProductionOrchestrator,
+    CriticConfig,
+    OrchestratorConfig,
     OrchestratorHooks,
     CriticInput,
+    ExecutionStage,
+    ExecutionPolicy,
 )
 
 # Enhanced observability
@@ -54,9 +66,167 @@ except ImportError:
 logger = logging.getLogger("engine.engine")
 
 
+# ============================================================================
+# Configuration
+# ============================================================================
+
+
+def _get_env_bool(key: str, default: bool = False) -> bool:
+    """Get boolean from environment variable."""
+    value = os.getenv(key, "").strip().lower()
+    if not value:
+        return default
+    return value in ("1", "true", "yes", "on")
+
+
+def _get_env_int(key: str, default: int) -> int:
+    """Get integer from environment variable."""
+    value = os.getenv(key, "").strip()
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning(f"Invalid {key}={value}, using default {default}")
+        return default
+
+
+def _get_env_float(key: str, default: float) -> float:
+    """Get float from environment variable."""
+    value = os.getenv(key, "").strip()
+    if not value:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        logger.warning(f"Invalid {key}={value}, using default {default}")
+        return default
+
+
+def get_orchestrator_config() -> OrchestratorConfig:
+    """
+    Create orchestrator config from environment variables.
+    
+    Environment Variables:
+    - ELEANOR_ORCHESTRATOR_MAX_CONCURRENT: Max concurrent critics (default: 10)
+    - ELEANOR_ORCHESTRATOR_ENABLE_GATING: Enable policy gating (default: true)
+    - ELEANOR_ORCHESTRATOR_ENABLE_RETRIES: Enable retry logic (default: true)
+    - ELEANOR_ORCHESTRATOR_STRICT_VALIDATION: Strict validation (default: true)
+    - ELEANOR_ORCHESTRATOR_GLOBAL_TIMEOUT: Global timeout in seconds (default: none)
+    """
+    return OrchestratorConfig(
+        max_concurrent_critics=_get_env_int("ELEANOR_ORCHESTRATOR_MAX_CONCURRENT", 10),
+        enable_policy_gating=_get_env_bool("ELEANOR_ORCHESTRATOR_ENABLE_GATING", True),
+        enable_retries=_get_env_bool("ELEANOR_ORCHESTRATOR_ENABLE_RETRIES", True),
+        strict_validation=_get_env_bool("ELEANOR_ORCHESTRATOR_STRICT_VALIDATION", True),
+        fail_on_validation_error=_get_env_bool("ELEANOR_ORCHESTRATOR_FAIL_ON_VALIDATION", False),
+        global_timeout_seconds=_get_env_float("ELEANOR_ORCHESTRATOR_GLOBAL_TIMEOUT", 0.0) or None,
+    )
+
+
+# ============================================================================
+# Critic Classification and Configuration
+# ============================================================================
+
+
+def classify_critic_stage(critic_name: str, critic_ref: Any) -> ExecutionStage:
+    """
+    Automatically classify critic into execution stage based on name and attributes.
+    
+    This provides sensible defaults. Can be overridden with critic metadata.
+    """
+    name_lower = critic_name.lower()
+    
+    # Fast critics (< 100ms expected)
+    if any(keyword in name_lower for keyword in ["quick", "fast", "simple", "basic"]):
+        return ExecutionStage.FAST_CRITICS
+    
+    # Pre-validation
+    if any(keyword in name_lower for keyword in ["validation", "sanity", "check"]):
+        return ExecutionStage.PRE_VALIDATION
+    
+    # Deep/expensive analysis
+    if any(keyword in name_lower for keyword in ["deep", "comprehensive", "detailed", "llm", "external"]):
+        return ExecutionStage.DEEP_ANALYSIS
+    
+    # Post-processing
+    if any(keyword in name_lower for keyword in ["aggregate", "summary", "synthesis"]):
+        return ExecutionStage.POST_PROCESSING
+    
+    # Default: Core analysis
+    return ExecutionStage.CORE_ANALYSIS
+
+
+def get_critic_priority(critic_name: str, critic_ref: Any) -> int:
+    """
+    Automatically determine critic priority (1=highest, 10=lowest).
+    
+    Based on name and safety criticality.
+    """
+    name_lower = critic_name.lower()
+    
+    # Critical safety checks - highest priority
+    if any(keyword in name_lower for keyword in ["safety", "security", "critical"]):
+        return 1
+    
+    # Rights and bias - high priority
+    if any(keyword in name_lower for keyword in ["rights", "bias", "discrimination"]):
+        return 2
+    
+    # Fairness and ethics - medium-high priority
+    if any(keyword in name_lower for keyword in ["fairness", "ethics", "harm"]):
+        return 3
+    
+    # Privacy and compliance - medium priority
+    if any(keyword in name_lower for keyword in ["privacy", "pii", "compliance"]):
+        return 4
+    
+    # Standard analysis - medium priority
+    if any(keyword in name_lower for keyword in ["analyze", "assess", "evaluate"]):
+        return 5
+    
+    # Style and quality - lower priority
+    if any(keyword in name_lower for keyword in ["style", "quality", "format"]):
+        return 7
+    
+    # Documentation and metadata - lowest priority
+    if any(keyword in name_lower for keyword in ["document", "metadata", "log"]):
+        return 9
+    
+    # Default: medium priority
+    return 5
+
+
+def get_critic_policy(critic_name: str, context: Dict[str, Any]) -> ExecutionPolicy:
+    """
+    Automatically determine execution policy based on critic name and context.
+    """
+    name_lower = critic_name.lower()
+    
+    # Always run safety-critical checks
+    if any(keyword in name_lower for keyword in ["safety", "security", "critical"]):
+        return ExecutionPolicy.ALWAYS
+    
+    # Run deep analysis only if violations found
+    if any(keyword in name_lower for keyword in ["deep", "comprehensive", "detailed"]):
+        return ExecutionPolicy.ON_VIOLATION
+    
+    # Run PII detection only for high-risk
+    if any(keyword in name_lower for keyword in ["pii", "personal", "sensitive"]):
+        return ExecutionPolicy.ON_HIGH_RISK
+    
+    # Default: always run
+    return ExecutionPolicy.ALWAYS
+
+
+# ============================================================================
+# Infrastructure Adapter
+# ============================================================================
+
+
 class CriticInfrastructureAdapter:
     """
-    Adapter that bridges orchestrator and engine infrastructure.
+    Adapter that bridges Production Orchestrator and engine infrastructure.
     
     Provides hooks for:
     - Caching
@@ -82,11 +252,7 @@ class CriticInfrastructureAdapter:
         critic_name: str,
         input_snapshot: CriticInput,
     ) -> Optional[Dict[str, Any]]:
-        """
-        Check cache for critic result.
-        
-        Returns cached result or None if not found.
-        """
+        """Check cache for critic result."""
         if not self.engine.cache_manager:
             return None
         
@@ -184,11 +350,7 @@ class CriticInfrastructureAdapter:
         error: Exception,
         duration_ms: float,
     ) -> Optional[Dict[str, Any]]:
-        """
-        Handle degradation for failed critic.
-        
-        Returns fallback result or None.
-        """
+        """Handle degradation for failed critic."""
         if not self.engine.degradation_enabled:
             return None
         
@@ -221,6 +383,11 @@ class CriticInfrastructureAdapter:
             self.engine.adaptive_concurrency.record_latency(duration_ms)
 
 
+# ============================================================================
+# Critic Callable Creation
+# ============================================================================
+
+
 def create_critic_callable(
     engine: "EngineType",
     critic_name: str,
@@ -229,9 +396,6 @@ def create_critic_callable(
 ) -> Any:
     """
     Create an async callable for a critic that the orchestrator can execute.
-    
-    This wraps the critic with model adapter logic and makes it compatible
-    with the orchestrator's expected signature.
     """
     
     async def wrapped_critic(input_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -301,6 +465,11 @@ def create_critic_callable(
     return wrapped_critic
 
 
+# ============================================================================
+# Main Entry Point
+# ============================================================================
+
+
 async def run_critics_with_orchestrator(
     engine: "EngineType",
     model_response: str,
@@ -311,9 +480,10 @@ async def run_critics_with_orchestrator(
     evidence_records: Optional[List[Any]] = None,
 ) -> CriticResultsMap:
     """
-    Run all critics using the orchestrator with full infrastructure integration.
+    Run all critics using Production Orchestrator with full infrastructure integration.
     
-    This is the main entry point that replaces the old run_critics_parallel.
+    This is the main entry point that uses the production-grade orchestrator
+    with policy gating, staged execution, retries, and resource management.
     """
     # Create infrastructure adapter
     infrastructure = CriticInfrastructureAdapter(
@@ -335,15 +505,8 @@ async def run_critics_with_orchestrator(
         critic_name: str,
         critic_input: CriticInput,
     ) -> Optional[Dict[str, Any]]:
-        """Check cache and circuit breaker before execution."""
-        # Check cache
-        cached = await infrastructure.check_cache(critic_name, critic_input)
-        if cached:
-            return cached
-        
-        # Circuit breaker would go here if configured per-critic
-        # For now, circuit breaker is handled at batch level
-        return None
+        """Check cache before execution."""
+        return await infrastructure.check_cache(critic_name, critic_input)
     
     async def post_execution_hook(
         critic_name: str,
@@ -417,25 +580,71 @@ async def run_critics_with_orchestrator(
         on_failure=on_failure_hook,
     )
     
-    # Create critic callables for orchestrator
-    critic_callables = {}
+    # Build critic configurations with production features
+    critic_configs = {}
     for critic_name, critic_ref in engine.critics.items():
-        critic_callables[critic_name] = create_critic_callable(
+        # Get or detect configuration
+        stage = classify_critic_stage(critic_name, critic_ref)
+        priority = get_critic_priority(critic_name, critic_ref)
+        policy = get_critic_policy(critic_name, context)
+        
+        # Get timeout from engine config or use smart defaults
+        timeout = engine.config.timeout_seconds
+        if stage == ExecutionStage.FAST_CRITICS:
+            timeout = min(timeout, 1.0)  # Fast critics max 1s
+        elif stage == ExecutionStage.DEEP_ANALYSIS:
+            timeout = max(timeout, 5.0)  # Deep analysis min 5s
+        
+        # Create callable
+        critic_callable = create_critic_callable(
             engine=engine,
             critic_name=critic_name,
             critic_ref=critic_ref,
             model_response=model_response,
         )
+        
+        # Create config with production features
+        critic_configs[critic_name] = CriticConfig(
+            name=critic_name,
+            callable=critic_callable,
+            stage=stage,
+            priority=priority,
+            timeout_seconds=timeout,
+            execution_policy=policy,
+            max_retries=2 if policy != ExecutionPolicy.ALWAYS else 0,  # Retry non-critical
+            retry_on_timeout=True,
+            required_output_fields={"value", "score"},  # Basic validation
+        )
+    
+    # Get orchestrator config
+    config = get_orchestrator_config()
     
     # Create and run orchestrator
-    orchestrator = OrchestratorV2(
-        critics=critic_callables,
-        timeout_seconds=engine.config.timeout_seconds,
+    orchestrator = ProductionOrchestrator(
+        critics=critic_configs,
+        config=config,
         hooks=hooks,
+    )
+    
+    logger.info(
+        f"Running {len(critic_configs)} critics with Production Orchestrator "
+        f"(gating={'on' if config.enable_policy_gating else 'off'}, "
+        f"retries={'on' if config.enable_retries else 'off'})"
     )
     
     # Execute all critics
     results = await orchestrator.run_all(input_snapshot)
+    
+    # Log metrics
+    metrics = orchestrator.metrics
+    logger.info(
+        f"Orchestrator execution complete: "
+        f"total={metrics.total_executions}, "
+        f"success={metrics.successful}, "
+        f"failed={metrics.failed}, "
+        f"gated={metrics.gated}, "
+        f"retried={metrics.retried}"
+    )
     
     return results
 
@@ -444,4 +653,5 @@ __all__ = [
     "CriticInfrastructureAdapter",
     "run_critics_with_orchestrator",
     "create_critic_callable",
+    "get_orchestrator_config",
 ]
