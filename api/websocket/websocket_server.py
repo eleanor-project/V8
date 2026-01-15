@@ -80,12 +80,15 @@ async def require_ws_auth(ws: WebSocket) -> bool:
         return True
 
     auth_header = ws.headers.get("authorization")
-    if not auth_header or not auth_header.lower().startswith("bearer "):
-        await ws_send(ws, "error", {"message": "Authorization header required"})
+    token = None
+    if auth_header and auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        token = ws.query_params.get("token") or ws.query_params.get("access_token")
+    if not token:
+        await ws_send(ws, "error", {"message": "Authorization header or token query param required"})
         await ws.close(code=1008)
         return False
-
-    token = auth_header.split(" ", 1)[1].strip()
     try:
         payload = decode_token(token, config)
     except Exception as exc:

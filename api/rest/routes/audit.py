@@ -91,6 +91,12 @@ def _ledger_records_as_dicts(records: List[Any]) -> List[Dict[str, Any]]:
     return output
 
 
+def _payload_value(payload: Any, key: str) -> Any:
+    if isinstance(payload, dict):
+        return payload.get(key)
+    return getattr(payload, key, None)
+
+
 def _filter_ledger_records(
     *,
     records: List[Any],
@@ -301,13 +307,13 @@ async def audit_search(
     Trace search endpoint. Kept generic because AuditSearchRequest/Response may live elsewhere.
     If you have typed models, change `payload` to AuditSearchRequest and add response_model.
     """
-    user_id = getattr(payload, "user_id", None) or user
+    user_id = _payload_value(payload, "user_id") or user
     results = await search_traces(
         replay_store,
-        query=getattr(payload, "query", None),
+        query=_payload_value(payload, "query"),
         user_id=user_id,
-        decision=getattr(payload, "decision", None),
-        limit=getattr(payload, "limit", 50),
+        decision=_payload_value(payload, "decision"),
+        limit=_payload_value(payload, "limit") or 50,
     )
     return {"results": results}
 
