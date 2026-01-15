@@ -35,12 +35,17 @@ Prometheus/Grafana dashboards/readouts can count escalations per tier, detect sp
    * Critic Escalation Heatmap (`sum by (critic, tier) (rate(...))`)
 2. **Alerts & automation**:
    * Load `monitoring/prometheus/governance-alerts.yml` into your Prometheus rules directory.
-   * Use `scripts/deploy_governance_alerts.sh` (or similar) to validate via `promtool` and copy the file into `/etc/prometheus/rules` so reload is automatic.
+   * Use `scripts/deploy_governance_alerts.sh` (or similar) to validate via `promtool` and copy the file into your rules directory.
+     - If `promtool` is missing locally, the script will fall back to `docker exec prometheus promtool` when a Prometheus container is running.
+   * Trigger a Prometheus reload using `scripts/reload_prometheus.sh` (defaults to `http://localhost:9090`, override with `PROMETHEUS_URL`).
    * `Tier3EscalationSurge` (>=0.01/s for 5m)
    * `FundamentalRightsEscalation` (reason includes `fundamental_rights`)
    * `EscalationSpikevsHourlyAverage` (>2× hourly average)
 2. **Escalation tracking**: Optionally expose `tier` breakdown by policy profile to ensure certain workloads don’t drive disproportionate human review.
 3. **Alerting**: Raise alerts when `eleanor_escalations_total` increases unexpectedly or when `execution_gate_reason` matches critical flags (e.g., `fundamental_rights_implicated`). See `monitoring/prometheus/governance-alerts.yml` for templates.
+4. **Grafana import**: Run `scripts/deploy_grafana_dashboard.sh` with either `GRAFANA_API_TOKEN` or `GRAFANA_USER`/`GRAFANA_PASSWORD` to import `monitoring/grafana/governance-escalations-dashboard.json` automatically.
+   * Set `GRAFANA_URL` to your staging Grafana base URL and optionally `GRAFANA_FOLDER_ID` if you want it in a specific folder.
+5. **One-shot bootstrap**: `scripts/bootstrap_governance_observability.sh` chains the alert deploy, Prometheus reload, and Grafana import into one command.
 4. **Reporting Tool Evaluation**: Review Grafana/Prometheus dashboards, logging sinks, and alerting workflows for opportunities:
    * Do panels show escalation counts with trace IDs so on-call engineers can pivot directly to `governance_human_review_required` logs?
    * Are there gaps in labels (e.g., missing `policy_profile` label) that hinder slicing by workload?

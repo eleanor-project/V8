@@ -3,11 +3,17 @@
 set -euo pipefail
 
 RULES_SRC="$(pwd)/monitoring/prometheus/governance-alerts.yml"
-PROM_DIR="${PROMETHEUS_RULES_DIR:-/etc/prometheus/rules}"
+PROM_DIR="${PROMETHEUS_RULES_DIR:-$(pwd)/monitoring/prometheus}"
 DEST="$PROM_DIR/governance-escalations.yml"
+PROM_CONTAINER="${PROMETHEUS_CONTAINER:-prometheus}"
 
 if ! command -v promtool &> /dev/null; then
-  echo "promtool not found; install it (https://prometheus.io/docs/prometheus/latest/getting_started/)"
+  if command -v docker &> /dev/null && docker ps --format '{{.Names}}' | grep -q "^${PROM_CONTAINER}$"; then
+    echo "promtool not found locally; falling back to docker exec ${PROM_CONTAINER} promtool"
+    docker exec "${PROM_CONTAINER}" promtool check rules /etc/prometheus/rules/governance-alerts.yml
+    exit 0
+  fi
+  echo "promtool not found; install it or ensure a running Prometheus container is available."
   exit 1
 fi
 

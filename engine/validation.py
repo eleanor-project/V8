@@ -55,7 +55,7 @@ class ValidationConfig(BaseModel):
     # Patterns that may indicate prompt injection
     injection_patterns: List[str] = Field(
         default_factory=lambda: [
-            r"ignore (previous|above|all) (instructions?|prompts?|rules?)",
+                r"ignore\s+(?:previous|above|all)\s+.*?(?:instructions?|prompts?|rules?)",
             r"disregard (previous|above|all)",
             r"override (system|safety|constitutional)",
             r"disregard all",
