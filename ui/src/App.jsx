@@ -82,7 +82,7 @@ const handleAuthError = (err, setAuthError) => {
   return false;
 };
 
-const AuthBanner = ({ authError }) => {
+const AuthBanner = ({ authError, hint }) => {
   if (!authError) return null;
   return (
     <div
@@ -96,7 +96,8 @@ const AuthBanner = ({ authError }) => {
         fontSize: 13,
       }}
     >
-      {authError}
+      <div style={{ fontWeight: 600 }}>{authError}</div>
+      {hint && <div style={{ marginTop: 4 }}>{hint}</div>}
     </div>
   );
 };
@@ -164,7 +165,10 @@ const DeliberatePanel = () => {
     <div className="grid two">
       <div className="panel">
         <h3>Deliberate</h3>
-        <AuthBanner authError={authError} />
+        <AuthBanner
+          authError={authError}
+          hint="Requires an authenticated JWT. WebSocket uses the ?token= query param."
+        />
         <label className="small">Input</label>
         <textarea value={input} onChange={(e) => setInput(e.target.value)} />
         <label className="small">Context (JSON)</label>
@@ -460,7 +464,7 @@ const TracePanel = () => {
     <div className="grid two">
       <div className="panel">
         <h3>Trace Lookup</h3>
-        <AuthBanner authError={authError} />
+        <AuthBanner authError={authError} hint="Audit trace access requires a valid JWT." />
         <input placeholder="trace id" value={traceId} onChange={(e) => setTraceId(e.target.value)} />
         <div className="row" style={{ marginTop: 8 }}>
           <button onClick={loadTrace} disabled={!traceId}>
@@ -589,7 +593,7 @@ const AuditLedgerPanel = () => {
   return (
     <div className="panel">
       <h3>Audit Ledger Query</h3>
-      <AuthBanner authError={authError} />
+      <AuthBanner authError={authError} hint="Audit ledger queries require authentication." />
       <p className="small">
         Query immutable audit ledger entries with optional filters. Times should be ISO8601 (e.g.
         2025-05-01T00:00:00Z).
@@ -764,7 +768,10 @@ const GovernancePanel = () => {
     <div className="grid two">
       <div className="panel">
         <h3>Governance Preview (OPA)</h3>
-        <AuthBanner authError={authError} />
+        <AuthBanner
+          authError={authError}
+          hint="Preview requires authentication. Review metrics/quarantine require the reviewer role."
+        />
         <p className="small">
           Run OPA governance evaluation on a mock evidence bundle without executing the full pipeline.
         </p>
@@ -783,7 +790,10 @@ const GovernancePanel = () => {
       </div>
       <div className="panel">
         <h3>Explainable Governance</h3>
-        <AuthBanner authError={authError} />
+        <AuthBanner
+          authError={authError}
+          hint="Explainable governance requires authentication and feature flag enablement."
+        />
         <div className="row" style={{ marginBottom: 8 }}>
           <input
             placeholder="trace id"
@@ -955,7 +965,7 @@ const HumanReviewPanel = () => {
     <div className="grid two">
       <div className="panel">
         <h3>Submit Human Review</h3>
-        <AuthBanner authError={authError} />
+        <AuthBanner authError={authError} hint="Reviewer role required for all review operations." />
         <p className="small">
           Reviews require the reviewer role. Provide a full HumanReviewRecord payload.
         </p>
@@ -969,7 +979,7 @@ const HumanReviewPanel = () => {
       </div>
       <div className="panel">
         <h3>Review Operations</h3>
-        <AuthBanner authError={authError} />
+        <AuthBanner authError={authError} hint="Reviewer role required for all review operations." />
         <div className="row" style={{ marginBottom: 8 }}>
           <button onClick={loadPending}>Load Pending</button>
           <button onClick={loadStats}>Load Stats</button>
@@ -1677,7 +1687,10 @@ const AdminPanel = () => {
   return (
     <div>
       <div className="panel" style={{ marginBottom: 16 }}>
-        <AuthBanner authError={authError} />
+        <AuthBanner
+          authError={authError}
+          hint="Admin role required for admin endpoints. Writes also require ELEANOR_ENABLE_ADMIN_WRITE=true."
+        />
         <div className="row" style={{ justifyContent: "space-between" }}>
           <div>
             <h3 style={{ margin: 0 }}>Admin Write Access</h3>
@@ -1960,7 +1973,7 @@ const MetricsPanel = () => {
 
   return (
     <div className="panel">
-      <AuthBanner authError={authError} />
+      <AuthBanner authError={authError} hint="Admin role required to view dependency metrics." />
       <h3>Grafana</h3>
       <p className="small">Requires docker compose stack (Grafana at :3000) or adjust URL.</p>
       <iframe src={grafanaUrl} title="Grafana Dashboard"></iframe>
@@ -2006,6 +2019,12 @@ const App = () => {
     if (status === "unauth") return { background: "rgba(251,191,36,0.2)", color: "#fbbf24" };
     return { background: "rgba(148,163,184,0.2)", color: "#94a3b8" };
   };
+  const roleLabel = (status) => {
+    if (status === "ok") return "ok";
+    if (status === "forbidden") return "missing role";
+    if (status === "unauth") return "login required";
+    return "unknown";
+  };
   const tabs = [
     { id: "simple", label: "Simple Stream" },
     { id: "deliberate", label: "Deliberate" },
@@ -2039,11 +2058,19 @@ const App = () => {
           <button onClick={checkRoles} disabled={checkingRoles} style={{ padding: "8px 12px" }}>
             {checkingRoles ? "Checking…" : "Check Roles"}
           </button>
-          <span className="pill" style={roleBadgeStyle(roleStatus.admin)}>
-            admin: {roleStatus.admin}
+          <span
+            className="pill"
+            style={roleBadgeStyle(roleStatus.admin)}
+            title="Admin endpoints require ADMIN_ROLE"
+          >
+            admin: {roleLabel(roleStatus.admin)}
           </span>
-          <span className="pill" style={roleBadgeStyle(roleStatus.reviewer)}>
-            reviewer: {roleStatus.reviewer}
+          <span
+            className="pill"
+            style={roleBadgeStyle(roleStatus.reviewer)}
+            title="Human review endpoints require REVIEWER_ROLE"
+          >
+            reviewer: {roleLabel(roleStatus.reviewer)}
           </span>
         </div>
         {roleCheckError && (
