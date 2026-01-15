@@ -50,6 +50,31 @@ class CriticEvaluationError(EleanorV8Exception):
         self.trace_id = trace_id
 
 
+class GovernanceBlockError(EleanorV8Exception):
+    """Raised when governance requires human review and enforcement is enabled."""
+
+    def __init__(
+        self,
+        message: str,
+        trace_id: Optional[str] = None,
+        review_triggers: Optional[list] = None,
+        governance_decision: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ):
+        super().__init__(
+            message,
+            details,
+            trace_id=trace_id,
+            review_triggers=review_triggers,
+            governance_decision=governance_decision,
+            **kwargs,
+        )
+        self.trace_id = trace_id
+        self.review_triggers = review_triggers or []
+        self.governance_decision = governance_decision
+
+
 class RouterSelectionError(EleanorV8Exception):
     """Raised when the router cannot select an appropriate model."""
 

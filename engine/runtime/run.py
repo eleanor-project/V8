@@ -7,6 +7,7 @@ from engine.exceptions import (
     AggregationError,
     DetectorExecutionError,
     EleanorV8Exception,
+    GovernanceBlockError,
     GovernanceEvaluationError,
     InputValidationError,
     PrecedentRetrievalError,
@@ -500,6 +501,31 @@ async def run_engine(
                 legacy_governance = None
 
         engine._run_governance_review_gate(case)
+        
+        # --- GOVERNANCE ENFORCEMENT (Optional) ---
+        # Check if enforcement is enabled via environment variable
+        import os
+        enforce_governance = os.getenv("ELEANOR_ENFORCE_GOVERNANCE", "false").strip().lower() in ("1", "true", "yes", "on")
+        
+        if enforce_governance:
+            governance_flags = getattr(case, "governance_flags", {})
+            if governance_flags.get("human_review_required"):
+                # Block execution and raise exception
+                raise GovernanceBlockError(
+                    f"Execution blocked: Human review required (triggers: {governance_flags.get('review_triggers', [])}",
+                    trace_id=trace_id,
+                    review_triggers=governance_flags.get("review_triggers", []),
+                    governance_decision="review_required",
+                    details={
+                        "governance_flags": governance_flags,
+                        "case": {
+                            "severity": getattr(case, "severity", None),
+                            "critic_disagreement": getattr(case, "critic_disagreement", None),
+                            "novel_precedent": getattr(case, "novel_precedent", None),
+                        },
+                    },
+                )
+        
         if isinstance(aggregated, dict):
             aggregated = apply_governance_flags_to_aggregation(
                 aggregated,
@@ -565,6 +591,37 @@ async def run_engine(
 
     evidence_count = len(evidence_records) if evidence_records else None
 
+    # Extract governance flags from case
+    governance_flags = getattr(case, "governance_flags", {}) if 'case' in locals() else {}
+    human_review_required = governance_flags.get("human_review_required", False)
+    review_triggers = governance_flags.get("review_triggers", [])
+    
+    # Determine governance decision
+    governance_decision = "allow"  # Default
+    if human_review_required:
+        governance_decision = "review_required"
+    
+    # Check for escalation in aggregated results
+    if isinstance(aggregated, dict):
+        decision = aggregated.get("decision", "allow").lower()
+        if decision in ["deny", "block", "escalate"]:
+            governance_decision = "escalate"
+        
+        # Also check if aggregated has override
+        if aggregated.get("human_review_required"):
+            human_review_required = True
+            governance_decision = "review_required"
+    
+    # Build governance metadata
+    governance_metadata = {
+        "review_triggers": review_triggers,
+        "governance_flags": governance_flags,
+    }
+    
+    # Add traffic light governance if present
+    if isinstance(aggregated, dict) and "governance_meta" in aggregated:
+        governance_metadata["traffic_light"] = aggregated["governance_meta"]
+    
     critic_findings = {
         k: EngineCriticFinding(
             critic=k,
@@ -574,13 +631,17 @@ async def run_engine(
         )
         for k, v in critic_results.items()
     }
+    
     base_result = EngineResult(
         trace_id=trace_id,
         output_text=aggregated.get("final_output") or model_response,
-        human_review_required=cast(
-            Optional[bool],
-            aggregated.get("human_review_required") if isinstance(aggregated, dict) else None,
-        ),
+        
+        # Governance fields
+        human_review_required=human_review_required,
+        review_triggers=review_triggers if review_triggers else None,
+        governance_decision=governance_decision,
+        governance_metadata=governance_metadata if governance_metadata else None,
+        
         context=context,
         model_info=engine_model_info,
         critic_findings=critic_findings,
@@ -623,7 +684,13 @@ async def run_engine(
         return EngineResult(
             trace_id=trace_id,
             output_text=aggregated.get("final_output") or model_response,
+            
+            # Governance fields
             human_review_required=base_result.human_review_required,
+            review_triggers=base_result.review_triggers,
+            governance_decision=base_result.governance_decision,
+            governance_metadata=base_result.governance_metadata,
+            
             context=base_result.context,
             model_info=engine_model_info,
             degraded_components=degraded_components,
@@ -649,7 +716,13 @@ async def run_engine(
         result = EngineResult(
             trace_id=base_result.trace_id,
             output_text=base_result.output_text,
+            
+            # Governance fields
             human_review_required=base_result.human_review_required,
+            review_triggers=base_result.review_triggers,
+            governance_decision=base_result.governance_decision,
+            governance_metadata=base_result.governance_metadata,
+            
             context=base_result.context,
             model_info=base_result.model_info,
             critic_findings=base_result.critic_findings,

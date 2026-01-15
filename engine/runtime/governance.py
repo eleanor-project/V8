@@ -6,6 +6,7 @@ from engine.schemas.escalation import EscalationTier, HumanActionType
 from engine.schemas.pipeline_types import AggregationOutput, CriticResultsMap, PrecedentAlignmentResult, UncertaintyResult
 from engine.exceptions import GovernanceEvaluationError
 from engine.logging_config import get_logger
+from engine.observability.business_metrics import record_escalation
 
 logger = get_logger(__name__)
 
@@ -131,6 +132,11 @@ def apply_governance_flags_to_aggregation(
     merged.setdefault("decision", "requires_human_review")
     gate = _build_governance_execution_gate(flags)
     merged["execution_gate"] = gate
+    record_escalation(
+        tier=_normalize_tier(gate.get("escalation_tier")),
+        critic=flags.get("review_triggers", [None])[0][:32] if flags.get("review_triggers") else None,
+        reason=_governance_reason(flags, gate),
+    )
     logger.info(
         "governance_human_review_required",
         extra={
@@ -171,6 +177,22 @@ def _build_governance_execution_gate(flags: Dict[str, Any]) -> Dict[str, Any]:
         "reason": reason,
         "escalation_tier": EscalationTier.TIER_2.value,
     }
+
+
+def _normalize_tier(value: Optional[str]) -> int:
+    if value and value.startswith("TIER_"):
+        try:
+            return int(value.split("_")[1])
+        except (ValueError, IndexError):
+            return 0
+    return 0
+
+
+def _governance_reason(flags: Dict[str, Any], gate: Dict[str, Any]) -> str:
+    triggers = flags.get("review_triggers") or []
+    if triggers:
+        return str(triggers[0])
+    return gate.get("reason", "governance_review_required")
 
 
 def run_governance_review_gate(

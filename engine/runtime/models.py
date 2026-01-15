@@ -48,7 +48,13 @@ class EngineForensicData(BaseModel):
 class EngineResult(BaseModel):
     output_text: Optional[str] = None
     trace_id: str
+    
+    # Governance fields
     human_review_required: Optional[bool] = None
+    review_triggers: Optional[List[str]] = None
+    governance_decision: Optional[str] = None  # 'allow', 'review_required', 'escalate'
+    governance_metadata: Optional[Dict[str, Any]] = None
+    
     context: Optional[Dict[str, Any]] = None
     model_info: Optional[EngineModelInfo] = None
     critic_findings: Optional[Dict[str, EngineCriticFinding]] = None
