@@ -8,6 +8,16 @@ logger = logging.getLogger("engine.engine")
 
 async def setup_resources(engine: Any) -> None:
     """Initialize engine resources that require async setup."""
+    
+    # Setup signal handlers for graceful shutdown
+    try:
+        from engine.resource_manager import ShutdownHandler
+        shutdown_handler = ShutdownHandler(lambda: engine.shutdown(timeout=engine.config.shutdown_timeout_seconds))
+        shutdown_handler.setup_handlers()
+        engine._shutdown_handler = shutdown_handler
+        logger.info("signal_handlers_registered")
+    except Exception as exc:
+        logger.warning("signal_handler_setup_failed", extra={"error": str(exc)})
 
     async def _maybe_call(obj: Any, method_name: str) -> None:
         method = getattr(obj, method_name, None)

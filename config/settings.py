@@ -244,18 +244,48 @@ def get_settings(validate: bool = True) -> EleanorSettings:
         ValidationError: If validation fails and validate=True
     """
     global _settings
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if _settings is None:
+        # Log configuration load for audit purposes
+        import os
+        env = os.getenv("ELEANOR_ENVIRONMENT") or os.getenv("ELEANOR_ENV") or os.getenv("ENV") or "development"
+        logger.info(
+            "config_loaded",
+            extra={
+                "environment": env,
+                "config_source": _determine_config_source(),
+                "validate": validate,
+            }
+        )
+        
         _settings = EleanorSettings()
         if validate:
             from config.validation import ConfigValidator
             try:
                 ConfigValidator.validate_and_raise(_settings)
+                logger.info("config_validation_passed", extra={"environment": _settings.environment})
             except ValidationError as exc:
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.error("settings_validation_failed", extra={"errors": str(exc)})
                 raise
     return _settings
+
+
+def _determine_config_source() -> str:
+    """Determine which configuration source is being used."""
+    import os
+    if os.getenv("ELEANOR_CONFIG_PATH") or os.getenv("ELEANOR_CONFIG"):
+        return "yaml"
+    if os.path.exists(".env.production"):
+        return "env_production"
+    if os.path.exists(".env.staging"):
+        return "env_staging"
+    if os.path.exists(".env.development"):
+        return "env_development"
+    if os.path.exists(".env"):
+        return "env"
+    return "defaults"
 
 
 def reload_settings(validate: bool = True) -> EleanorSettings:
