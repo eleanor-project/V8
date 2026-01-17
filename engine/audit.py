@@ -19,8 +19,8 @@ This enables:
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Dict
-from critics.schema import CriticOutput
+from typing import Any, List, Dict
+from engine.schemas.pipeline_types import CriticResult
 
 
 # Determine log file path
@@ -33,8 +33,24 @@ def ensure_log_dir():
     LOG_DIR.mkdir(exist_ok=True)
 
 
+def _get_value(item: Any, key: str, default: Any = None) -> Any:
+    if isinstance(item, dict):
+        return item.get(key, default)
+    return getattr(item, key, default)
+
+
+def _format_precedent(item: Any) -> Any:
+    precedent = _get_value(item, "precedent")
+    if precedent:
+        return precedent
+    refs = _get_value(item, "precedent_refs")
+    if isinstance(refs, list):
+        return ", ".join(str(r) for r in refs) if refs else None
+    return refs
+
+
 def log_deliberation(
-    prompt: str, critic_outputs: List[CriticOutput], aggregation_result: Dict, backend: str = "mock"
+    prompt: str, critic_outputs: List[CriticResult], aggregation_result: Dict, backend: str = "mock"
 ):
     """
     Log a complete deliberation to audit trail.
@@ -54,13 +70,13 @@ def log_deliberation(
         "prompt": prompt,
         "critics": [
             {
-                "critic": c.critic,
-                "concern": c.concern,
-                "severity": c.severity,
-                "principle": c.principle,
-                "uncertainty": c.uncertainty,
-                "rationale": c.rationale,
-                "precedent": c.precedent,
+                "critic": _get_value(c, "critic", _get_value(c, "critic_id", "unknown")),
+                "concern": _get_value(c, "concern", _get_value(c, "justification", "")),
+                "severity": _get_value(c, "severity", _get_value(c, "score", 0.0)),
+                "principle": _get_value(c, "principle"),
+                "uncertainty": _get_value(c, "uncertainty"),
+                "rationale": _get_value(c, "rationale", _get_value(c, "justification", "")),
+                "precedent": _format_precedent(c),
             }
             for c in critic_outputs
         ],

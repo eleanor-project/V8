@@ -391,7 +391,7 @@ echo "✅ API key validation complete"
 ### 8.3 Security Tests
 
 - [ ] **Run Bandit security scan**
-  - **Command:** `bandit -r engine/ api/ critics/ governance/ -f json -o bandit_report.json`
+  - **Command:** `bandit -r engine/ api/ governance/ -f json -o bandit_report.json`
   - **Expected:** No HIGH severity issues
   - **Address:** All MEDIUM severity issues (HTTP timeouts already fixed ✅)
 

@@ -2,9 +2,20 @@ import json
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from critics.router import run_critics
-from critics.aggregate import aggregate
-from critics.llm_impl import get_llm
+
+from engine.engine import create_engine, EngineConfig
+from engine.factory import EngineDependencies
+from engine.mocks import (
+    MockAggregator,
+    MockCritic,
+    MockDetectorEngine,
+    MockEvidenceRecorder,
+    MockPrecedentEngine,
+    MockPrecedentRetriever,
+    MockReviewTriggerEvaluator,
+    MockRouter,
+    MockUncertaintyEngine,
+)
 
 app = FastAPI(title="ELEANOR Demo")
 
@@ -13,88 +24,93 @@ class Prompt(BaseModel):
     prompt: str
 
 
+def _build_demo_engine():
+    critics = {
+        "truth": MockCritic("truth", score=0.12),
+        "fairness": MockCritic("fairness", score=0.18),
+        "risk": MockCritic("risk", score=0.22),
+        "pragmatics": MockCritic("pragmatics", score=0.1),
+        "autonomy": MockCritic("autonomy", score=0.08),
+        "rights": MockCritic("rights", score=0.15),
+    }
+    dependencies = EngineDependencies(
+        router=MockRouter(response_text="mock response", model_name="demo-mock"),
+        detector_engine=MockDetectorEngine(),
+        evidence_recorder=MockEvidenceRecorder(),
+        critics=critics,
+        review_trigger_evaluator=MockReviewTriggerEvaluator(),
+        precedent_engine=MockPrecedentEngine(),
+        precedent_retriever=MockPrecedentRetriever(),
+        uncertainty_engine=MockUncertaintyEngine(),
+        aggregator=MockAggregator(),
+        critic_models={},
+    )
+    config = EngineConfig(enable_precedent_analysis=False, enable_reflection=False)
+    return create_engine(config=config, dependencies=dependencies)
+
+
+def _serialize_finding(finding):
+    if hasattr(finding, "model_dump"):
+        return finding.model_dump()
+    if hasattr(finding, "dict"):
+        return finding.dict()
+    return dict(finding)
+
+
+DEMO_ENGINE = _build_demo_engine()
+
+
 @app.get("/")
 def home():
     return {"status": "ELEANOR online", "go_to": "/ui"}
 
 
 @app.post("/run")
-def run_eleanor(p: Prompt):
-    llm = get_llm()
-    critic_outputs = run_critics(p.prompt, llm)
-    result = aggregate(critic_outputs)
-    return result
+async def run_eleanor(p: Prompt):
+    result = await DEMO_ENGINE.run(p.prompt, context={"source": "demo"})
+    aggregated = result.aggregated or {}
+    critic_findings = result.critic_findings or {}
+    critics = {
+        name: _serialize_finding(finding) for name, finding in critic_findings.items()
+    }
+    deliberation = [
+        f"{name}: {len(payload.get('violations', []))} violation(s)"
+        for name, payload in critics.items()
+    ]
+    final_answer = result.output_text or aggregated.get("final_output", "")
+
+    return {
+        "trace_id": result.trace_id,
+        "decision": aggregated.get("decision"),
+        "deliberation": deliberation,
+        "final_answer": final_answer,
+        "critics": critics,
+    }
 
 
 @app.websocket("/stream")
 async def stream_eleanor(websocket: WebSocket):
     """
-    WebSocket endpoint for streaming critic deliberation.
+    WebSocket endpoint for streaming deliberation events.
 
-    Sends each critic's output as it completes, allowing
-    real-time visualization of Eleanor's thinking process.
+    Streams engine events (router selection, critic results, aggregation, final output).
     """
     await websocket.accept()
 
     try:
-        # Receive prompt from client
         data = await websocket.receive_text()
         prompt_data = json.loads(data)
         prompt = prompt_data.get("prompt", "")
 
-        # Send acknowledgment
-        await websocket.send_json({"type": "start", "message": "Eleanor is deliberating..."})
-
-        # Run critics one by one, streaming results
-        from critics.truth import truth_critic
-        from critics.fairness import fairness_critic
-        from critics.risk import risk_critic
-        from critics.pragmatics import pragmatics_critic
-        from critics.autonomy import autonomy_critic
-        from critics.dignity import dignity_critic
-
-        llm = get_llm()
-        critic_funcs = [
-            truth_critic,
-            fairness_critic,
-            risk_critic,
-            pragmatics_critic,
-            autonomy_critic,
-            dignity_critic,
-        ]
-
-        critic_outputs = []
-        for critic_fn in critic_funcs:
-            # Evaluate this critic
-            output = critic_fn(prompt, llm)
-            critic_outputs.append(output)
-
-            # Stream this critic's result
-            await websocket.send_json(
-                {
-                    "type": "critic",
-                    "critic": output.critic,
-                    "concern": output.concern,
-                    "severity": output.severity,
-                    "principle": output.principle,
-                    "uncertainty": output.uncertainty,
-                    "rationale": output.rationale,
-                }
-            )
-
-        # Aggregate and send final result
-        result = aggregate(critic_outputs)
-
         await websocket.send_json(
-            {
-                "type": "final",
-                "deliberation": result["deliberation"],
-                "final_answer": result["final_answer"],
-            }
+            {"event": "start", "message": "Eleanor is deliberating..."}
         )
 
+        async for event in DEMO_ENGINE.run_stream(prompt, detail_level=2):
+            await websocket.send_json(event)
+
     except Exception as e:
-        await websocket.send_json({"type": "error", "message": str(e)})
+        await websocket.send_json({"event": "error", "message": str(e)})
     finally:
         await websocket.close()
 
@@ -114,17 +130,17 @@ def ui():
         .critic-name { font-weight: bold; color: #4a9eff }
         .severity { color: #ff6b6b }
         .principle { color: #51cf66 }
-        .precedent { color: #ffd43b; font-style: italic; margin-top: 0.5rem }
+        .event { margin-bottom: 0.75rem; padding: 0.6rem; background:#191923; border-left: 3px solid #888 }
         .final { background:#2a2a3a; padding:1rem; margin-top:1rem; border-left: 3px solid #51cf66 }
         label { margin-right: 1rem }
       </style>
     </head>
     <body>
       <h1>🧠 ELEANOR</h1>
-      <p>Governance as infrastructure</p>
+      <p>Governance as infrastructure (demo mode)</p>
 
       <textarea id="prompt" placeholder="Ask something ethically messy..."></textarea><br>
-      <label><input type="checkbox" id="streaming"> Stream critics live</label><br>
+      <label><input type="checkbox" id="streaming"> Stream engine events</label><br>
       <button onclick="run()">Run Eleanor</button>
 
       <h3>Deliberation</h3>
@@ -156,10 +172,10 @@ def ui():
           const data = await res.json();
 
           let html = '';
-          data.deliberation.forEach(line => {
+          (data.deliberation || []).forEach(line => {
             html += '<div class="critic">' + escapeHtml(line) + '</div>';
           });
-          html += '<div class="final"><strong>FINAL:</strong><br>' + escapeHtml(data.final_answer) + '</div>';
+          html += '<div class="final"><strong>FINAL:</strong><br>' + escapeHtml(data.final_answer || '') + '</div>';
           output.innerHTML = html;
         }
 
@@ -178,33 +194,52 @@ def ui():
           ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
 
-            if (data.type === 'start') {
+            if (data.event === 'start') {
               output.innerHTML = '<p>' + data.message + '</p>';
+              return;
             }
-            else if (data.type === 'critic') {
+
+            if (data.event === 'router_selected') {
+              const model = data.model_info ? data.model_info.model_name : 'unknown';
+              output.appendChild(renderEvent('Router selected: ' + model));
+              return;
+            }
+
+            if (data.event === 'critic_result') {
               const criticDiv = document.createElement('div');
               criticDiv.className = 'critic';
+              const violations = (data.violations || []).length;
               criticDiv.innerHTML = `
                 <div class="critic-name">${escapeHtml(data.critic)}</div>
-                <div>${escapeHtml(data.concern)}</div>
-                <div><span class="severity">Severity: ${data.severity}</span> | <span class="principle">Principle: ${escapeHtml(data.principle)}</span></div>
-                ${data.precedent ? '<div class="precedent">⚖️ ' + escapeHtml(data.precedent) + '</div>' : ''}
-                ${data.uncertainty ? '<div style="color:#888; font-size:0.9em">Uncertainty: ' + escapeHtml(data.uncertainty) + '</div>' : ''}
+                <div>${violations} violation(s) reported</div>
               `;
               output.appendChild(criticDiv);
+              return;
             }
-            else if (data.type === 'final') {
+
+            if (data.event === 'aggregation') {
+              const decision = data.data && data.data.decision ? data.data.decision : 'unknown';
+              output.appendChild(renderEvent('Aggregation decision: ' + decision));
+              return;
+            }
+
+            if (data.event === 'final_output') {
               const finalDiv = document.createElement('div');
               finalDiv.className = 'final';
-              finalDiv.innerHTML = '<strong>FINAL DELIBERATION:</strong><br>' + escapeHtml(data.final_answer);
+              finalDiv.innerHTML = '<strong>FINAL OUTPUT:</strong><br>' + escapeHtml(data.output_text || '');
               output.appendChild(finalDiv);
+              return;
             }
-            else if (data.type === 'error') {
+
+            if (data.event === 'error') {
               output.innerHTML += '<div style="color:#ff6b6b">Error: ' + escapeHtml(data.message) + '</div>';
+              return;
             }
+
+            output.appendChild(renderEvent(JSON.stringify(data)));
           };
 
-          ws.onerror = (error) => {
+          ws.onerror = () => {
             output.innerHTML += '<div style="color:#ff6b6b">WebSocket error</div>';
           };
 
@@ -213,9 +248,16 @@ def ui():
           };
         }
 
+        function renderEvent(text) {
+          const div = document.createElement('div');
+          div.className = 'event';
+          div.textContent = text;
+          return div;
+        }
+
         function escapeHtml(text) {
           const div = document.createElement('div');
-          div.textContent = text;
+          div.textContent = text || '';
           return div.innerHTML;
         }
       </script>

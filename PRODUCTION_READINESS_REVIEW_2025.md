@@ -86,7 +86,6 @@ ELEANOR V8 is a well-architected constitutional AI governance engine with strong
 
 **Locations**:
 - `engine/router/adapters.py:88` - `BaseLLMAdapter.__call__()`
-- `critics/llm.py:13` - `LLMClient.invoke()`
 - `llm/base.py:28` - Base LLM method
 - `engine/critics/base.py:111, 162` - Base critic methods
 - `engine/precedent/embeddings.py:33` - Base embedding method
