@@ -4,7 +4,7 @@ Tests for GPU Manager
 
 import pytest
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import Mock, MagicMock, patch
 
 # Mock torch if not available
 try:
@@ -77,6 +77,44 @@ class TestGPUManager:
             else:
                 assert gpu_manager.device is None
 
+    def test_disabled_config_forces_cpu(self):
+        """Test disabled config always selects CPU."""
+        with patch("engine.gpu.manager.torch") as mock_torch:
+            mock_torch.cuda.is_available.return_value = True
+            mock_torch.cuda.device_count.return_value = 2
+
+            def _device(name):
+                device = Mock()
+                device.type = str(name).split(":")[0]
+                device.index = None
+                return device
+
+            mock_torch.device.side_effect = _device
+
+            config = GPUConfig(enabled=False)
+            gpu_manager = GPUManager(config=config)
+
+            assert gpu_manager.device.type == "cpu"
+
+    def test_device_preference_order(self):
+        """Test device preference order honors CPU first."""
+        with patch("engine.gpu.manager.torch") as mock_torch:
+            mock_torch.cuda.is_available.return_value = True
+            mock_torch.cuda.device_count.return_value = 1
+            mock_torch.backends.mps.is_available.return_value = True
+
+            def _device(name):
+                device = Mock()
+                device.type = str(name).split(":")[0]
+                return device
+
+            mock_torch.device.side_effect = _device
+
+            config = GPUConfig(device_preference=["cpu", "cuda", "mps"])
+            gpu_manager = GPUManager(config=config)
+
+            assert gpu_manager.device.type == "cpu"
+
     @pytest.mark.skipif(not TORCH_AVAILABLE, reason="PyTorch not available")
     def test_device_detection_cuda(self):
         """Test CUDA device detection."""
@@ -134,6 +172,20 @@ class TestGPUManager:
 
             assert stats["available"] is False
 
+    def test_memory_stats_exception_returns_unavailable(self):
+        """Test memory stats failure handling."""
+        with patch("engine.gpu.manager.torch") as mock_torch:
+            mock_torch.cuda.is_available.return_value = True
+            mock_torch.cuda.device_count.return_value = 1
+            mock_device = Mock(type="cuda")
+            mock_torch.device.return_value = mock_device
+            mock_torch.cuda.memory_allocated.side_effect = RuntimeError("boom")
+
+            gpu_manager = GPUManager()
+            stats = gpu_manager.memory_stats(device_id=0)
+
+            assert stats["available"] is False
+
     def test_health_check(self, gpu_manager):
         """Test GPU health check."""
         health = gpu_manager.health_check()
@@ -162,10 +214,38 @@ class TestGPUManager:
                 assert "healthy" in device
                 assert "memory_stats" in device
 
+    def test_health_check_mps(self):
+        """Test health check for MPS device."""
+        with patch("engine.gpu.manager.torch") as mock_torch:
+            mock_torch.cuda.is_available.return_value = False
+            mock_torch.cuda.device_count.return_value = 0
+            mock_torch.backends.mps.is_available.return_value = True
+            mock_torch.device.return_value = Mock(type="mps")
+
+            gpu_manager = GPUManager()
+            health = gpu_manager.health_check()
+
+            assert health["healthy"] is True
+            assert health["mode"] == "mps"
+            assert health["devices"] == []
+
     def test_is_available(self, gpu_manager):
         """Test GPU availability check."""
         available = gpu_manager.is_available()
         assert isinstance(available, bool)
+
+    def test_get_device_out_of_range(self):
+        """Test get_device returns default when index is out of range."""
+        with patch("engine.gpu.manager.torch") as mock_torch:
+            mock_torch.cuda.is_available.return_value = True
+            mock_torch.cuda.device_count.return_value = 1
+            mock_device = Mock(type="cuda")
+            mock_torch.device.return_value = mock_device
+
+            gpu_manager = GPUManager()
+            device = gpu_manager.get_device(preferred_gpu=3)
+
+            assert device == mock_device
 
     def test_repr(self, gpu_manager):
         """Test string representation."""

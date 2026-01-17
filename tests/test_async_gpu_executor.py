@@ -4,6 +4,7 @@ Tests for Async GPU Executor
 
 import pytest
 import sys
+from contextlib import contextmanager
 from unittest.mock import Mock, MagicMock
 
 # Mock torch if not available
@@ -154,6 +155,56 @@ class TestAsyncGPUExecutor:
 
         with pytest.raises(ValueError, match="Test error"):
             await executor.execute_async(failing_operation)
+
+    @pytest.mark.asyncio
+    async def test_execute_async_without_torch(self, monkeypatch):
+        """Test fallback execution when torch is unavailable."""
+        from engine.gpu import async_ops
+
+        monkeypatch.setattr(async_ops, "torch", None)
+
+        executor = async_ops.AsyncGPUExecutor(device=None, num_streams=2)
+        result = await executor.execute_async(lambda x: x + 1, 2)
+
+        assert result == 3
+        assert executor.get_stream() is None
+        executor.synchronize_all()
+
+    @pytest.mark.asyncio
+    async def test_execute_async_with_stream_synchronizes(self, monkeypatch):
+        """Test CUDA stream synchronization path."""
+        from engine.gpu import async_ops
+
+        fake_torch = MagicMock()
+        fake_stream = MagicMock()
+        fake_torch.cuda.is_available.return_value = True
+        fake_torch.cuda.Stream.return_value = fake_stream
+
+        @contextmanager
+        def stream_ctx(_):
+            yield
+
+        fake_torch.cuda.stream.side_effect = stream_ctx
+        monkeypatch.setattr(async_ops, "torch", fake_torch)
+
+        device = Mock(type="cuda")
+        executor = async_ops.AsyncGPUExecutor(device=device, num_streams=1)
+        result = await executor.execute_async(lambda: "ok")
+
+        assert result == "ok"
+        fake_stream.synchronize.assert_called_once()
+
+    def test_get_stream_non_cuda(self, monkeypatch):
+        """Test get_stream returns None for non-CUDA device."""
+        from engine.gpu import async_ops
+
+        fake_torch = MagicMock()
+        fake_torch.cuda.is_available.return_value = False
+        monkeypatch.setattr(async_ops, "torch", fake_torch)
+
+        executor = async_ops.AsyncGPUExecutor(device=Mock(type="cpu"), num_streams=1)
+
+        assert executor.get_stream() is None
 
     def test_synchronize_all(self, executor):
         """Test synchronizing all streams."""

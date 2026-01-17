@@ -95,7 +95,7 @@ result = await engine.run(
 
 ```bash
 # Run GPU tests
-pytest tests/test_gpu_manager.py tests/test_async_gpu_executor.py -v
+pytest tests/test_gpu_manager.py tests/test_async_gpu_executor.py tests/test_gpu_init_and_monitoring.py -v
 
 # Run integration examples
 python examples/gpu_integration.py
