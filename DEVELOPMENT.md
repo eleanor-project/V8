@@ -346,7 +346,7 @@ CI will automatically run. Constitutional violations will block merge.
 
 ```python
 from engine.critics.base import BaseCritic
-from engine.types import CriticEvaluation, EscalationClause
+from engine.schemas.constitutional_types import CriticEvaluation, EscalationClause
 
 class MyCriticV8(BaseCritic):
     async def evaluate(self, model_adapter, input_text, context):

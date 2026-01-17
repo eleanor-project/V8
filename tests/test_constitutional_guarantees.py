@@ -22,7 +22,7 @@ from engine.exceptions import (
     UncertaintyBoundaryExceeded,
     is_constitutional_signal,
 )
-from engine.types import (
+from engine.schemas.constitutional_types import (
     EscalationTier,
     EscalationClause,
     EscalationSignal,
@@ -348,7 +348,7 @@ class TestUncertaintyAsSignal:
         """
         Uncertainty must be preserved in output, not hidden.
         """
-        from engine.types import EngineResult
+        from engine.schemas.constitutional_types import EngineResult
 
         uncertainty = UncertaintyMeasure(
             overall_score=0.68,
@@ -381,7 +381,7 @@ class TestEvidenceImmutability:
         """
         Evidence records cannot be modified after creation.
         """
-        from engine.types import EvidenceRecord
+        from engine.schemas.constitutional_types import EvidenceRecord
 
         record = EvidenceRecord(
             record_id="rec-123",

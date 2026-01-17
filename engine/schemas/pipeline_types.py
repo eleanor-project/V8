@@ -7,7 +7,7 @@ and aggregation outputs without enforcing runtime validation.
 from typing import Dict, List, Optional, Sequence, Union
 from typing_extensions import TypedDict
 
-from engine.types import CriticViolation
+from engine.schemas.constitutional_types import CriticViolation
 
 
 ViolationEntry = Union[CriticViolation, Dict[str, object], str]

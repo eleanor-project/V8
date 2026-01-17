@@ -1,11 +1,9 @@
 """
-ELEANOR V8 — Type Definitions for Constitutional Governance
+ELEANOR V8 — Constitutional Type Definitions
 
-Explicit types that preserve constitutional semantics:
-- Critic evaluations maintain independence and dissent
-- Escalation signals carry complete governance context
-- Uncertainty is quantified as epistemic limitation, not error
-- Precedent alignment preserves case law reasoning
+Canonical data contracts for constitutional guarantees and invariants.
+These types are intentionally separate from runtime-only models in
+`engine/runtime/models.py` and pipeline schemas in `engine/schemas/pipeline_types.py`.
 """
 
 from enum import Enum
