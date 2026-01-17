@@ -181,10 +181,19 @@ def blocked_decision_fixture(critic_eval_tier2):
     )
 
 
-# Provide a lightweight benchmark fixture when pytest-benchmark is unavailable
-@pytest.fixture
-def benchmark():
-    def _run(func, *args, **kwargs):
-        return func(*args, **kwargs)
+try:
+    import pytest_benchmark  # noqa: F401
+    _HAS_PYTEST_BENCHMARK = True
+except Exception:
+    _HAS_PYTEST_BENCHMARK = False
 
-    return _run
+
+# Provide a lightweight benchmark fixture when pytest-benchmark is unavailable
+if not _HAS_PYTEST_BENCHMARK:
+
+    @pytest.fixture
+    def benchmark():
+        def _run(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        return _run
