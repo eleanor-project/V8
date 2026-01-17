@@ -590,11 +590,23 @@ async def health_check():
         "engine": "unknown",
         "opa": "unknown",
         "precedent_store": "unknown",
+        "resources": "unknown",
     }
 
     # Check engine
     if engine is not None:
         checks["engine"] = "ok"
+
+        resource_manager = getattr(engine, "resource_manager", None)
+        if resource_manager is not None and getattr(resource_manager, "health_checker", None):
+            try:
+                resource_health = await resource_manager.health_checker.check_all()
+                checks["resources"] = "ok" if resource_health.healthy else "degraded"
+            except Exception as exc:
+                logger.warning(f"Resource health check failed: {exc}")
+                checks["resources"] = "error"
+        else:
+            checks["resources"] = "not_configured"
 
         # Check OPA
         opa_cb = getattr(engine, "opa_callback", None)
@@ -626,6 +638,7 @@ async def health_check():
                 checks["precedent_store"] = "error"
     else:
         checks["engine"] = "not_initialized"
+        checks["resources"] = "not_initialized"
 
     # Security/storage readiness
     try:

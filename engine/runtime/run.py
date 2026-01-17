@@ -77,6 +77,38 @@ def _collect_precedent_values(critic_results: Dict[str, Any]) -> List[str]:
     return deduped
 
 
+def _init_evidence_buffer(engine: Any):
+    resource_manager = getattr(engine, "resource_manager", None)
+    if resource_manager is not None and hasattr(resource_manager, "create_evidence_buffer"):
+        return resource_manager.create_evidence_buffer()
+    return []
+
+
+def _evidence_count(records: Any) -> Optional[int]:
+    try:
+        return len(records)
+    except Exception:
+        return None
+
+
+def _forensic_evidence(records: Any, engine: Any) -> List[Any]:
+    resource_manager = getattr(engine, "resource_manager", None)
+    if resource_manager is not None and hasattr(resource_manager, "get_forensic_evidence"):
+        try:
+            return resource_manager.get_forensic_evidence(records)
+        except Exception:
+            pass
+    if not records:
+        return []
+    try:
+        return records[-200:]
+    except Exception:
+        try:
+            return list(records)[-200:]
+        except Exception:
+            return []
+
+
 def _track_precedent_evolution(
     *,
     engine: Any,
@@ -184,8 +216,19 @@ async def run_engine(
     pipeline_start = asyncio.get_event_loop().time()
     timings: Dict[str, float] = {}
     router_diagnostics: Dict[str, Any] = {}
-    evidence_records: List[Any] = []
+    evidence_records = _init_evidence_buffer(engine)
     degraded_components: List[str] = []
+
+    resource_manager = getattr(engine, "resource_manager", None)
+    if resource_manager is not None and getattr(resource_manager, "resource_limits", None):
+        limit_result = resource_manager.resource_limits.enforce()
+        if not limit_result.compliant:
+            logger.warning(
+                "resource_limits_exceeded",
+                extra={"violations": limit_result.violations},
+            )
+            if engine.degradation_enabled:
+                degraded_components.append("resource_limits")
 
     try:
         detector_payload = await engine._run_detectors(text, context, timings)
@@ -589,7 +632,7 @@ async def run_engine(
     if OBSERVABILITY_AVAILABLE and set_degraded_components:
         set_degraded_components(len(degraded_components))
 
-    evidence_count = len(evidence_records) if evidence_records else None
+    evidence_count = _evidence_count(evidence_records) if evidence_records else None
 
     # Extract governance flags from case
     governance_flags = getattr(case, "governance_flags", {}) if 'case' in locals() else {}
@@ -702,7 +745,7 @@ async def run_engine(
 
     forensic_data = None
     if level == 3:
-        forensic_buffer = evidence_records[-200:] if evidence_records else []
+        forensic_buffer = _forensic_evidence(evidence_records, engine)
 
         forensic_data = EngineForensicData(
             detector_metadata=detector_payload or {},

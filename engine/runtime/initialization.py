@@ -226,6 +226,21 @@ def initialize_engine(
     engine.instance_id = str(uuid.uuid4())
     engine._shutdown_event = asyncio.Event()
     engine._cleanup_tasks = []
+
+    # Initialize production-grade resource manager if available
+    try:
+        from engine.resource_manager import ResourceManager
+        resource_config = getattr(settings, "resource_management", None)
+        if resource_config is not None:
+            connections = getattr(resource_config, "connections", None)
+            if connections is not None and getattr(connections, "redis_url", None) is None:
+                redis_url = getattr(settings.cache, "redis_url", None)
+                if redis_url:
+                    connections.redis_url = redis_url
+        engine.resource_manager = ResourceManager(config=resource_config)
+    except Exception as exc:
+        logger.debug("resource_manager_init_failed", extra={"error": str(exc)})
+        engine.resource_manager = None
     
     # Initialize batch critic processor - will be overridden by GPU batcher if enabled
     # GPU batching takes precedence, so only initialize if GPU won't override

@@ -244,8 +244,8 @@ class CriticInfrastructureAdapter:
         degraded_components: Optional[List[str]] = None,
     ):
         self.engine = engine
-        self.evidence_records = evidence_records or []
-        self.degraded_components = degraded_components or []
+        self.evidence_records = evidence_records if evidence_records is not None else []
+        self.degraded_components = degraded_components if degraded_components is not None else []
     
     async def check_cache(
         self,

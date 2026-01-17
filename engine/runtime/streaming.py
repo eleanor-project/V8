@@ -21,6 +21,31 @@ from engine.utils.circuit_breaker import CircuitBreakerOpen
 from engine.runtime.critics import _process_batch_with_engine
 from engine.runtime.run import _track_precedent_evolution
 
+
+def _init_evidence_buffer(engine: Any):
+    resource_manager = getattr(engine, "resource_manager", None)
+    if resource_manager is not None and hasattr(resource_manager, "create_evidence_buffer"):
+        return resource_manager.create_evidence_buffer()
+    return []
+
+
+def _forensic_evidence(records: Any, engine: Any) -> List[Any]:
+    resource_manager = getattr(engine, "resource_manager", None)
+    if resource_manager is not None and hasattr(resource_manager, "get_forensic_evidence"):
+        try:
+            return resource_manager.get_forensic_evidence(records)
+        except Exception:
+            pass
+    if not records:
+        return []
+    try:
+        return records[-200:]
+    except Exception:
+        try:
+            return list(records)[-200:]
+        except Exception:
+            return []
+
 try:
     from engine.observability.correlation import CorrelationContext
     from engine.events.event_bus import (
@@ -79,8 +104,15 @@ async def run_stream_engine(
     pipeline_start = asyncio.get_event_loop().time()
     timings: Dict[str, float] = {}
     router_diagnostics: Dict[str, Any] = {}
-    evidence_records: List[Any] = []
+    evidence_records = _init_evidence_buffer(engine)
     degraded_components: List[str] = []
+
+    resource_manager = getattr(engine, "resource_manager", None)
+    if resource_manager is not None and getattr(resource_manager, "resource_limits", None):
+        limit_result = resource_manager.resource_limits.enforce()
+        if not limit_result.compliant:
+            if engine.degradation_enabled:
+                degraded_components.append("resource_limits")
     try:
         detector_payload = await engine._run_detectors(text, context, timings)
     except DetectorExecutionError as exc:
@@ -582,7 +614,7 @@ async def run_stream_engine(
         final_output = model_response
     pipeline_end = asyncio.get_event_loop().time()
     timings["total_pipeline_ms"] = (pipeline_end - pipeline_start) * 1000
-    forensic_evidence = evidence_records[-200:] if evidence_records else []
+    forensic_evidence = _forensic_evidence(evidence_records, engine)
     base_final = {
         "event": "final_output",
         "trace_id": trace_id,

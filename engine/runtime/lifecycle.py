@@ -34,6 +34,13 @@ async def setup_resources(engine: Any) -> None:
     if engine.precedent_retriever:
         await _maybe_call(engine.precedent_retriever, "connect")
 
+    resource_manager = getattr(engine, "resource_manager", None)
+    if resource_manager is not None:
+        try:
+            await resource_manager.initialize(engine=engine)
+        except Exception as exc:
+            logger.warning("resource_manager_start_failed", extra={"error": str(exc)})
+
 
 async def shutdown_engine(engine: Any, *, timeout: Optional[float] = None) -> None:
     """Gracefully shutdown engine and cleanup resources."""
@@ -65,6 +72,10 @@ async def shutdown_engine(engine: Any, *, timeout: Optional[float] = None) -> No
         )
     if engine.cache_manager:
         cleanup_coros.append(_close_resource("cache_manager", engine.cache_manager, "close"))
+
+    resource_manager = getattr(engine, "resource_manager", None)
+    if resource_manager is not None:
+        cleanup_coros.append(resource_manager.shutdown(timeout=timeout))
 
     if cleanup_coros:
         if timeout is None or timeout <= 0:
