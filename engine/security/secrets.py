@@ -626,6 +626,13 @@ class VaultSecretsProvider(SecretsProvider):
             if isinstance(keys, list):
                 return [str(key) for key in keys]
             return []
+        except Exception as e:
+            logger.error(
+                "failed_to_list_vault_secrets",
+                extra={"error": str(e)},
+                exc_info=True,
+            )
+            return []
 
 
 class AzureSecretsProvider(SecretsProvider):
