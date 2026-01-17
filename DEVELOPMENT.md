@@ -433,6 +433,18 @@ if result.human_review_required:
 
 ## Production Deployment
 
+### Environment Configuration (Local)
+
+**Never commit actual environment files.** Use templates and local overrides:
+
+```bash
+cp .env.sample .env.local
+```
+
+- Keep `.env.local` out of git (already ignored).
+- Store production secrets in a secure secrets manager.
+- Rotate any credential that was ever committed to git.
+
 ### Environment Variables (Production)
 
 ```env
