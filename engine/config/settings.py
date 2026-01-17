@@ -256,6 +256,26 @@ class VaultSecretsConfig(BaseModel):
     mount_path: str = Field(default="secret/eleanor", description="Vault mount path for secrets")
 
 
+class AzureSecretsConfig(BaseModel):
+    """Azure Key Vault configuration."""
+
+    vault_url: Optional[str] = Field(
+        default=None, description="Azure Key Vault URL (e.g., https://vault.vault.azure.net)"
+    )
+    secret_prefix: str = Field(
+        default="", description="Optional prefix for secret names"
+    )
+
+
+class SecretsRotationConfig(BaseModel):
+    """Secret rotation configuration."""
+
+    enabled: bool = Field(default=False, description="Enable automatic rotation checks")
+    check_interval: int = Field(default=3600, ge=60, description="Rotation check interval in seconds")
+    advance_rotation_days: int = Field(default=7, ge=1, description="Rotate secrets expiring within N days")
+    max_age_days: int = Field(default=90, ge=1, description="Rotate secrets older than N days")
+
+
 class SecurityConfig(BaseModel):
     """Security configuration."""
 
@@ -268,10 +288,13 @@ class SecurityConfig(BaseModel):
     enable_prompt_injection_detection: bool = Field(
         default=True, description="Enable prompt injection detection"
     )
-    secret_provider: str = Field(default="env", description="Secret provider: env, aws, vault")
+    secret_provider: str = Field(default="env", description="Secret provider: env, aws, vault, azure")
     secrets_cache_ttl: int = Field(default=300, ge=60, description="Secrets cache TTL in seconds")
+    enable_secret_audit: bool = Field(default=True, description="Audit secret access events")
     aws: AWSSecretsConfig = Field(default_factory=AWSSecretsConfig)
     vault: VaultSecretsConfig = Field(default_factory=VaultSecretsConfig)
+    azure: AzureSecretsConfig = Field(default_factory=AzureSecretsConfig)
+    rotation: SecretsRotationConfig = Field(default_factory=SecretsRotationConfig)
 
 
 class ObservabilityConfig(BaseModel):

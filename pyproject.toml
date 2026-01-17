@@ -68,6 +68,8 @@ cache = [
 security = [
     "boto3>=1.28.0",  # AWS Secrets Manager
     "hvac>=1.2.0",    # HashiCorp Vault
+    "azure-identity>=1.15.0",
+    "azure-keyvault-secrets>=4.7.0",
 ]
 
 vector = [

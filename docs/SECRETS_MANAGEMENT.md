@@ -4,7 +4,7 @@
 
 Secure credential management for ELEANOR V8 with support for multiple backends:
 - **Development**: Environment variables
-- **Production**: AWS Secrets Manager or HashiCorp Vault
+- **Production**: AWS Secrets Manager, HashiCorp Vault, or Azure Key Vault
 - **Protection**: Automatic sanitization of logs and evidence
 
 ## Quick Start
@@ -53,6 +53,17 @@ secrets = auto_detect_secrets_provider()
 api_key = secrets.get_secret("eleanor/openai-api-key")
 ```
 
+### Production (Azure Key Vault)
+
+```bash
+export AZURE_KEY_VAULT_URL=https://eleanor-v8.vault.azure.net
+```
+
+```python
+secrets = auto_detect_secrets_provider()
+api_key = secrets.get_secret("openai/api_key")
+```
+
 ## Architecture
 
 ### Secrets Providers
@@ -61,7 +72,8 @@ api_key = secrets.get_secret("eleanor/openai-api-key")
 SecretsProvider (ABC)
 ├── EnvironmentSecretsProvider  # Development
 ├── AWSSecretsProvider          # AWS Secrets Manager
-└── VaultSecretsProvider        # HashiCorp Vault
+├── VaultSecretsProvider        # HashiCorp Vault
+└── AzureSecretsProvider        # Azure Key Vault
 ```
 
 **Key Features:**
@@ -69,6 +81,8 @@ SecretsProvider (ABC)
 - Automatic caching with TTL (5 minutes default)
 - Graceful fallback to environment variables
 - Comprehensive error handling
+- Audit logging for secret access
+- Rotation helpers via `SecretRotator`
 
 ### Sanitization System
 
@@ -106,7 +120,27 @@ api_key = secrets.get_secret_or_fail("openai-api-key")
 secret_names = secrets.list_secrets()
 ```
 
-### 2. Integration with Engine
+### 2. Rotation Helpers
+
+```python
+from engine.security import SecretRotator
+
+rotator = SecretRotator(secrets, advance_rotation_days=7, max_age_days=90)
+await rotator.rotate_if_needed("openai/api_key")
+```
+
+### 3. Secret Validation
+
+```python
+from engine.security import SecretValidator
+
+validator = SecretValidator()
+result = validator.validate_api_key("sk-...")
+if not result.valid:
+    print(result.reason)
+```
+
+### 4. Integration with Engine
 
 ```python
 from engine.engine import EleanorEngineV8
@@ -126,7 +160,7 @@ engine = EleanorEngineV8(
 )
 ```
 
-### 3. Sanitizing Data
+### 5. Sanitizing Data
 
 ```python
 from engine.security import SecretsSanitizer
@@ -151,7 +185,7 @@ safe_data = SecretsSanitizer.sanitize_dict(data)
 safe = SecretsSanitizer.sanitize(data)
 ```
 
-### 4. Custom Sensitive Keys
+### 6. Custom Sensitive Keys
 
 ```python
 # Add custom sensitive field names
