@@ -330,10 +330,88 @@ class ShutdownConfig(BaseModel):
     )
 
 
+class ResourceMemoryConfig(BaseModel):
+    """Memory pressure monitoring configuration."""
+
+    warning_threshold: float = Field(
+        default=0.75, ge=0.1, le=0.99, description="Warn when memory exceeds this fraction"
+    )
+    critical_threshold: float = Field(
+        default=0.90, ge=0.1, le=0.99, description="Critical when memory exceeds this fraction"
+    )
+    check_interval: float = Field(
+        default=30.0, ge=1.0, description="Seconds between memory checks"
+    )
+
+
+class ResourceConnectionPoolConfig(BaseModel):
+    """Connection pool settings for external resources."""
+
+    http_pool_size: int = Field(default=100, ge=1, description="Max HTTP connections")
+    http_per_host_limit: int = Field(
+        default=10, ge=1, description="Max HTTP connections per host"
+    )
+    http_keepalive_timeout: float = Field(
+        default=30.0, ge=1.0, description="HTTP keepalive timeout in seconds"
+    )
+
+    database_url: Optional[str] = Field(
+        default=None, description="Database DSN for asyncpg pool"
+    )
+    db_pool_min: int = Field(default=2, ge=0, description="Min DB pool size")
+    db_pool_max: int = Field(default=20, ge=1, description="Max DB pool size")
+    db_timeout: float = Field(default=10.0, ge=1.0, description="DB command timeout")
+
+    redis_url: Optional[str] = Field(default=None, description="Redis URL for pool")
+    redis_pool_size: int = Field(default=50, ge=1, description="Max Redis connections")
+
+
+class ResourceLimitsConfig(BaseModel):
+    """Hard resource limits for enforcement."""
+
+    max_memory_gb: Optional[float] = Field(
+        default=None, ge=0.1, description="Max process memory before violation"
+    )
+    max_open_files: Optional[int] = Field(
+        default=None, ge=1, description="Max open file descriptors"
+    )
+    max_threads: Optional[int] = Field(
+        default=None, ge=1, description="Max active threads"
+    )
+    max_coroutines: Optional[int] = Field(
+        default=None, ge=1, description="Max active asyncio tasks"
+    )
+
+
+class EvidenceBufferConfig(BaseModel):
+    """Evidence buffer limits."""
+
+    max_buffer_size: int = Field(default=1000, ge=1, description="Max evidence records")
+    forensic_output_size: int = Field(
+        default=200, ge=1, description="Max evidence records in forensic output"
+    )
+
+
+class ResourceHealthConfig(BaseModel):
+    """Health check thresholds for system resources."""
+
+    disk_warning_threshold: float = Field(
+        default=0.90, ge=0.1, le=0.99, description="Disk usage warning threshold"
+    )
+    disk_critical_threshold: float = Field(
+        default=0.95, ge=0.1, le=0.99, description="Disk usage critical threshold"
+    )
+
+
 class ResourceManagementConfig(BaseModel):
     """Resource lifecycle configuration."""
 
     shutdown: ShutdownConfig = Field(default_factory=ShutdownConfig)
+    memory: ResourceMemoryConfig = Field(default_factory=ResourceMemoryConfig)
+    connections: ResourceConnectionPoolConfig = Field(default_factory=ResourceConnectionPoolConfig)
+    limits: ResourceLimitsConfig = Field(default_factory=ResourceLimitsConfig)
+    evidence: EvidenceBufferConfig = Field(default_factory=EvidenceBufferConfig)
+    health: ResourceHealthConfig = Field(default_factory=ResourceHealthConfig)
 
 
 class GPUAsyncConfig(BaseModel):
